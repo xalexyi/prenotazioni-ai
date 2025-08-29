@@ -1,56 +1,41 @@
+# backend/__init__.py
 import os
 from flask import Flask
-from dotenv import load_dotenv
-from flask_login import LoginManager
-from .models import db, Restaurant
-
-login_manager = LoginManager()
-login_manager.login_view = "auth.login"
-
-@login_manager.user_loader
-def load_user(user_id):
-    try:
-        return Restaurant.query.get(int(user_id))
-    except Exception:
-        return None
+from backend.models import db
 
 def create_app():
-    load_dotenv()
+    app = Flask(__name__, static_folder="../static", template_folder="../templates")
 
-    app = Flask(__name__, template_folder="../templates", static_folder="../static")
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
+    # Secret key per sessioni
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
-    db_uri = (
-        os.getenv("SQLALCHEMY_DATABASE_URI")
-        or os.getenv("DATABASE_URL")
-        or "sqlite:///instance/app.db"
-    )
-    if db_uri.startswith("sqlite:///instance/"):
-        os.makedirs("instance", exist_ok=True)
+    # DB URL: usa DATABASE_URL se presente, altrimenti sqlite locale
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///instance/database.db")
+    # Fix per Render/Heroku che usano 'postgres://' invece di 'postgresql://'
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
-    login_manager.init_app(app)
 
-    # Blueprints core
-    from .auth import auth_bp
-    from .api import api as api_bp
-    from .dashboard import bp as dashboard_bp
-    from .root import root_bp
+    # Crea automaticamente le tabelle se non esistono
+    with app.app_context():
+        db.create_all()
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(api_bp)
-    app.register_blueprint(dashboard_bp)
+    # importa e registra le blueprint
+    from backend.root import bp as root_bp
+    from backend.api import api as api_bp
+    from backend.auth import auth as auth_bp
+    from backend.dashboard import dash as dash_bp
+
     app.register_blueprint(root_bp)
-
-    # Twilio (lazy import, così non blocca i comandi se manca la libreria)
-    try:
-        from .twilio_voice import twilio_bp
-        app.register_blueprint(twilio_bp)
-    except Exception as e:
-        # Log silenzioso in dev; se vuoi, metti app.logger.warning(...)
-        pass
+    app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(dash_bp)
 
     return app
+
+# compatibile con gunicorn (Start Command: gunicorn app:app)
+app = create_app()
