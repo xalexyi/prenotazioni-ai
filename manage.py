@@ -42,7 +42,7 @@ def seed_demo():
             slug="sushitokyo",
             username="sushitokyo",
             password_hash=generate_password_hash("Password123!"),
-            logo="logo_sushi.svg",          # <<=== QUI il logo sushi
+            logo="logo_sushi.svg",
         )
         r2 = Restaurant(
             name="Pizzeria Napoli",
@@ -128,3 +128,29 @@ def list_numbers():
         for n in rows:
             click.echo(f"{n.e164_number} -> restaurant_id={n.restaurant_id} "
                        f"({'attivo' if n.active else 'OFF'}) note={n.note or ''}")
+
+# 👇 NUOVO: crea un ristorante con credenziali
+@app.cli.command("create-restaurant")
+@click.argument("name")
+@click.argument("username")
+@click.argument("password")
+def create_restaurant(name, username, password):
+    """
+    Crea un ristorante con username/password (password hashata).
+    Esempio:
+      flask create-restaurant "Haru Asian Fusion Restaurant" haru_admin Haru!2025
+    """
+    with app.app_context():
+        if Restaurant.query.filter_by(username=username).first():
+            click.secho("⚠️ Username già esistente", fg="yellow")
+            return
+        r = Restaurant(
+            name=name,
+            slug=username.lower().replace(" ", "-"),
+            username=username,
+            password_hash=generate_password_hash(password),
+            logo="logo_sushi.svg",  # metto un logo di default; cambialo se vuoi
+        )
+        db.session.add(r)
+        db.session.commit()
+        click.secho(f"✅ Creato ristorante '{name}' con username='{username}'", fg="green")
