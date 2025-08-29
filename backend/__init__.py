@@ -1,7 +1,9 @@
 # backend/__init__.py
 import os
 from flask import Flask
-from backend.models import db
+from flask_login import LoginManager
+from backend.models import db, Restaurant
+
 
 def create_app():
     app = Flask(__name__, static_folder="../static", template_folder="../templates")
@@ -18,7 +20,20 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    # Inizializza DB
     db.init_app(app)
+
+    # --- Flask-Login ---
+    login_manager = LoginManager()
+    login_manager.login_view = "auth.login"  # dove mandare gli utenti non autenticati
+    login_manager.init_app(app)
+
+    @login_manager.user_loader
+    def load_user(user_id: str):
+        try:
+            return Restaurant.query.get(int(user_id))
+        except Exception:
+            return None
 
     # Crea automaticamente le tabelle se non esistono
     with app.app_context():
@@ -27,15 +42,16 @@ def create_app():
     # importa e registra le blueprint
     from backend.root import bp as root_bp
     from backend.api import api as api_bp
-    from backend.auth import auth_bp  # ora esiste; in alternativa: from backend.auth import auth as auth_bp
-    from backend.dashboard import bp as dashboard_bp  # presumo si chiami 'bp' nel file
+    from backend.auth import auth_bp          # (in auth.py hai auth_bp e alias 'auth')
+    from backend.dashboard import bp as dashboard_bp  # assicurati che dashboard.py esponga 'bp'
 
     app.register_blueprint(root_bp)
     app.register_blueprint(api_bp)
-    app.register_blueprint(auth_bp)
+    app.register_blueprint(auth_bp)           # /login e /logout restano senza prefisso
     app.register_blueprint(dashboard_bp)
 
     return app
+
 
 # compatibile con gunicorn (Start Command: gunicorn app:app)
 app = create_app()
