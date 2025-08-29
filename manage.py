@@ -1,6 +1,6 @@
+# manage.py
 import os
 import click
-from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash
 
 from backend import create_app
@@ -11,10 +11,12 @@ from backend.models import (
 
 app = create_app()
 
+
 def _ensure_instance_dir():
     db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
     if db_uri.startswith("sqlite:///instance/"):
         os.makedirs("instance", exist_ok=True)
+
 
 @app.cli.command("create-db")
 def create_db():
@@ -23,11 +25,13 @@ def create_db():
         db.create_all()
         click.secho("✅ DB creato.", fg="green")
 
+
 @app.cli.command("drop-db")
 def drop_db():
     with app.app_context():
         db.drop_all()
         click.secho("🗑️  DB droppato.", fg="yellow")
+
 
 @app.cli.command("seed-demo")
 def seed_demo():
@@ -36,7 +40,7 @@ def seed_demo():
         db.drop_all()
         db.create_all()
 
-        # Ristoranti demo (Sushi con logo_sushi.svg, Pizzeria con logo_pizzeria.svg)
+        # Ristoranti demo
         r1 = Restaurant(
             name="Sushi Tokyo",
             slug="sushitokyo",
@@ -51,18 +55,21 @@ def seed_demo():
             password_hash=generate_password_hash("Password123!"),
             logo="logo_pizzeria.svg",
         )
-        db.session.add_all([r1, r2]); db.session.flush()
+        db.session.add_all([r1, r2])
+        db.session.flush()
 
-        # Menù pizzeria
+        # Menù pizzeria (demo)
         pizza_menu = [
             ("Margherita", 7), ("Marinara", 6), ("Diavola", 8),
             ("Quattro Formaggi", 9), ("Capricciosa", 9),
             ("Prosciutto e Funghi", 9), ("Quattro Stagioni", 9),
             ("Napoli", 8), ("Vegetariana", 8), ("Bufalina", 10),
         ]
-        db.session.add_all([Pizza(restaurant_id=r2.id, name=n, price=p) for n, p in pizza_menu])
+        db.session.add_all([
+            Pizza(restaurant_id=r2.id, name=n, price=p) for n, p in pizza_menu
+        ])
 
-        # Numeri reali demo (metti i TUOI numeri veri in E.164)
+        # Numeri reali demo (sostituisci con i tuoi numeri E.164)
         db.session.add_all([
             InboundNumber(restaurant_id=r1.id, e164_number="+390212345678", note="Sushi - numero reale"),
             InboundNumber(restaurant_id=r2.id, e164_number="+390811234567", note="Pizzeria - numero reale"),
@@ -75,14 +82,17 @@ def seed_demo():
         click.echo(" - pizzerianapoli / Password123!")
         click.echo("Aggiorna i numeri reali in 'inbound_numbers' con i tuoi veri numeri E.164.")
 
+
 @app.cli.command("list")
 def list_all():
     with app.app_context():
         rows = Restaurant.query.all()
         if not rows:
-            click.secho("Nessun ristorante.", fg="yellow"); return
+            click.secho("Nessun ristorante.", fg="yellow")
+            return
         for r in rows:
             click.echo(f"- {r.name} ({r.slug})  user={r.username}  logo={r.logo or '-'}")
+
 
 @app.cli.command("reset-password")
 @click.option("--username", required=True)
@@ -91,10 +101,12 @@ def reset_password(username, password):
     with app.app_context():
         r = Restaurant.query.filter_by(username=username).first()
         if not r:
-            click.secho("Username non trovato", fg="red"); return
+            click.secho("Username non trovato", fg="red")
+            return
         r.password_hash = generate_password_hash(password)
         db.session.commit()
         click.secho("✅ Password aggiornata.", fg="green")
+
 
 # Numeri reali → ristorante
 @app.cli.command("link-number")
@@ -105,9 +117,11 @@ def link_number(username, number, note):
     with app.app_context():
         r = Restaurant.query.filter_by(username=username).first()
         if not r:
-            click.secho("Ristorante non trovato", fg="red"); return
+            click.secho("Ristorante non trovato", fg="red")
+            return
         if not number.startswith("+"):
-            click.secho("Usa formato E.164, es: +390811234567", fg="yellow"); return
+            click.secho("Usa formato E.164, es: +390811234567", fg="yellow")
+            return
         ex = InboundNumber.query.filter_by(e164_number=number).first()
         if ex:
             ex.restaurant_id = r.id
@@ -115,19 +129,26 @@ def link_number(username, number, note):
             ex.active = True
             click.secho("Numero aggiornato ↺", fg="cyan")
         else:
-            db.session.add(InboundNumber(restaurant_id=r.id, e164_number=number, note=note, active=True))
+            db.session.add(InboundNumber(
+                restaurant_id=r.id, e164_number=number, note=note, active=True
+            ))
             click.secho("Numero collegato ✅", fg="green")
         db.session.commit()
+
 
 @app.cli.command("list-numbers")
 def list_numbers():
     with app.app_context():
         rows = InboundNumber.query.order_by(InboundNumber.e164_number.asc()).all()
         if not rows:
-            click.echo("Nessun numero registrato."); return
+            click.echo("Nessun numero registrato.")
+            return
         for n in rows:
-            click.echo(f"{n.e164_number} -> restaurant_id={n.restaurant_id} "
-                       f"({'attivo' if n.active else 'OFF'}) note={n.note or ''}")
+            click.echo(
+                f"{n.e164_number} -> restaurant_id={n.restaurant_id} "
+                f"({'attivo' if n.active else 'OFF'}) note={n.note or ''}"
+            )
+
 
 # 👇 NUOVO: crea un ristorante con credenziali
 @app.cli.command("create-restaurant")
@@ -138,7 +159,7 @@ def create_restaurant(name, username, password):
     """
     Crea un ristorante con username/password (password hashata).
     Esempio:
-      flask create-restaurant "Haru Asian Fusion Restaurant" haru_admin Haru!2025
+      flask create-restaurant "Haru Asian Fusion Restaurant" haru_admin 'Haru!2025'
     """
     with app.app_context():
         if Restaurant.query.filter_by(username=username).first():
@@ -149,7 +170,7 @@ def create_restaurant(name, username, password):
             slug=username.lower().replace(" ", "-"),
             username=username,
             password_hash=generate_password_hash(password),
-            logo="logo_sushi.svg",  # metto un logo di default; cambialo se vuoi
+            logo="logo_sushi.svg",  # default; cambia pure
         )
         db.session.add(r)
         db.session.commit()
