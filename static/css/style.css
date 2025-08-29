@@ -1,10 +1,5 @@
-/* =======================================================
+/* ======================================================= 
    Dashboard Ristorante — Stili globali (LIGHT + DARK)
-   - Pixel-perfect per Login + Dashboard
-   - Toggle tema, Logout senza sottolineatura
-   - Nuova barra filtri con "Elimina filtri" e "+ Nuova prenotazione" a destra
-   - Pizzeria: KPI "Pizze ordinate" e righe pizze nel modal
-   - Accent caldo per Pizzeria (classe body: .accent-pizza)
    ======================================================= */
 
 :root{
@@ -46,7 +41,6 @@
 }
 
 /* ------------------ DARK MODE ------------------ */
-/* Palette identica alla dashboard Sushi, ottimizzata per leggibilità */
 [data-theme="dark"]{
   --bg:#0f141a;
   --card:#161b22;
@@ -144,7 +138,7 @@ body.app-body{
 .btn-icon{background:transparent; border:none; font-size:16px; cursor:pointer}
 .w-100{width:100%}
 
-/* Utility: spingi a destra in un flex container */
+/* Utility */
 .push-right{ margin-left:auto }
 
 /* ------------------ INPUTS ------------------ */
@@ -195,13 +189,15 @@ body.app-body{
 .soft-label{font-weight:700; color:#16a34a}
 [data-theme="dark"] .soft-label{color:#31d181}
 
-/* KPI */
-.kpi-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+/* ================== KPI ================== */
+/* NESSUNA colonna di default: scegli con .kpi-2 o .kpi-3 */
+.kpi-grid{display:grid; gap:18px}
+.kpi-grid.kpi-2{grid-template-columns:repeat(2, minmax(0, 1fr));}
+.kpi-grid.kpi-3{grid-template-columns:repeat(3, minmax(0, 1fr));}
+
 .kpi-card{display:flex; flex-direction:column; gap:6px; background:var(--card-elev)}
 .kpi-title{color:var(--muted); font-size:13px}
 .kpi-value{font-size:28px; font-weight:800}
-/* Variante a 3 KPI (per Pizzeria: + "Pizze ordinate") */
-.kpi-grid.kpi-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px }
 
 /* Filtri */
 .filters{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
@@ -240,7 +236,7 @@ body.app-body{
 .modal-foot{display:flex; justify-content:flex-end; gap:8px}
 .modal.card{background:var(--card)}
 
-/* ------ MODAL — Pizzeria: box pizze ------ */
+/* MODAL — box pizze (solo se c'è un menù) */
 .pizza-box{
   margin-top:10px; border:1px dashed var(--gray);
   border-radius:12px; padding:10px; background:var(--card-elev)
@@ -250,7 +246,6 @@ body.app-body{
 .pizza-row{ display:grid; grid-template-columns: 1fr 110px 120px; gap:8px }
 
 /* ------------------ ACCENT PIZZERIA ------------------ */
-/* (dettagli caldi — login soft card) */
 .accent-pizza .welcome-card.gradient-soft{
   background: linear-gradient(135deg, #ffedd5, #ffe4e6);
 }
@@ -262,6 +257,5 @@ body.app-body{
 /* ------------------ RESPONSIVE ------------------ */
 @media (max-width: 980px){
   .welcome-grid{grid-template-columns:1fr}
-  .kpi-grid{grid-template-columns:1fr}
-  .kpi-grid.kpi-3{grid-template-columns:1fr}
+  .kpi-grid.kpi-2, .kpi-grid.kpi-3{grid-template-columns:1fr}
 }
