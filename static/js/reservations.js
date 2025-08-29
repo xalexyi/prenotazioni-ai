@@ -41,7 +41,6 @@ const UI = {
     m.classList.remove("is-open");
   },
   toast(m) {
-    // sostituisci con un vero toast se vuoi
     console.log(m);
   },
 };
@@ -262,8 +261,7 @@ async function ensureMenu() {
   try {
     if (!MENU.length) MENU = await fetchJSON("/api/menu");
   } catch {
-    // Non è pizzeria o endpoint non disponibile
-    MENU = [];
+    MENU = []; // non pizzeria o endpoint non disponibile
   }
 }
 
@@ -276,7 +274,8 @@ function setupModal() {
   const modal = document.getElementById("modal");
 
   if (openBtn)
-    openBtn.onclick = async () => {
+    openBtn.onclick = async (e) => {
+      e.preventDefault();
       await ensureMenu();
       if (rowsBox) {
         rowsBox.innerHTML = "";
@@ -285,16 +284,22 @@ function setupModal() {
       UI.openModal();
     };
 
-  if (closeBtn) closeBtn.onclick = () => UI.closeModal();
+  if (closeBtn) closeBtn.onclick = (e) => { e.preventDefault(); UI.closeModal(); };
 
-  // Chiudi click fuori
+  // Chiudi cliccando fuori dal contenuto
   if (modal)
     modal.addEventListener("click", (e) => {
       if (e.target === modal) UI.closeModal();
     });
 
+  // ESC per chiudere
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") UI.closeModal();
+  });
+
   if (addPizza)
-    addPizza.onclick = () => {
+    addPizza.onclick = (e) => {
+      e.preventDefault();
       if (!rowsBox) return;
       if (!MENU.length) {
         UI.toast("Nessun menu disponibile.");
@@ -304,7 +309,9 @@ function setupModal() {
     };
 
   if (saveBtn)
-    saveBtn.onclick = async () => {
+    saveBtn.onclick = async (e) => {
+      e.preventDefault();
+
       const body = {
         customer_name: (document.getElementById("m-name")?.value || "").trim(),
         phone: (document.getElementById("m-phone")?.value || "").trim(),
@@ -341,8 +348,8 @@ function setupModal() {
         if (rowsBox) rowsBox.innerHTML = "";
 
         await load();
-      } catch (e) {
-        UI.toast("Errore salvataggio: " + e.message);
+      } catch (err) {
+        UI.toast("Errore salvataggio: " + err.message);
       }
     };
 }

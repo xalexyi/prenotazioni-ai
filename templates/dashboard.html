@@ -2,9 +2,7 @@
 
 {% block header_left %}
 <div class="brand-row">
-  <img class="logo-robot"
-       src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}"
-       alt="logo">
+  <img class="logo-robot" src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}" alt="logo">
   <div class="brand-title">
     <span class="brand-strong">{{ restaurant.name }}</span> —
     <span class="brand-sub">Dashboard ristorante</span>
@@ -31,15 +29,17 @@
     </div>
   </section>
 
-  <!-- KPI -->
-  <section class="kpi-grid kpi-3">
+  {# Scegliamo automaticamente la griglia KPI:
+     - Pizzeria => 3 KPI (aggiunta "Pizze ordinate")
+     - Altri => 2 KPI pieni 50/50  #}
+  {% set is_pizzeria = 'pizzeria' in (restaurant.slug or '') %}
+  <section class="kpi-grid {{ 'kpi-3' if is_pizzeria else 'kpi-2' }}">
     <div class="card kpi-card">
       <div class="kpi-title">Prenotazioni oggi</div>
       <div class="kpi-value" id="kpi-today">0</div>
     </div>
 
-    {% if pizza_mode %}
-    <!-- SOLO se esiste un menu pizza -->
+    {% if is_pizzeria %}
     <div class="card kpi-card">
       <div class="kpi-title">Pizze ordinate</div>
       <div class="kpi-value" id="kpi-pizzas">0</div>
@@ -93,8 +93,7 @@
       <label class="form-label">Persone</label>
       <input id="m-people" class="input" type="number" value="2" min="1">
 
-      {% if pizza_mode %}
-      <!-- SOLO pizzeria: righe pizza -->
+      <!-- Box pizze visibile solo se il ristorante ha un menù (verrà popolato da JS) -->
       <div class="pizza-box">
         <div class="pizza-head">
           <span class="card-title" style="margin:0;">🍕 Pizze</span>
@@ -102,7 +101,6 @@
         </div>
         <div id="pizzaRows" class="pizza-rows"></div>
       </div>
-      {% endif %}
     </div>
     <div class="modal-foot">
       <button id="modalSave" class="btn btn-primary">Salva</button>
@@ -110,17 +108,19 @@
   </div>
 </div>
 
-<!-- Tema accent per pizzeria -->
+<!-- Accent caldo per Pizzeria -->
 <script>
   (function(){
     const slug = "{{ restaurant.slug }}";
-    if (slug === "pizzerianapoli") document.body.classList.add("accent-pizza");
-    else document.body.classList.remove("accent-pizza");
+    if (slug && slug.includes("pizzeria")){
+      document.body.classList.add("accent-pizza");
+    } else {
+      document.body.classList.remove("accent-pizza");
+    }
   })();
 </script>
 {% endblock %}
 
 {% block scripts %}
 <script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
-<script defer src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
