@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block header_left %}
+<div class="brand-row">
+  <img class="logo-robot" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo" />
+  <div class="brand-title">
+    <span class="brand-strong">Ristorante AI</span> —
+    <span class="brand-sub">Area riservata ristoranti</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block header_right %}
+<!-- Solo toggle sul login -->
+<button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte">
+  <span class="toggle-icon sun">☀️</span>
+  <span class="toggle-icon moon">🌙</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="welcome-grid">
+  <!-- Pannello sinistro “Istruzioni rapide” -->
+  <section class="card welcome-card gradient-soft card-elev">
+    <h1 class="welcome-title">Benvenuto/a 👋</h1>
+    <p class="welcome-sub">Gestisci prenotazioni e stato chiamate in un click.</p>
+
+    <div class="card-dashed">
+      <div class="quick-title">📋 Istruzioni rapide</div>
+      <div class="quick-cols">
+        <div>
+          <div class="quick-col-title">Come entrare</div>
+          <ul class="quick-list">
+            <li>📱 Inserisci <strong>username</strong> del ristorante</li>
+            <li>🔐 Digita la <strong>password</strong></li>
+            <li>👉 Clicca <strong>“Log in”</strong></li>
+          </ul>
+        </div>
+        <div>
+          <div class="quick-col-title">Dopo il login vedrai</div>
+          <ul class="quick-list">
+            <li>🟢 <strong>Chiamate attive</strong> e stato linea</li>
+            <li>📅 <strong>Prenotazioni del giorno</strong></li>
+            <li>⚡ Azioni rapide: <strong>Conferma / Rifiuta / Elimina</strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pannello destro “Login form” -->
+  <section class="card login-panel card-elev">
+    <form action="{{ url_for('auth.login') }}" method="post" class="login-form">
+      <label class="form-label" for="username">Username</label>
+      <input class="input" id="username" name="username" type="text" placeholder="es. sushitokyo" required>
+
+      <label class="form-label" for="password">Password</label>
+      <input class="input" id="password" name="password" type="password" placeholder="Password123!" required>
+
+      {% if error %}
+      <div class="alert error">Credenziali non valide</div>
+      {% endif %}
+
+      <button class="btn btn-red w-100" type="submit">Log in</button>
+
+      <p class="demo-msg">
+        Demo: <strong>sushitokyo</strong> / <strong>Password123!</strong> — 
+        <strong>pizzerianapoli</strong> / <strong>Password123!</strong>
+      </p>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block header_left %}
+<div class="brand-row">
+  <img class="logo-robot" src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}" alt="logo">
+  <div class="brand-title">
+    <span class="brand-strong">{{ restaurant.name }}</span> —
+    <span class="brand-sub">Dashboard ristorante</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block header_right %}
+<button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte">
+  <span class="toggle-icon sun">☀️</span>
+  <span class="toggle-icon moon">🌙</span>
+</button>
+<a class="btn btn-red logout-btn" href="{{ url_for('auth.logout') }}">Logout</a>
+{% endblock %}
+
+{% block content %}
+<div class="dash-grid">
+  <!-- Stato linea -->
+  <section class="card soft-card">
+    <div class="soft-title">Chiamate attive: <span class="strong">0/3</span></div>
+    <div class="soft-right">
+      <span class="dot dot-green"></span>
+      <span class="soft-label">Disponibile</span>
+    </div>
+  </section>
+
+  <!-- KPI (aggiunto "Pizze ordinate" al centro) -->
+  <section class="kpi-grid kpi-3">
+    <div class="card kpi-card">
+      <div class="kpi-title">Prenotazioni oggi</div>
+      <div class="kpi-value" id="kpi-today">0</div>
+    </div>
+
+    <div class="card kpi-card">
+      <div class="kpi-title">Pizze ordinate</div>
+      <div class="kpi-value" id="kpi-pizzas">0</div>
+    </div>
+
+    <div class="card kpi-card">
+      <div class="kpi-title">Incasso stimato</div>
+      <div class="kpi-value" id="kpi-revenue">€ 0</div>
+    </div>
+  </section>
+
+  <!-- Filtri -->
+  <section class="card filters">
+    <input id="f-date" class="input" type="date" value="{{ today }}">
+    <input id="f-text" class="input" type="text" placeholder="Cerca nome / telefono / orario">
+    <button id="btn-filter" class="btn btn-gray" aria-label="Applica filtri">Filtra</button>
+    <button id="btn-clear" class="btn btn-outline" aria-label="Elimina filtri">Elimina filtri</button>
+    <button id="btn-30" class="btn btn-outline">Storico 30gg</button>
+    <button id="btn-today" class="btn btn-outline">Oggi</button>
+
+    <button id="btn-new" class="btn btn-primary push-right">+ Nuova prenotazione</button>
+  </section>
+
+  <!-- Lista -->
+  <section class="card">
+    <div id="list" class="list"></div>
+  </section>
+</div>
+
+<!-- Modale -->
+<div id="modal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal card">
+    <div class="modal-head">
+      <h3 class="card-title">Nuova prenotazione</h3>
+      <button id="modalClose" class="btn btn-icon" aria-label="Chiudi">✖</button>
+    </div>
+    <div class="modal-body">
+      <label class="form-label">Nome cliente</label>
+      <input id="m-name" class="input" type="text" placeholder="Nome">
+
+      <label class="form-label">Telefono</label>
+      <input id="m-phone" class="input" type="tel" placeholder="Telefono">
+
+      <label class="form-label">Data</label>
+      <input id="m-date" class="input" type="date" value="{{ today }}">
+
+      <label class="form-label">Ora</label>
+      <input id="m-time" class="input" type="time" value="20:00">
+
+      <label class="form-label">Persone</label>
+      <input id="m-people" class="input" type="number" value="2" min="1">
+
+      <!-- NOVITÀ: scelte pizze -->
+      <div class="pizza-box">
+        <div class="pizza-head">
+          <span class="card-title" style="margin:0;">🍕 Pizze</span>
+          <button id="pizzaAdd" type="button" class="btn btn-outline">+ Aggiungi pizza</button>
+        </div>
+        <div id="pizzaRows" class="pizza-rows"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="modalSave" class="btn btn-primary">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- Accent caldo per Pizzeria -->
+<script>
+  (function(){
+    const slug = "{{ restaurant.slug }}";
+    if (slug === "pizzerianapoli") document.body.classList.add("accent-pizza");
+    else document.body.classList.remove("accent-pizza");
+  })();
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
+{% endblock %}
