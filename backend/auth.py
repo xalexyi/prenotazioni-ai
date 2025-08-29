@@ -1,3 +1,4 @@
+# backend/auth.py
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from werkzeug.security import check_password_hash
 from flask_login import login_user, logout_user, login_required, current_user
@@ -31,3 +32,6 @@ def logout():
     logout_user()
     session.pop("restaurant_id", None)
     return redirect(url_for("auth.login"))
+
+# Alias per compatibilità con import tipo: from backend.auth import auth
+auth = auth_bp

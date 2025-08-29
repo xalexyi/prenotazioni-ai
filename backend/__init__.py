@@ -27,13 +27,13 @@ def create_app():
     # importa e registra le blueprint
     from backend.root import bp as root_bp
     from backend.api import api as api_bp
-    from backend.auth import auth as auth_bp
-    from backend.dashboard import dash as dash_bp
+    from backend.auth import auth_bp  # ora esiste; in alternativa: from backend.auth import auth as auth_bp
+    from backend.dashboard import bp as dashboard_bp  # presumo si chiami 'bp' nel file
 
     app.register_blueprint(root_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
-    app.register_blueprint(dash_bp)
+    app.register_blueprint(dashboard_bp)
 
     return app
 
