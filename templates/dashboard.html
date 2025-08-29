@@ -2,7 +2,9 @@
 
 {% block header_left %}
 <div class="brand-row">
-  <img class="logo-robot" src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}" alt="logo">
+  <img class="logo-robot"
+       src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}"
+       alt="logo">
   <div class="brand-title">
     <span class="brand-strong">{{ restaurant.name }}</span> —
     <span class="brand-sub">Dashboard ristorante</span>
@@ -29,17 +31,20 @@
     </div>
   </section>
 
-  <!-- KPI (aggiunto "Pizze ordinate" al centro) -->
+  <!-- KPI -->
   <section class="kpi-grid kpi-3">
     <div class="card kpi-card">
       <div class="kpi-title">Prenotazioni oggi</div>
       <div class="kpi-value" id="kpi-today">0</div>
     </div>
 
+    {% if pizza_mode %}
+    <!-- SOLO se esiste un menu pizza -->
     <div class="card kpi-card">
       <div class="kpi-title">Pizze ordinate</div>
       <div class="kpi-value" id="kpi-pizzas">0</div>
     </div>
+    {% endif %}
 
     <div class="card kpi-card">
       <div class="kpi-title">Incasso stimato</div>
@@ -88,7 +93,8 @@
       <label class="form-label">Persone</label>
       <input id="m-people" class="input" type="number" value="2" min="1">
 
-      <!-- NOVITÀ: scelte pizze -->
+      {% if pizza_mode %}
+      <!-- SOLO pizzeria: righe pizza -->
       <div class="pizza-box">
         <div class="pizza-head">
           <span class="card-title" style="margin:0;">🍕 Pizze</span>
@@ -96,6 +102,7 @@
         </div>
         <div id="pizzaRows" class="pizza-rows"></div>
       </div>
+      {% endif %}
     </div>
     <div class="modal-foot">
       <button id="modalSave" class="btn btn-primary">Salva</button>
@@ -103,7 +110,7 @@
   </div>
 </div>
 
-<!-- Accent caldo per Pizzeria -->
+<!-- Tema accent per pizzeria -->
 <script>
   (function(){
     const slug = "{{ restaurant.slug }}";
@@ -115,4 +122,5 @@
 
 {% block scripts %}
 <script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
