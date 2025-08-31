@@ -2,9 +2,11 @@
 
 {% block header_left %}
 <div class="brand-row">
-  <img class="logo-robot" src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}" alt="logo">
+  <img class="logo-robot"
+       src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}"
+       alt="logo">
   <div class="brand-title">
-    <span class="brand-strong">{{ restaurant.name }}</span> —
+    <span class="brand-strong">{{ restaurant.name|default('Ristorante') }}</span> —
     <span class="brand-sub">Dashboard ristorante</span>
   </div>
 </div>
@@ -29,10 +31,7 @@
     </div>
   </section>
 
-  {# Scegliamo automaticamente la griglia KPI:
-     - Pizzeria => 3 KPI (aggiunta "Pizze ordinate")
-     - Altri => 2 KPI pieni 50/50  #}
-  {% set is_pizzeria = 'pizzeria' in (restaurant.slug or '') %}
+  {# KPI: 2 box per ristorante normale, 3 box se pizzeria #}
   <section class="kpi-grid {{ 'kpi-3' if is_pizzeria else 'kpi-2' }}">
     <div class="card kpi-card">
       <div class="kpi-title">Prenotazioni oggi</div>
@@ -54,7 +53,7 @@
 
   <!-- Filtri -->
   <section class="card filters">
-    <input id="f-date" class="input" type="date" value="{{ today }}">
+    <input id="f-date" class="input" type="date" value="{{ today|default('') }}">
     <input id="f-text" class="input" type="text" placeholder="Cerca nome / telefono / orario">
     <button id="btn-filter" class="btn btn-gray" aria-label="Applica filtri">Filtra</button>
     <button id="btn-clear" class="btn btn-outline" aria-label="Elimina filtri">Elimina filtri</button>
@@ -72,28 +71,29 @@
 
 <!-- Modale -->
 <div id="modal" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-head">
-      <h3 class="card-title">Nuova prenotazione</h3>
+      <h3 id="modalTitle" class="card-title">Nuova prenotazione</h3>
       <button id="modalClose" class="btn btn-icon" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
-      <label class="form-label">Nome cliente</label>
+      <label class="form-label" for="m-name">Nome cliente</label>
       <input id="m-name" class="input" type="text" placeholder="Nome">
 
-      <label class="form-label">Telefono</label>
+      <label class="form-label" for="m-phone">Telefono</label>
       <input id="m-phone" class="input" type="tel" placeholder="Telefono">
 
-      <label class="form-label">Data</label>
-      <input id="m-date" class="input" type="date" value="{{ today }}">
+      <label class="form-label" for="m-date">Data</label>
+      <input id="m-date" class="input" type="date" value="{{ today|default('') }}">
 
-      <label class="form-label">Ora</label>
+      <label class="form-label" for="m-time">Ora</label>
       <input id="m-time" class="input" type="time" value="20:00">
 
-      <label class="form-label">Persone</label>
+      <label class="form-label" for="m-people">Persone</label>
       <input id="m-people" class="input" type="number" value="2" min="1">
 
-      <!-- Box pizze visibile solo se il ristorante ha un menù (verrà popolato da JS) -->
+      {% if is_pizzeria %}
+      <!-- SOLO PIZZERIA: scelte pizze -->
       <div class="pizza-box">
         <div class="pizza-head">
           <span class="card-title" style="margin:0;">🍕 Pizze</span>
@@ -101,6 +101,7 @@
         </div>
         <div id="pizzaRows" class="pizza-rows"></div>
       </div>
+      {% endif %}
     </div>
     <div class="modal-foot">
       <button id="modalSave" class="btn btn-primary">Salva</button>
@@ -108,15 +109,13 @@
   </div>
 </div>
 
-<!-- Accent caldo per Pizzeria -->
+<!-- Flag JS e accent pizzeria -->
 <script>
+  window.IS_PIZZERIA = {{ (is_pizzeria|default(false))|tojson }};
   (function(){
-    const slug = "{{ restaurant.slug }}";
-    if (slug && slug.includes("pizzeria")){
-      document.body.classList.add("accent-pizza");
-    } else {
-      document.body.classList.remove("accent-pizza");
-    }
+    const slug = "{{ restaurant.slug|default('') }}";
+    if (slug === "pizzerianapoli") document.body.classList.add("accent-pizza");
+    else document.body.classList.remove("accent-pizza");
   })();
 </script>
 {% endblock %}
