@@ -6,7 +6,7 @@
        src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}"
        alt="logo">
   <div class="brand-title">
-    <span class="brand-strong">{{ restaurant.name|default('Ristorante') }}</span> —
+    <span class="brand-strong">{{ restaurant.name or 'Ristorante' }}</span> —
     <span class="brand-sub">Dashboard ristorante</span>
   </div>
 </div>
@@ -31,8 +31,8 @@
     </div>
   </section>
 
-  {# KPI: 2 box per ristorante normale, 3 box se pizzeria #}
-  <section class="kpi-grid {{ 'kpi-3' if is_pizzeria else 'kpi-2' }}">
+  <!-- KPI: 2 per ristorante normale, 3 per pizzeria -->
+  <section class="kpi-grid {% if is_pizzeria %}kpi-3{% else %}kpi-2{% endif %}">
     <div class="card kpi-card">
       <div class="kpi-title">Prenotazioni oggi</div>
       <div class="kpi-value" id="kpi-today">0</div>
@@ -53,7 +53,7 @@
 
   <!-- Filtri -->
   <section class="card filters">
-    <input id="f-date" class="input" type="date" value="{{ today|default('') }}">
+    <input id="f-date" class="input" type="date" value="{{ today or '' }}">
     <input id="f-text" class="input" type="text" placeholder="Cerca nome / telefono / orario">
     <button id="btn-filter" class="btn btn-gray" aria-label="Applica filtri">Filtra</button>
     <button id="btn-clear" class="btn btn-outline" aria-label="Elimina filtri">Elimina filtri</button>
@@ -76,6 +76,7 @@
       <h3 id="modalTitle" class="card-title">Nuova prenotazione</h3>
       <button id="modalClose" class="btn btn-icon" aria-label="Chiudi">✖</button>
     </div>
+
     <div class="modal-body">
       <label class="form-label" for="m-name">Nome cliente</label>
       <input id="m-name" class="input" type="text" placeholder="Nome">
@@ -84,7 +85,7 @@
       <input id="m-phone" class="input" type="tel" placeholder="Telefono">
 
       <label class="form-label" for="m-date">Data</label>
-      <input id="m-date" class="input" type="date" value="{{ today|default('') }}">
+      <input id="m-date" class="input" type="date" value="{{ today or '' }}">
 
       <label class="form-label" for="m-time">Ora</label>
       <input id="m-time" class="input" type="time" value="20:00">
@@ -93,7 +94,7 @@
       <input id="m-people" class="input" type="number" value="2" min="1">
 
       {% if is_pizzeria %}
-      <!-- SOLO PIZZERIA: scelte pizze -->
+      <!-- SOLO PIZZERIA: area pizze -->
       <div class="pizza-box">
         <div class="pizza-head">
           <span class="card-title" style="margin:0;">🍕 Pizze</span>
@@ -103,6 +104,7 @@
       </div>
       {% endif %}
     </div>
+
     <div class="modal-foot">
       <button id="modalSave" class="btn btn-primary">Salva</button>
     </div>
@@ -111,11 +113,16 @@
 
 <!-- Flag JS e accent pizzeria -->
 <script>
-  window.IS_PIZZERIA = {{ (is_pizzeria|default(false))|tojson }};
+  // trasformo il boolean Jinja in boolean JS senza filtri speciali
+  window.IS_PIZZERIA = {{ 1 if is_pizzeria else 0 }} === 1;
+
   (function(){
-    const slug = "{{ restaurant.slug|default('') }}";
-    if (slug === "pizzerianapoli") document.body.classList.add("accent-pizza");
-    else document.body.classList.remove("accent-pizza");
+    var slug = "{{ restaurant.slug or '' }}";
+    if (slug === "pizzerianapoli") {
+      document.body.classList.add("accent-pizza");
+    } else {
+      document.body.classList.remove("accent-pizza");
+    }
   })();
 </script>
 {% endblock %}
