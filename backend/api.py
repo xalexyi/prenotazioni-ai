@@ -126,27 +126,17 @@ def create_reservation():
 def public_create_reservation():
     """
     Endpoint usato da n8n (senza login) per inserire prenotazioni.
-    Richiede: customer_name, phone, date, time, people, e "restaurant_id" oppure "to"
+    Richiede almeno: customer_name, phone, date, time, people, restaurant_id
     """
     data = request.get_json(force=True) or {}
 
-    # Ricava il restaurant_id: diretto o tramite numero chiamato
-    restaurant_id = data.get("restaurant_id")
-    if not restaurant_id and "to" in data:
-        ib = InboundNumber.query.filter_by(e164_number=data["to"]).first()
-        if ib:
-            restaurant_id = ib.restaurant_id
-
-    if not restaurant_id:
-        return jsonify({"ok": False, "error": "missing_restaurant"}), 400
-
-    required = ["customer_name", "phone", "date", "time", "people"]
+    required = ["customer_name", "phone", "date", "time", "people", "restaurant_id"]
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
 
     res = Reservation(
-        restaurant_id=int(restaurant_id),
+        restaurant_id=int(data["restaurant_id"]),
         customer_name=data["customer_name"],
         phone=data["phone"],
         date=data["date"],
@@ -174,7 +164,7 @@ def update_reservation(rid):
     return jsonify({"ok": True})
 
 
-# -------------------- DELETE PRENOTAZIONE --------------------
+# -------------------- DELETE --------------------
 @api.delete("/reservations/<int:rid>")
 @login_required
 def delete_reservation(rid):
@@ -183,35 +173,6 @@ def delete_reservation(rid):
     db.session.delete(res)
     db.session.commit()
     return ("", 204)
-
-
-# ==================== SESSIONS (per n8n) ====================
-@api.get("/sessions/<sid>")
-def get_session(sid):
-    store = current_app.config.setdefault("_sessions", {})
-    return jsonify(store.get(sid, {}))
-
-
-@api.patch("/sessions/<sid>")
-def patch_session(sid):
-    store = current_app.config.setdefault("_sessions", {})
-    data = request.get_json(force=True) or {}
-    update = data.get("update") or {}
-    if sid not in store:
-        store[sid] = {}
-    store[sid].update(update)
-    return jsonify({"ok": True, "session": store[sid]})
-
-
-@api.delete("/sessions/<sid>")
-def delete_session(sid):
-    """Cancella una sessione memorizzata (per n8n)"""
-    store = current_app.config.setdefault("_sessions", {})
-    if sid in store:
-        del store[sid]
-        return jsonify({"ok": True, "deleted": sid})
-    else:
-        return jsonify({"ok": False, "error": "not_found"}), 404
 
 
 # ==================== N8N / TWILIO CALLS WEBHOOK ====================
@@ -262,3 +223,39 @@ def api_calls():
     db.session.commit()
 
     return jsonify({"ok": True, "id": log.id}), 200
+
+
+# ==================== SESSIONS (per n8n) ====================
+@api.get("/sessions/<sid>")
+def get_session(sid):
+    store = current_app.config.setdefault("_sessions", {})
+    return jsonify(store.get(sid, {}))
+
+
+@api.patch("/sessions/<sid>")
+def patch_session(sid):
+    store = current_app.config.setdefault("_sessions", {})
+    data = request.get_json(force=True) or {}
+    update = data.get("update", {})
+    restaurant_id = data.get("restaurant_id")
+    if restaurant_id:
+        update["restaurant_id"] = restaurant_id
+    store[sid] = {**store.get(sid, {}), **update}
+    return jsonify({"ok": True, "session": store[sid]})
+
+
+# 🔹 Alias POST → stesso comportamento di PATCH (per compatibilità con n8n)
+@api.post("/sessions/<sid>")
+def post_session(sid):
+    """Alias POST per aggiornare la sessione (compatibile con n8n)"""
+    return patch_session(sid)
+
+
+@api.delete("/sessions/<sid>")
+def delete_session(sid):
+    store = current_app.config.setdefault("_sessions", {})
+    if sid in store:
+        del store[sid]
+        return jsonify({"ok": True, "deleted": sid})
+    else:
+        return jsonify({"ok": False, "error": "not_found"}), 404
