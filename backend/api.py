@@ -223,3 +223,29 @@ def api_calls():
     db.session.commit()
 
     return jsonify({"ok": True, "id": log.id}), 200
+
+
+# ==================== SESSIONI (per n8n) ====================
+sessions = {}  # memoria volatile (in RAM)
+
+@api.get("/sessions/<sid>")
+def session_get(sid):
+    """Ritorna lo stato della sessione (in RAM)."""
+    return jsonify(sessions.get(sid) or {})
+
+@api.patch("/sessions/<sid>")
+def session_patch(sid):
+    """Aggiorna lo stato della sessione."""
+    data = request.get_json(force=True) or {}
+    update = data.get("update") or {}
+    if sid not in sessions:
+        sessions[sid] = {}
+    sessions[sid].update(update)
+    return jsonify(sessions[sid])
+
+@api.delete("/sessions/<sid>")
+def session_delete(sid):
+    """Cancella una sessione."""
+    if sid in sessions:
+        del sessions[sid]
+    return jsonify({"ok": True})
