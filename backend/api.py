@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session, abort
+from flask import Blueprint, request, jsonify, session, abort, current_app
 from sqlalchemy import or_
 from flask_login import current_user, login_required
 from datetime import datetime
@@ -164,7 +164,7 @@ def update_reservation(rid):
     return jsonify({"ok": True})
 
 
-# -------------------- DELETE --------------------
+# -------------------- DELETE PRENOTAZIONE --------------------
 @api.delete("/reservations/<int:rid>")
 @login_required
 def delete_reservation(rid):
@@ -178,17 +178,15 @@ def delete_reservation(rid):
 # ==================== SESSIONS (per n8n) ====================
 @api.get("/sessions/<sid>")
 def get_session(sid):
-    from flask import current_app
     store = current_app.config.setdefault("_sessions", {})
     return jsonify(store.get(sid, {}))
 
 
 @api.patch("/sessions/<sid>")
 def patch_session(sid):
-    from flask import current_app
     store = current_app.config.setdefault("_sessions", {})
     data = request.get_json(force=True) or {}
-    update = data.get("update", {})
+    update = data.get("update") or {}
     if sid not in store:
         store[sid] = {}
     store[sid].update(update)
@@ -197,12 +195,13 @@ def patch_session(sid):
 
 @api.delete("/sessions/<sid>")
 def delete_session(sid):
-    from flask import current_app
+    """Cancella una sessione memorizzata (per n8n)"""
     store = current_app.config.setdefault("_sessions", {})
     if sid in store:
-        store.pop(sid)
-        return jsonify({"ok": True, "deleted": sid}), 200
-    return jsonify({"ok": False, "error": "not_found"}), 404
+        del store[sid]
+        return jsonify({"ok": True, "deleted": sid})
+    else:
+        return jsonify({"ok": False, "error": "not_found"}), 404
 
 
 # ==================== N8N / TWILIO CALLS WEBHOOK ====================
