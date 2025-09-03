@@ -1,5 +1,4 @@
-# backend/api.py
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, abort
 from sqlalchemy import or_
 from flask_login import current_user, login_required
 from datetime import datetime
@@ -10,8 +9,8 @@ from .models import (
     ReservationPizza,
     Pizza,
     Restaurant,
-    InboundNumber,   # mappa numero chiamato -> ristorante
-    CallLog,         # modello per salvare le chiamate
+    InboundNumber,
+    CallLog,
 )
 
 api = Blueprint("api", __name__, url_prefix="/api")
@@ -65,7 +64,6 @@ def list_reservations():
         q = q.filter(Reservation.date == d.today().isoformat())
 
     if rng == "30days":
-        # semplice: mostro ultime 30 per created_at
         q = q.order_by(Reservation.created_at.desc()).limit(30)
 
     q = q.order_by(Reservation.date.asc(), Reservation.time.asc(), Reservation.id.asc())
@@ -92,7 +90,7 @@ def list_reservations():
     return jsonify(out)
 
 
-# -------------------- CREA PRENOTAZIONE --------------------
+# -------------------- CREA PRENOTAZIONE (login) --------------------
 @api.post("/reservations")
 @login_required
 def create_reservation():
@@ -108,10 +106,9 @@ def create_reservation():
         status="pending",
     )
     db.session.add(res)
-    db.session.flush()  # per avere res.id
+    db.session.flush()
 
     pizzas = data.get("pizzas", [])
-    # pizzas: [{pizza_id: 1, qty: 2}, ...]
     for item in pizzas:
         pid = int(item.get("pizza_id"))
         qty = int(item.get("qty", 1))
@@ -122,6 +119,35 @@ def create_reservation():
 
     db.session.commit()
     return jsonify({"ok": True, "id": res.id})
+
+
+# -------------------- CREA PRENOTAZIONE PUBBLICA (per n8n) --------------------
+@api.post("/public/reservations")
+def public_create_reservation():
+    """
+    Endpoint usato da n8n (senza login) per inserire prenotazioni.
+    Richiede almeno: customer_name, phone, date, time, people, restaurant_id
+    """
+    data = request.get_json(force=True) or {}
+
+    required = ["customer_name", "phone", "date", "time", "people", "restaurant_id"]
+    missing = [k for k in required if k not in data]
+    if missing:
+        return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
+
+    res = Reservation(
+        restaurant_id=int(data["restaurant_id"]),
+        customer_name=data["customer_name"],
+        phone=data["phone"],
+        date=data["date"],
+        time=data["time"],
+        people=int(data["people"]),
+        status="pending",
+    )
+    db.session.add(res)
+    db.session.commit()
+
+    return jsonify({"ok": True, "id": res.id}), 201
 
 
 # -------------------- UPDATE STATO --------------------
@@ -150,18 +176,8 @@ def delete_reservation(rid):
 
 
 # ==================== N8N / TWILIO CALLS WEBHOOK ====================
-# Nessun login_required qui: viene chiamato da n8n
 @api.post("/calls")
 def api_calls():
-    """
-    Riceve il JSON da n8n con:
-    {
-      call_sid, from, to, recording_sid, recording_url,
-      duration_seconds, transcript, received_at (ISO)
-    }
-    Salva su CallLog e tenta di associare il ristorante partendo da InboundNumber.e164_number == to
-    """
-    # Forza il parse del JSON (utile con PowerShell/Invoke-RestMethod)
     data = request.get_json(force=True) or {}
 
     expected = [
@@ -178,18 +194,15 @@ def api_calls():
     if missing:
         return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
 
-    # Mappa numero chiamato -> restaurant_id tramite InboundNumber
     ib = InboundNumber.query.filter_by(e164_number=data["to"]).first()
     restaurant_id = ib.restaurant_id if ib else None
 
-    # Parsing sicuro dei tipi
     try:
         duration = int(data.get("duration_seconds") or 0)
     except Exception:
         duration = 0
 
     try:
-        # accetta "2025-08-29T00:00:00Z" oppure con offset
         received_at = datetime.fromisoformat(data["received_at"].replace("Z", "+00:00"))
     except Exception:
         received_at = datetime.utcnow()
