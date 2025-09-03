@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, abort
 from sqlalchemy import or_
 from flask_login import current_user, login_required
 from datetime import datetime
@@ -175,22 +175,34 @@ def delete_reservation(rid):
     return ("", 204)
 
 
-# ==================== SESSIONI PER N8N ====================
-_sessions = {}
-
+# ==================== SESSIONS (per n8n) ====================
 @api.get("/sessions/<sid>")
 def get_session(sid):
-    return jsonify(_sessions.get(sid) or {})
+    from flask import current_app
+    store = current_app.config.setdefault("_sessions", {})
+    return jsonify(store.get(sid, {}))
 
 
 @api.patch("/sessions/<sid>")
 def patch_session(sid):
+    from flask import current_app
+    store = current_app.config.setdefault("_sessions", {})
     data = request.get_json(force=True) or {}
     update = data.get("update", {})
-    if sid not in _sessions:
-        _sessions[sid] = {}
-    _sessions[sid].update(update)
-    return jsonify({"ok": True, "session": _sessions[sid]})
+    if sid not in store:
+        store[sid] = {}
+    store[sid].update(update)
+    return jsonify({"ok": True, "session": store[sid]})
+
+
+@api.delete("/sessions/<sid>")
+def delete_session(sid):
+    from flask import current_app
+    store = current_app.config.setdefault("_sessions", {})
+    if sid in store:
+        store.pop(sid)
+        return jsonify({"ok": True, "deleted": sid}), 200
+    return jsonify({"ok": False, "error": "not_found"}), 404
 
 
 # ==================== N8N / TWILIO CALLS WEBHOOK ====================
