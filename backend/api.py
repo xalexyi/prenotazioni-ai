@@ -126,17 +126,27 @@ def create_reservation():
 def public_create_reservation():
     """
     Endpoint usato da n8n (senza login) per inserire prenotazioni.
-    Richiede almeno: customer_name, phone, date, time, people, restaurant_id
+    Richiede: customer_name, phone, date, time, people, e "restaurant_id" oppure "to"
     """
     data = request.get_json(force=True) or {}
 
-    required = ["customer_name", "phone", "date", "time", "people", "restaurant_id"]
+    # Ricava il restaurant_id: diretto o tramite numero chiamato
+    restaurant_id = data.get("restaurant_id")
+    if not restaurant_id and "to" in data:
+        ib = InboundNumber.query.filter_by(e164_number=data["to"]).first()
+        if ib:
+            restaurant_id = ib.restaurant_id
+
+    if not restaurant_id:
+        return jsonify({"ok": False, "error": "missing_restaurant"}), 400
+
+    required = ["customer_name", "phone", "date", "time", "people"]
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
 
     res = Reservation(
-        restaurant_id=int(data["restaurant_id"]),
+        restaurant_id=int(restaurant_id),
         customer_name=data["customer_name"],
         phone=data["phone"],
         date=data["date"],
