@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session, abort, current_app
+from flask import Blueprint, request, jsonify, session, current_app
 from sqlalchemy import or_
 from flask_login import current_user, login_required
 from datetime import datetime
@@ -244,7 +244,7 @@ def patch_session(sid):
     return jsonify({"ok": True, "session": store[sid]})
 
 
-# 🔹 Alias POST → stesso comportamento di PATCH (per compatibilità con n8n)
+# 🔹 Alias POST → stesso comportamento di PATCH (compatibile con n8n)
 @api.post("/sessions/<sid>")
 def post_session(sid):
     """Alias POST per aggiornare la sessione (compatibile con n8n)"""
