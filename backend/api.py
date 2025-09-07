@@ -13,6 +13,7 @@ from .models import (
     CallLog,
 )
 
+# Manteniamo il prefisso /api per compatibilità con il resto del progetto
 api = Blueprint("api", __name__, url_prefix="/api")
 
 
@@ -237,7 +238,7 @@ def patch_session(sid):
     store = current_app.config.setdefault("_sessions", {})
     data = request.get_json(force=True) or {}
 
-    # Accetta {"update": {...}} oppure {"session": {...}}
+    # ✅ Accetta sia {"update": {...}} sia {"session": {...}}
     update = data.get("update")
     if update is None and "session" in data:
         update = {"session": data.get("session")}
@@ -269,7 +270,7 @@ def delete_session(sid):
         return jsonify({"ok": False, "error": "not_found"}), 404
 
 
-# ==================== PUBLIC ALIASES ====================
+# ==================== PUBLIC ALIASES (compatibilità n8n) ====================
 @api.get("/public/sessions/<sid>")
 def public_get_session(sid):
     return get_session(sid)
@@ -290,6 +291,10 @@ def public_delete_session(sid):
 # ==================== RESTAURANT LOOKUP ====================
 @api.get("/public/restaurants/byNumber")
 def public_restaurant_by_number():
+    """
+    Restituisce {id, name} del ristorante mappato al numero E.164 (InboundNumber.e164_number).
+    Esempio: /api/public/restaurants/byNumber?to=+39349XXXXXXX
+    """
     to = request.args.get("to")
     if not to:
         return jsonify({"error": "missing 'to'"}), 400
