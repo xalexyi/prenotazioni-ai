@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, session, current_app
 from sqlalchemy import or_
 from flask_login import current_user, login_required
 from datetime import datetime
+import os
 
 from .models import (
     db,
@@ -13,7 +14,6 @@ from .models import (
     CallLog,
 )
 
-# Manteniamo il prefisso /api per compatibilità con il resto del progetto
 api = Blueprint("api", __name__, url_prefix="/api")
 
 
@@ -253,7 +253,6 @@ def patch_session(sid):
     return jsonify({"ok": True, "session": store[sid]})
 
 
-# 🔹 Alias POST → stesso comportamento di PATCH (compatibile con n8n)
 @api.post("/sessions/<sid>")
 def post_session(sid):
     """Alias POST per aggiornare la sessione (compatibile con n8n)"""
@@ -270,7 +269,7 @@ def delete_session(sid):
         return jsonify({"ok": False, "error": "not_found"}), 404
 
 
-# ==================== PUBLIC ALIASES (compatibilità n8n) ====================
+# ==================== PUBLIC ALIASES ====================
 @api.get("/public/sessions/<sid>")
 def public_get_session(sid):
     return get_session(sid)
@@ -293,7 +292,6 @@ def public_delete_session(sid):
 def public_restaurant_by_number():
     """
     Restituisce {id, name} del ristorante mappato al numero E.164 (InboundNumber.e164_number).
-    Esempio: /api/public/restaurants/byNumber?to=+39349XXXXXXX
     """
     to = request.args.get("to")
     if not to:
@@ -308,3 +306,59 @@ def public_restaurant_by_number():
         return jsonify({"error": "not_found"}), 404
 
     return jsonify({"id": r.id, "name": r.name})
+
+
+# ==================== ADMIN: GESTIONE INBOUND NUMBERS ====================
+def _check_admin_token():
+    expected = os.environ.get("ADMIN_TOKEN") or current_app.config.get("ADMIN_TOKEN")
+    sent = request.headers.get("X-Admin-Token")
+    if not expected or sent != expected:
+        return False
+    return True
+
+@api.get("/admin/inbound_numbers")
+def admin_list_inbound_numbers():
+    """Lista i numeri inbound (richiede header X-Admin-Token)."""
+    if not _check_admin_token():
+        return jsonify({"error": "unauthorized"}), 401
+
+    rows = InboundNumber.query.order_by(InboundNumber.id.asc()).all()
+    out = []
+    for r in rows:
+        out.append({
+            "id": r.id,
+            "e164_number": r.e164_number,
+            "restaurant_id": r.restaurant_id,
+            "active": getattr(r, "active", True),
+        })
+    return jsonify(out)
+
+@api.post("/admin/inbound_numbers")
+def admin_upsert_inbound_number():
+    """
+    Crea/aggiorna un inbound number.
+    Body JSON: { "e164_number": "+39...", "restaurant_id": 1, "active": true }
+    Richiede header X-Admin-Token.
+    """
+    if not _check_admin_token():
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json(force=True) or {}
+    e164 = data.get("e164_number")
+    rid = data.get("restaurant_id")
+    active = data.get("active", True)
+    if not e164 or not rid:
+        return jsonify({"error": "missing_fields", "fields": ["e164_number", "restaurant_id"]}), 400
+
+    row = InboundNumber.query.filter_by(e164_number=e164).first()
+    if not row:
+        row = InboundNumber(e164_number=e164, restaurant_id=int(rid), active=bool(active))
+        db.session.add(row)
+    else:
+        row.restaurant_id = int(rid)
+        try:
+            row.active = bool(active)
+        except Exception:
+            pass
+    db.session.commit()
+    return jsonify({"ok": True, "id": row.id, "e164_number": row.e164_number, "restaurant_id": row.restaurant_id, "active": getattr(row, "active", True)})
