@@ -236,10 +236,18 @@ def get_session(sid):
 def patch_session(sid):
     store = current_app.config.setdefault("_sessions", {})
     data = request.get_json(force=True) or {}
-    update = data.get("update", {})
+
+    # Accetta {"update": {...}} oppure {"session": {...}}
+    update = data.get("update")
+    if update is None and "session" in data:
+        update = {"session": data.get("session")}
+    if update is None:
+        update = {}
+
     restaurant_id = data.get("restaurant_id")
     if restaurant_id:
         update["restaurant_id"] = restaurant_id
+
     store[sid] = {**store.get(sid, {}), **update}
     return jsonify({"ok": True, "session": store[sid]})
 
@@ -259,3 +267,39 @@ def delete_session(sid):
         return jsonify({"ok": True, "deleted": sid})
     else:
         return jsonify({"ok": False, "error": "not_found"}), 404
+
+
+# ==================== PUBLIC ALIASES ====================
+@api.get("/public/sessions/<sid>")
+def public_get_session(sid):
+    return get_session(sid)
+
+@api.patch("/public/sessions/<sid>")
+def public_patch_session(sid):
+    return patch_session(sid)
+
+@api.post("/public/sessions/<sid>")
+def public_post_session(sid):
+    return post_session(sid)
+
+@api.delete("/public/sessions/<sid>")
+def public_delete_session(sid):
+    return delete_session(sid)
+
+
+# ==================== RESTAURANT LOOKUP ====================
+@api.get("/public/restaurants/byNumber")
+def public_restaurant_by_number():
+    to = request.args.get("to")
+    if not to:
+        return jsonify({"error": "missing 'to'"}), 400
+
+    ino = InboundNumber.query.filter_by(e164_number=to, active=True).first()
+    if not ino:
+        return jsonify({"error": "not_found"}), 404
+
+    r = Restaurant.query.get(ino.restaurant_id)
+    if not r:
+        return jsonify({"error": "not_found"}), 404
+
+    return jsonify({"id": r.id, "name": r.name})
