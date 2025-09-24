@@ -8,7 +8,6 @@ def create_app():
     app = Flask(__name__, static_folder="../static", template_folder="../templates")
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
-    # Render/Heroku compat con postgres://
     db_url = os.environ.get("DATABASE_URL", "sqlite:///instance/database.db")
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -25,22 +24,20 @@ def create_app():
     def load_user(user_id):
         return Restaurant.query.get(int(user_id))
 
-    # ===== Blueprints esistenti =====
+    # Blueprints
     from backend.root import bp as root_bp
     from backend.api import api as api_bp
     from backend.auth import auth_bp
     from backend.dashboard import bp as dashboard_bp
-    from backend.twilio_voice import bp as twilio_bp  # se lo usi per qualcos'altro
-
-    # ===== NUOVO: gestione chiamate attive =====
-    from backend.voice_slots import voice_bp
+    from backend.twilio_voice import twilio_bp      # <- NOME GIUSTO
+    from backend.voice_slots import voice_bp        # <- endpoints chiamate attive
 
     app.register_blueprint(root_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
-    app.register_blueprint(twilio_bp)
-    app.register_blueprint(voice_bp)      # <-- registra /api/public/voice/*
+    app.register_blueprint(twilio_bp)               # /twilio/...
+    app.register_blueprint(voice_bp)                # /api/public/voice/...
 
     return app
 
