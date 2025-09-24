@@ -44,7 +44,7 @@ def voice_acquire():
     with _LOCK:
         _purge_expired(rid)
         calls = _ACTIVE.setdefault(rid, {})
-        # se già presente, idempotente
+        # idempotente: se già registrata, ritorna stato attuale
         if csid in calls:
             return jsonify({"ok": True, "overload": False, "active": len(calls)}), 200
 
@@ -85,8 +85,6 @@ def voice_health():
         active = {rid: len(calls) for rid, calls in _ACTIVE.items()}
     return jsonify({"ok": True, "active": active, "max": MAX_CALLS_PER_RESTAURANT}), 200
 
-
-# === Endpoint per leggere il contatore attuale (dashboard) ===
 
 @voice_bp.get("/api/public/voice/active/<int:rid>")
 def voice_active_by_param(rid: int):
