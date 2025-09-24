@@ -4,6 +4,9 @@ from flask import Flask
 from flask_login import LoginManager
 
 from backend.models import db, Restaurant
+from backend.api_schedule import api_schedule
+app.register_blueprint(api_schedule)
+
 
 def create_app():
     app = Flask(__name__, static_folder="../static", template_folder="../templates")
