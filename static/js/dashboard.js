@@ -1,67 +1,90 @@
 // static/js/dashboard.js
 (function () {
-  // === Trova badge da aggiornare ===
-  function findBadge() {
-    // Caso migliore: hai messo un id o un data-attr
-    const direct = document.querySelector('#active-calls,[data-active-calls]');
-    if (direct) {
-      return {
-        el: direct,
-        set(active, max) { direct.textContent = `${active}/${max}`; },
-      };
-    }
-
-    // Fallback: cerca un elemento che contiene "Chiamate attive"
-    const all = Array.from(document.querySelectorAll('div,span,strong,b,h1,h2,h3,h4,h5,h6,p'));
-    const cand = all.find(n => (n.textContent || '').toLowerCase().includes('chiamate attive'));
-    if (!cand) return null;
-
-    // Dentro la card prova a prendere lo span/strong col numero, altrimenti aggiorna in place usando regex x/y
-    const numEl = cand.querySelector('span, strong, b, .badge, .pill') || cand;
-    return {
-      el: numEl,
-      set(active, max) {
-        // prova a sostituire pattern "x/y"
-        const html = numEl.innerHTML;
-        if (/\d+\s*\/\s*\d+/.test(html)) {
-          numEl.innerHTML = html.replace(/\d+\s*\/\s*\d+/, `${active}/${max}`);
-        } else {
-          numEl.textContent = `${active}/${max}`;
-        }
-      },
-    };
+  // Esegue solo dopo che il DOM è pronto
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrap);
+  } else {
+    bootstrap();
   }
 
-  // === ID ristorante ===
+  function bootstrap() {
+    const rid = getRestaurantId();
+    const badge = ensureBadge();
+    if (!badge) return;
+
+    async function tick() {
+      try {
+        const r = await fetch(`/api/public/voice/active/${rid}`, { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (data && data.ok) badge.set(data.active, data.max);
+      } catch (_) {}
+    }
+
+    tick();
+    setInterval(tick, 5000);
+  }
+
+  // Ricava restaurant_id da vari punti. Fallback: 1 (Haru)
   function getRestaurantId() {
     const a = document.body?.dataset?.restaurantId;
     if (a) return Number(a);
     const meta = document.querySelector('meta[name="restaurant-id"]');
     if (meta?.content) return Number(meta.content);
     if (window.__RESTAURANT_ID__) return Number(window.__RESTAURANT_ID__);
-    return 1; // fallback (Haru)
+    return 1;
   }
 
-  async function fetchActive(rid) {
-    const r = await fetch(`/api/public/voice/active/${rid}`, { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  }
-
-  const badge = findBadge();
-  if (!badge) return; // non siamo nella dashboard o non c'è la card
-
-  const rid = getRestaurantId();
-
-  async function tick() {
-    try {
-      const data = await fetchActive(rid);
-      if (data?.ok) badge.set(data.active, data.max);
-    } catch (e) {
-      // silenzioso
+  // Crea/aggancia <span id="active-calls">x/y</span> dentro la scritta "Chiamate attive"
+  function ensureBadge() {
+    // 1) Caso semplice: esiste già
+    let el = document.querySelector('#active-calls,[data-active-calls]');
+    if (el) {
+      return { el, set: (a, m) => { el.textContent = `${a}/${m}`; } };
     }
+
+    // 2) Cerca il contenitore che contiene la dicitura
+    const all = Array.from(document.querySelectorAll('div,section,header,span,strong,b,h1,h2,h3,h4,h5,p,li'));
+    const container = all.find(n => (n.textContent || '').toLowerCase().includes('chiamate attive'));
+    if (!container) return null;
+
+    // 3) Prova a sostituire direttamente "x/y" con lo span
+    const injected = injectSpan(container);
+    if (injected) {
+      el = document.getElementById('active-calls');
+      return { el, set: (a, m) => { el.textContent = `${a}/${m}`; } };
+    }
+
+    // 4) Se non c'era "x/y" nello stesso nodo, aggiungi uno span subito dopo il testo
+    const span = document.createElement('span');
+    span.id = 'active-calls';
+    span.textContent = '0/3';
+    span.style.marginLeft = '4px';
+    container.appendChild(span);
+    return { el: span, set: (a, m) => { span.textContent = `${a}/${m}`; } };
   }
 
-  tick();
-  setInterval(tick, 5000);
+  // Sostituisce la prima occorrenza "x / y" nel markup con <span id="active-calls">x/y</span>
+  function injectSpan(container) {
+    // Lavora sulla HTML string del container
+    const html = container.innerHTML;
+    // Pattern: numero/numero con eventuali spazi
+    const re = /(\b[Cc]hiamate\s+[Aa]ttive\s*:\s*)(\d+\s*\/\s*\d+)/;
+    if (re.test(html)) {
+      container.innerHTML = html.replace(re, (m, prefix, num) => {
+        return `${prefix}<span id="active-calls">${num.replace(/\s*/g, '')}</span>`;
+      });
+      return true;
+    }
+
+    // Secondo tentativo: solo "x/y" senza prefisso nello stesso nodo
+    const re2 = /(\d+\s*\/\s*\d+)/;
+    if (re2.test(html)) {
+      container.innerHTML = html.replace(re2, (num) => {
+        return `<span id="active-calls">${num.replace(/\s*/g, '')}</span>`;
+      });
+      return true;
+    }
+    return false;
+  }
 })();

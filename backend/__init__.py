@@ -30,7 +30,7 @@ def create_app():
     from backend.api import api as api_bp
     from backend.auth import auth_bp
     from backend.dashboard import bp as dashboard_bp
-    from backend.twilio_voice import twilio_bp      # nome corretto nel tuo file
+    from backend.twilio_voice import twilio_bp  # nome corretto nel tuo file
 
     # ===== NUOVO: gestione chiamate attive =====
     from backend.voice_slots import voice_bp
@@ -39,8 +39,8 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
-    app.register_blueprint(twilio_bp)               # /twilio/...
-    app.register_blueprint(voice_bp)                # /api/public/voice/...
+    app.register_blueprint(twilio_bp)   # /twilio/...
+    app.register_blueprint(voice_bp)    # /api/public/voice/...
 
     return app
 

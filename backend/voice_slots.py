@@ -28,10 +28,7 @@ def _purge_expired(rid: int):
 def voice_acquire():
     """
     Body JSON:
-    {
-      "restaurant_id": 1,
-      "call_sid": "CAxxx"
-    }
+    { "restaurant_id": 1, "call_sid": "CAxxx" }
     Ritorna: { "ok": true, "overload": bool, "active": int }
     """
     data = request.get_json(force=True, silent=True) or {}
@@ -44,7 +41,6 @@ def voice_acquire():
     with _LOCK:
         _purge_expired(rid)
         calls = _ACTIVE.setdefault(rid, {})
-        # idempotente: se già registrata, ritorna stato attuale
         if csid in calls:
             return jsonify({"ok": True, "overload": False, "active": len(calls)}), 200
 
@@ -59,10 +55,7 @@ def voice_acquire():
 def voice_release():
     """
     Body JSON:
-    {
-      "restaurant_id": 1,
-      "call_sid": "CAxxx"
-    }
+    { "restaurant_id": 1, "call_sid": "CAxxx" }
     Ritorna: { "ok": true }
     """
     data = request.get_json(force=True, silent=True) or {}
@@ -88,9 +81,7 @@ def voice_health():
 
 @voice_bp.get("/api/public/voice/active/<int:rid>")
 def voice_active_by_param(rid: int):
-    """
-    GET /api/public/voice/active/1  -> { "ok": true, "active": 0, "max": 3 }
-    """
+    """GET /api/public/voice/active/1 -> { "ok": true, "active": 0, "max": 3 }"""
     with _LOCK:
         _purge_expired(rid)
         n = len(_ACTIVE.get(rid, {}))
@@ -99,9 +90,7 @@ def voice_active_by_param(rid: int):
 
 @voice_bp.get("/api/public/voice/active")
 def voice_active_by_query():
-    """
-    GET /api/public/voice/active?restaurant_id=1
-    """
+    """GET /api/public/voice/active?restaurant_id=1"""
     try:
         rid = int(request.args.get("restaurant_id") or 0)
     except Exception:
