@@ -130,7 +130,12 @@ body.app-body{
 [data-theme="dark"] .btn-gray{background:#3a475a; color:#e4e9f0}
 .btn-outline{background:transparent; border:1px solid var(--gray); color:var(--text)}
 .btn-outline:hover{border-color:var(--gray-2)}
-.btn-icon{background:transparent; border:none; font-size:16px; cursor:pointer}
+.btn-icon{
+  background:var(--card-elev); border:1px solid var(--gray); color:var(--text);
+  font-size:16px; cursor:pointer; width:36px; height:36px; border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+}
+.btn-icon:hover{border-color:var(--gray-2)}
 .w-100{width:100%}
 .push-right{ margin-left:auto }
 
@@ -211,11 +216,8 @@ body.app-body{
 .badge-gray{background:rgba(107,114,128,.18); color:var(--badge-gray)}
 
 /* ------------------ MODAL ------------------ */
-.modal-backdrop{
-  position:fixed; inset:0; display:flex;
-  background:rgba(0,0,0,.45); align-items:center; justify-content:center; z-index:50;
-}
-.modal-backdrop[hidden]{display:none !important;}
+.modal-backdrop{position:fixed; inset:0; display:none; background:rgba(0,0,0,.45); align-items:center; justify-content:center; z-index:50}
+.modal-backdrop[aria-hidden="false"]{display:flex}
 .modal{width:100%; max-width:440px}
 .modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
 .modal-body{display:flex; flex-direction:column; gap:10px}
@@ -232,6 +234,62 @@ body.app-body{
 .accent-pizza .welcome-card.gradient-soft{background: linear-gradient(135deg, #ffedd5, #ffe4e6);}
 [data-theme="dark"].accent-pizza .welcome-card.gradient-soft,
 .accent-pizza [data-theme="dark"] .welcome-card.gradient-soft{background: linear-gradient(135deg, #2a1a12, #2a141a);}
+
+/* ===== KEBAB MENU (⋮) — v2 ===== */
+.kebab-wrap{ position:relative; margin-left:8px; }
+#btn-kebab.btn-icon{
+  width:36px; height:36px; border-radius:12px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  transition: box-shadow .12s ease, transform .06s ease, border-color .12s ease, background .12s ease;
+}
+#btn-kebab.btn-icon:hover{ box-shadow: var(--shadow); background: var(--card); border-color: var(--gray-2); }
+#btn-kebab.kebab-active{ outline:2px solid var(--input-focus); }
+
+/* dropdown container */
+.kebab-menu{
+  position:absolute; top:44px; left:0; z-index:1000;
+  width:260px; background:var(--card); color:var(--text);
+  border:1px solid var(--gray); border-radius:14px; box-shadow:var(--shadow);
+  overflow:hidden;
+
+  /* animazione tendina */
+  max-height:0; opacity:0; transform: translateY(-4px);
+  transition: max-height .18s ease, opacity .18s ease, transform .18s ease;
+}
+.kebab-menu.open{
+  max-height:500px; opacity:1; transform: translateY(0);
+}
+
+/* freccetta */
+.kebab-menu::before{
+  content:""; position:absolute; top:-8px; left:14px; width:14px; height:14px;
+  background:var(--card); border-left:1px solid var(--gray); border-top:1px solid var(--gray);
+  transform: rotate(45deg);
+}
+
+/* contenuto */
+.kebab-menu hr{border:none;border-top:1px solid var(--gray); margin:6px 0}
+.kebab-menu .k-item{
+  width:100%; text-align:left; border:none; background:transparent;
+  padding:10px 12px; border-radius:10px; cursor:pointer; color:var(--text);
+  display:flex; align-items:center; gap:8px; font-weight:600;
+}
+.kebab-menu .k-item:hover{ background:var(--gray); }
+.kebab-menu .k-item::before{
+  content:"›"; opacity:.6; font-weight:700;
+}
+
+/* tema scuro */
+[data-theme="dark"] .kebab-menu{ border-color:#2a3443; }
+[data-theme="dark"] .kebab-menu::before{ border-color:#2a3443; }
+[data-theme="dark"] .kebab-menu .k-item:hover{ background:#2a3443; }
+
+/* UTILITIES PER FORME ORARI */
+.weekly-grid{display:grid;grid-template-columns:130px 1fr; gap:10px; align-items:center}
+.weekly-grid .w-row{display:contents}
+.grid-2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.list.small .list-row{padding:10px 12px; border-bottom:1px solid var(--gray)}
+.list.small .list-row:last-child{border-bottom:none}
 
 /* Responsive */
 @media (max-width: 980px){
