@@ -22,21 +22,19 @@
 
 {% block content %}
 <div class="dash-grid">
-  <!-- Stato linea (badge dinamico) -->
-  <section class="card soft-card" aria-live="polite">
+  <!-- Stato linea / Badge chiamate attive -->
+  <section class="card soft-card" id="voice-badge" data-rid="{{ restaurant.id }}">
     <div class="soft-title">
       Chiamate attive:
-      <span class="strong">
-        <span id="activeCallsCount">0</span>/<span id="activeCallsMax">3</span>
-      </span>
+      <span class="strong"><span id="vb-active">0</span>/<span id="vb-max">3</span></span>
     </div>
     <div class="soft-right">
-      <span id="availabilityDot" class="dot dot-green"></span>
-      <span id="availabilityLabel" class="soft-label">Disponibile</span>
+      <span class="dot" id="vb-dot"></span>
+      <span class="soft-label" id="vb-label">Disponibile</span>
     </div>
   </section>
 
-  <!-- KPI: 2 per ristorante normale, 3 per pizzeria -->
+  <!-- KPI -->
   <section class="kpi-grid {% if is_pizzeria %}kpi-3{% else %}kpi-2{% endif %}">
     <div class="card kpi-card">
       <div class="kpi-title">Prenotazioni oggi</div>
@@ -118,9 +116,7 @@
 
 <!-- Flag JS e accent pizzeria -->
 <script>
-  // trasformo il boolean Jinja in boolean JS senza filtri speciali
   window.IS_PIZZERIA = {{ 1 if is_pizzeria else 0 }} === 1;
-
   (function(){
     var slug = "{{ restaurant.slug or '' }}";
     if (slug === "pizzerianapoli") {
@@ -133,15 +129,8 @@
 {% endblock %}
 
 {% block scripts %}
-  <!-- Variabili per il badge chiamate -->
-  <script>
-    window.RESTAURANT_ID = {{ current_user.id }};
-    window.ACTIVE_MAX    = 3;  // se vuoi renderlo dinamico, popola da backend
-  </script>
-
-  <!-- Script dashboard “storico” (prenotazioni, kpi, modale) -->
-  <script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
-
-  <!-- Script piccolo che aggiorna il badge chiamate -->
-  <script defer src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ config.get('BUILD_VERSION','dev') }}"></script>
+<!-- JS esistente della pagina prenotazioni -->
+<script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
+<!-- NOVITÀ: JS che aggiorna il badge delle chiamate -->
+<script defer src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
