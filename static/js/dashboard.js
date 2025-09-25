@@ -1,7 +1,7 @@
 /* static/js/dashboard.js */
 (function () {
   // ------------- util -------------
-  const $ = (s, r=document) => r.querySelector(s);
+  const $  = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
   const host = window.location.origin;
 
@@ -26,69 +26,68 @@
     } catch(e) { setBadgeState(0,3,false); }
   }
 
-  // ------------- kebab menu (SEMPLICE) -------------
+  // ------------- kebab menu (nuovo) -------------
   function initKebab() {
-    const wrap = $('.kebab-wrap');
     const btn  = $('#btn-kebab');
     const menu = $('#kebab-menu');
-    if (!wrap || !btn || !menu) return;
+    if (!btn || !menu) return;
 
-    const open  = () => wrap.classList.add('open');
-    const close = () => wrap.classList.remove('open');
-    const isOpen = () => wrap.classList.contains('open');
-
-    btn.addEventListener('click', (e) => {
+    const open = () => {
+      menu.classList.add('open');
+      menu.setAttribute('aria-hidden', 'false');
+      btn.classList.add('kebab-active');
+      btn.setAttribute('aria-expanded', 'true');
+    };
+    const close = () => {
+      menu.classList.remove('open');
+      menu.setAttribute('aria-hidden', 'true');
+      btn.classList.remove('kebab-active');
+      btn.setAttribute('aria-expanded', 'false');
+    };
+    const toggle = (e) => {
       e.stopPropagation();
-      isOpen() ? close() : open();
+      if (menu.classList.contains('open')) close(); else open();
+    };
+
+    btn.addEventListener('click', toggle);
+    // chiudi clic fuori
+    document.addEventListener('click', (e) => {
+      if (!menu.classList.contains('open')) return;
+      if (e.target === btn || menu.contains(e.target)) return;
+      close();
     });
-    menu.addEventListener('click', (e)=> e.stopPropagation());
-    document.addEventListener('click', close);
-    document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+    // chiudi con ESC
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && menu.classList.contains('open')) close();
+    });
 
     // azioni voci
     menu.querySelectorAll('.k-item').forEach(it => {
       it.addEventListener('click', async () => {
         const act = it.getAttribute('data-act');
         close();
-        if (act==='weekly') openWeekly();
-        if (act==='special') openSpecial();
-        if (act==='settings') openSettings();
-        if (act==='state') openState();
-        if (act==='help') openHelp();
+        if (act==='weekly')   await openWeekly();
+        if (act==='special')  await openSpecial();
+        if (act==='settings') await openSettings();
+        if (act==='state')    await openState();
+        if (act==='help')          openHelp();
       });
     });
   }
 
-  // ------------- modali helpers -------------
-  function openModal(id){
-    const m=$(id);
-    if(!m) return;
-    m.removeAttribute('hidden');
-    m.style.display = 'flex';
-    m.setAttribute('aria-hidden','false');
+  // ------------- modals helpers (aria-hidden) -------------
+  function openModal(sel){
+    const m = $(sel);
+    if (m){ m.setAttribute('aria-hidden','false'); }
   }
-  function closeModal(btnOrEl){
-    const root = btnOrEl.closest('.modal-backdrop');
-    if (!root) return;
-    root.setAttribute('aria-hidden','true');
-    root.style.display = '';
+  function closeModalEl(el){
+    const mb = el.closest('.modal-backdrop'); if (mb) mb.setAttribute('aria-hidden','true');
   }
   function initModalClose(){
-    $$('.modal .js-close').forEach(b => b.addEventListener('click', ()=> closeModal(b)));
+    $$('.modal .js-close').forEach(b => b.addEventListener('click', ()=> closeModalEl(b)));
     $$('.modal-backdrop').forEach(b => b.addEventListener('click', (e)=>{
-      if(e.target.classList.contains('modal-backdrop')){
-        e.target.setAttribute('aria-hidden','true');
-        e.target.style.display = '';
-      }
+      if(e.target.classList.contains('modal-backdrop')) e.target.setAttribute('aria-hidden','true');
     }));
-    document.addEventListener('keydown', (e)=>{
-      if (e.key === 'Escape') {
-        $$('.modal-backdrop[aria-hidden="false"]').forEach(m=>{
-          m.setAttribute('aria-hidden','true');
-          m.style.display = '';
-        });
-      }
-    });
   }
 
   // ------------- API helpers -------------
@@ -140,19 +139,13 @@
   // ------------- WEEKLY UI -------------
   const WD = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
   function renderWeeklyForm(weekly){
-    const wrap = $('#weekly-form'); wrap.innerHTML='';
+    const wrap = $('#weekly-form'); if (!wrap) return;
+    wrap.innerHTML='';
     for(let i=0;i<7;i++){
-      let rangesArr = [];
-      if (Array.isArray(weekly)) {
-        const found = weekly.find(w=>w.weekday===i);
-        rangesArr = (found?.ranges)||[];
-      } else {
-        rangesArr = (weekly[String(i)]||[]);
-      }
       const row = document.createElement('div'); row.className='w-row';
       const lab = document.createElement('div'); lab.textContent = WD[i];
       const inp = document.createElement('input'); inp.className='input';
-      const ranges = rangesArr.map(r=>`${r.start}-${r.end}`).join(', ');
+      const ranges = (weekly[String(i)]||[]).map(r=>`${r.start}-${r.end}`).join(', ');
       inp.value = ranges;
       inp.setAttribute('data-wd', String(i));
       row.appendChild(lab); row.appendChild(inp);
@@ -170,15 +163,19 @@
   async function openWeekly(){
     try{
       const st = await getState();
-      // compat sia dict che lista
-      renderWeeklyForm(st.weekly||{});
+      // st.weekly è [{weekday, ranges:[{start,end}...]} ...] nel nostro /state
+      const wkmap = {};
+      (st.weekly||[]).forEach(d=>{
+        wkmap[String(d.weekday)] = (d.ranges||[]).map(r=>({start:r.start, end:r.end}));
+      });
+      renderWeeklyForm(wkmap);
       $('#weekly-save').onclick = async ()=>{
         const payload=[];
         $$('#weekly-form input').forEach(inp=>{
           payload.push({weekday: Number(inp.getAttribute('data-wd')), ranges: parseRanges(inp.value)});
         });
         await saveWeekly(payload);
-        closeModal($('#weekly-save'));
+        closeModalEl($('#weekly-save'));
       };
       openModal('#modal-weekly');
     }catch(e){ alert('Errore caricamento orari'); }
@@ -186,7 +183,8 @@
 
   // ------------- SPECIAL DAYS UI -------------
   async function refreshSpecialList(){
-    const box = $('#sp-list'); box.innerHTML='';
+    const box = $('#sp-list'); if(!box) return;
+    box.innerHTML='';
     const items = (await listSpecial()).items || [];
     if(!items.length){ box.innerHTML='<div class="muted">Nessun giorno speciale</div>'; return; }
     items.forEach(it=>{
@@ -239,7 +237,7 @@
           max_party: Number($('#st-maxp').value),
           tz: $('#st-tz').value
         });
-        closeModal($('#st-save'));
+        closeModalEl($('#st-save'));
       };
 
       openModal('#modal-settings');
