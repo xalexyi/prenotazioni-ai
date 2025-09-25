@@ -1,3 +1,4 @@
+# backend/api.py
 from flask import Blueprint, request, jsonify, session, current_app
 from sqlalchemy import or_
 from flask_login import current_user, login_required
@@ -13,6 +14,9 @@ from .models import (
     InboundNumber,
     CallLog,
 )
+
+# ⬅️ NEW: validazione finestre orarie dal DB (regole settimanali + special days)
+from backend.booking_validator import check_opening_window
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -97,12 +101,26 @@ def list_reservations():
 def create_reservation():
     r = current_restaurant()
     data = request.get_json(force=True) or {}
+
+    # ✅ Validazione orari dal DB (usa tz passatа dal client se presente)
+    date_str = data.get("date")
+    time_str = data.get("time")
+    tz_name  = data.get("tz") or "Europe/Rome"
+    ok, info = check_opening_window(r.id, date_str, time_str, tz_name)
+    if not ok:
+        return jsonify({
+            "ok": False,
+            "error": info.get("code", "outside_hours"),
+            "reason": info.get("reason", "rules"),
+            "message": "Il ristorante è chiuso o fuori orario per questo orario."
+        }), 422
+
     res = Reservation(
         restaurant_id=r.id,
         customer_name=data["customer_name"],
         phone=data["phone"],
-        date=data["date"],
-        time=data["time"],
+        date=date_str,
+        time=time_str,
         people=int(data.get("people", 2)),
         status="pending",
     )
@@ -128,6 +146,7 @@ def public_create_reservation():
     """
     Endpoint usato da n8n (senza login) per inserire prenotazioni.
     Richiede almeno: customer_name, phone, date, time, people, restaurant_id
+    (customer_phone può essere inviato ma non è obbligatorio)
     """
     data = request.get_json(force=True) or {}
 
@@ -136,12 +155,27 @@ def public_create_reservation():
     if missing:
         return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
 
+    rid = int(data["restaurant_id"])
+    date_str = data["date"]
+    time_str = data["time"]
+    tz_name  = data.get("tz") or "Europe/Rome"
+
+    # ✅ Validazione orari dal DB
+    ok, info = check_opening_window(rid, date_str, time_str, tz_name)
+    if not ok:
+        return jsonify({
+            "ok": False,
+            "error": info.get("code", "outside_hours"),
+            "reason": info.get("reason", "rules"),
+            "message": "Il ristorante è chiuso o fuori orario per questo orario."
+        }), 422
+
     res = Reservation(
-        restaurant_id=int(data["restaurant_id"]),
+        restaurant_id=rid,
         customer_name=data["customer_name"],
         phone=data["phone"],
-        date=data["date"],
-        time=data["time"],
+        date=date_str,
+        time=time_str,
         people=int(data["people"]),
         status="pending",
     )
