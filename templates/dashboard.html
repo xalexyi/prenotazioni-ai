@@ -9,6 +9,19 @@
     <span class="brand-strong">{{ restaurant.name or 'Ristorante' }}</span> —
     <span class="brand-sub">Dashboard ristorante</span>
   </div>
+
+  <!-- MENU ⋮ -->
+  <div class="kebab-wrap">
+    <button id="btn-kebab" class="btn btn-icon" aria-label="Menu impostazioni">⋮</button>
+    <div id="kebab-menu" class="kebab-menu" hidden>
+      <button class="k-item" data-act="weekly">Orari settimanali…</button>
+      <button class="k-item" data-act="special">Giorni speciali…</button>
+      <button class="k-item" data-act="settings">Impostazioni prenotazioni…</button>
+      <hr>
+      <button class="k-item" data-act="state">Stato orari</button>
+      <button class="k-item" data-act="help">Guida codici rapidi</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -22,7 +35,7 @@
 
 {% block content %}
 <div class="dash-grid">
-  <!-- Stato linea / Badge chiamate attive -->
+  <!-- Badge chiamate attive -->
   <section class="card soft-card" id="voice-badge" data-rid="{{ restaurant.id }}">
     <div class="soft-title">
       Chiamate attive:
@@ -58,8 +71,8 @@
   <section class="card filters">
     <input id="f-date" class="input" type="date" value="{{ today or '' }}">
     <input id="f-text" class="input" type="text" placeholder="Cerca nome / telefono / orario">
-    <button id="btn-filter" class="btn btn-gray" aria-label="Applica filtri">Filtra</button>
-    <button id="btn-clear" class="btn btn-outline" aria-label="Elimina filtri">Elimina filtri</button>
+    <button id="btn-filter" class="btn btn-gray">Filtra</button>
+    <button id="btn-clear" class="btn btn-outline">Elimina filtri</button>
     <button id="btn-30" class="btn btn-outline">Storico 30gg</button>
     <button id="btn-today" class="btn btn-outline">Oggi</button>
 
@@ -72,65 +85,135 @@
   </section>
 </div>
 
-<!-- Modale -->
-<div id="modal" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+<!-- ===== Modali gestione orari ===== -->
+
+<!-- Weekly -->
+<div id="modal-weekly" class="modal-backdrop" hidden>
+  <div class="modal card">
     <div class="modal-head">
-      <h3 id="modalTitle" class="card-title">Nuova prenotazione</h3>
-      <button id="modalClose" class="btn btn-icon" aria-label="Chiudi">✖</button>
+      <h3 class="card-title">Orari settimanali</h3>
+      <button class="btn btn-icon js-close">✖</button>
     </div>
-
     <div class="modal-body">
-      <label class="form-label" for="m-name">Nome cliente</label>
-      <input id="m-name" class="input" type="text" placeholder="Nome">
-
-      <label class="form-label" for="m-phone">Telefono</label>
-      <input id="m-phone" class="input" type="tel" placeholder="Telefono">
-
-      <label class="form-label" for="m-date">Data</label>
-      <input id="m-date" class="input" type="date" value="{{ today or '' }}">
-
-      <label class="form-label" for="m-time">Ora</label>
-      <input id="m-time" class="input" type="time" value="20:00">
-
-      <label class="form-label" for="m-people">Persone</label>
-      <input id="m-people" class="input" type="number" value="2" min="1">
-
-      {% if is_pizzeria %}
-      <!-- SOLO PIZZERIA: area pizze -->
-      <div class="pizza-box">
-        <div class="pizza-head">
-          <span class="card-title" style="margin:0;">🍕 Pizze</span>
-          <button id="pizzaAdd" type="button" class="btn btn-outline">+ Aggiungi pizza</button>
-        </div>
-        <div id="pizzaRows" class="pizza-rows"></div>
-      </div>
-      {% endif %}
+      <div id="weekly-form" class="weekly-grid"></div>
+      <div class="muted">Formato: HH:MM-HH:MM (es. 12:00-15:00). Puoi inserire più fasce separate da virgola.</div>
     </div>
-
     <div class="modal-foot">
-      <button id="modalSave" class="btn btn-primary">Salva</button>
+      <button id="weekly-save" class="btn btn-primary">Salva</button>
     </div>
   </div>
 </div>
 
-<!-- Flag JS e accent pizzeria -->
+<!-- Special days -->
+<div id="modal-special" class="modal-backdrop" hidden>
+  <div class="modal card">
+    <div class="modal-head">
+      <h3 class="card-title">Giorni speciali</h3>
+      <button class="btn btn-icon js-close">✖</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>Data</label>
+        <input id="sp-date" type="date" class="input">
+      </div>
+      <div class="form-row">
+        <label><input type="checkbox" id="sp-closed"> Chiudi tutto il giorno</label>
+      </div>
+      <div class="form-row">
+        <label>Finestre (se aperto)</label>
+        <input id="sp-ranges" type="text" class="input" placeholder="18:00-23:00, 12:00-15:00">
+      </div>
+      <div class="row">
+        <button id="sp-add" class="btn">Aggiungi/aggiorna</button>
+        <button id="sp-del" class="btn btn-outline">Elimina</button>
+      </div>
+      <hr>
+      <div id="sp-list" class="list small"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div id="modal-settings" class="modal-backdrop" hidden>
+  <div class="modal card">
+    <div class="modal-head">
+      <h3 class="card-title">Impostazioni prenotazioni</h3>
+      <button class="btn btn-icon js-close">✖</button>
+    </div>
+    <div class="modal-body grid-2">
+      <div>
+        <label>Step (min)</label>
+        <input id="st-step" type="number" class="input" value="15">
+      </div>
+      <div>
+        <label>Ultimo anticipo (min)</label>
+        <input id="st-last" type="number" class="input" value="15">
+      </div>
+      <div>
+        <label>Capacità per slot</label>
+        <input id="st-cap" type="number" class="input" value="6">
+      </div>
+      <div>
+        <label>Persone min</label>
+        <input id="st-minp" type="number" class="input" value="1">
+      </div>
+      <div>
+        <label>Persone max</label>
+        <input id="st-maxp" type="number" class="input" value="12">
+      </div>
+      <div>
+        <label>Timezone</label>
+        <input id="st-tz" type="text" class="input" value="Europe/Rome">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="st-save" class="btn btn-primary">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stato / Help -->
+<div id="modal-state" class="modal-backdrop" hidden>
+  <div class="modal card">
+    <div class="modal-head">
+      <h3 class="card-title">Stato orari</h3>
+      <button class="btn btn-icon js-close">✖</button>
+    </div>
+    <div class="modal-body">
+      <pre id="state-pre" class="code"></pre>
+    </div>
+  </div>
+</div>
+
+<div id="modal-help" class="modal-backdrop" hidden>
+  <div class="modal card">
+    <div class="modal-head">
+      <h3 class="card-title">Guida codici rapidi</h3>
+      <button class="btn btn-icon js-close">✖</button>
+    </div>
+    <div class="modal-body">
+      <pre class="code">RID=1
+WEEK mon 12:00-15:00,19:00-23:30
+WEEK tue CLOSED
+SPECIAL 2025-12-25 CLOSED
+SPECIAL 2025-08-15 18:00-23:00
+SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</pre>
+      <div class="muted">Questi comandi sono equivalenti alle azioni che trovi nei modali.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Flag JS + accent -->
 <script>
   window.IS_PIZZERIA = {{ 1 if is_pizzeria else 0 }} === 1;
   (function(){
     var slug = "{{ restaurant.slug or '' }}";
-    if (slug === "pizzerianapoli") {
-      document.body.classList.add("accent-pizza");
-    } else {
-      document.body.classList.remove("accent-pizza");
-    }
+    if (slug === "pizzerianapoli") document.body.classList.add("accent-pizza");
   })();
 </script>
 {% endblock %}
 
 {% block scripts %}
-<!-- JS esistente della pagina prenotazioni -->
 <script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
-<!-- NOVITÀ: JS che aggiorna il badge delle chiamate -->
 <script defer src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
