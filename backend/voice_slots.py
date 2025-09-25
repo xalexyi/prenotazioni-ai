@@ -1,66 +1,51 @@
 # backend/voice_slots.py
-from flask import Blueprint, request, jsonify
+"""
+Endpoint pubblici legati alla 'voce' (stato linea/chiamate attive).
+- URL prefix: /api/public/voice
+"""
+
+from __future__ import annotations
+import os
 from datetime import datetime, timedelta
-from backend.models import db
-from sqlalchemy import and_
+from flask import Blueprint, jsonify
+
+from backend.models import db, CallSession
 
 voice_bp = Blueprint("voice_bp", __name__, url_prefix="/api/public/voice")
 
-# Config (max linee contemporanee)
-MAX_ACTIVE = 3
 
-# Tabellina minimale in DB per tracciare le chiamate attive
-from sqlalchemy import Column, Integer, String, DateTime
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except Exception:
+        return default
 
-from backend.models import Base  # se non hai Base, togli e usa db.Model
 
-class VoiceSlot(db.Model):  # se usi declarative_base, adegua
-    __tablename__ = "voice_slots"
-    id = Column(Integer, primary_key=True)
-    restaurant_id = Column(Integer, nullable=False, index=True)
-    call_sid = Column(String(64), nullable=False, unique=True, index=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-# acquire: prova ad occupare uno slot
-@voice_bp.post("/acquire")
-def acquire():
-    data = request.get_json(force=True) or {}
-    rid = int(data.get("restaurant_id") or 0)
-    csid = (data.get("call_sid") or "").strip()
-    if not rid or not csid:
-        return jsonify({"ok": False, "error": "missing_fields"}), 400
-
-    # elimina vecchi slot zombie > 4 ore
-    cutoff = datetime.utcnow() - timedelta(hours=4)
-    db.session.query(VoiceSlot).filter(VoiceSlot.created_at < cutoff).delete()
-
-    active = db.session.query(VoiceSlot).filter_by(restaurant_id=rid).count()
-    overload = active >= MAX_ACTIVE
-
-    # Se già presente, non duplicare
-    exists = db.session.query(VoiceSlot).filter_by(call_sid=csid).first()
-    if not exists and not overload:
-        db.session.add(VoiceSlot(restaurant_id=rid, call_sid=csid))
-        db.session.commit()
-        active += 1
-
-    return jsonify({"ok": True, "active": active, "overload": active >= MAX_ACTIVE})
-
-# release: libera lo slot
-@voice_bp.post("/release")
-def release():
-    data = request.get_json(force=True) or {}
-    rid = int(data.get("restaurant_id") or 0)
-    csid = (data.get("call_sid") or "").strip()
-    if not rid or not csid:
-        return jsonify({"ok": False, "error": "missing_fields"}), 400
-
-    db.session.query(VoiceSlot).filter_by(restaurant_id=rid, call_sid=csid).delete()
-    db.session.commit()
-    return jsonify({"ok": True})
-
-# active: stato corrente
 @voice_bp.get("/active/<int:rid>")
-def active(rid: int):
-    active = db.session.query(VoiceSlot).filter_by(restaurant_id=rid).count()
-    return jsonify({"ok": True, "active": active, "max": MAX_ACTIVE})
+def voice_active(rid: int):
+    """
+    Ritorna quante chiamate sono 'attive' per il ristorante:
+      active   = CallSession con step != 'done' negli ultimi N minuti
+      max      = soglia massima (env VOICE_MAX_ACTIVE, default 3)
+      overload = active >= max
+    """
+    lookback_min = _env_int("VOICE_LOOKBACK_MIN", 5)  # finestra di osservazione
+    max_active = _env_int("VOICE_MAX_ACTIVE", 3)      # capacità linea
+
+    since = datetime.utcnow() - timedelta(minutes=lookback_min)
+
+    active = (
+        db.session.query(CallSession)
+        .filter(
+            CallSession.restaurant_id == rid,
+            CallSession.created_at >= since,
+            CallSession.step != "done",
+        )
+        .count()
+    )
+
+    return jsonify({
+        "active": int(active),
+        "max": int(max_active),
+        "overload": bool(active >= max_active),
+    })

@@ -1,7 +1,8 @@
+# backend/api.py
 from flask import Blueprint, request, jsonify, session, current_app
 from sqlalchemy import or_
 from flask_login import current_user, login_required
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 
 from .models import (
@@ -85,7 +86,7 @@ def list_reservations():
         q = q.filter(Reservation.date == d.today().isoformat())
 
     if rng == "30days":
-        # Nota: limita a 30 prenotazioni più recenti, non 30 giorni
+        # Nota: limita a 30 prenotazioni più recenti, non 30 giorni rolling
         q = q.order_by(Reservation.created_at.desc()).limit(30)
 
     q = q.order_by(Reservation.date.asc(), Reservation.time.asc(), Reservation.id.asc())
@@ -346,95 +347,24 @@ def public_restaurant_by_number():
 
     return jsonify({"id": r.id, "name": r.name})
 
-# -------------------------------------------------------------------
-# VOICE BADGE: stato linee attive
-# -------------------------------------------------------------------
-def _voice_max_lines(rid: int) -> int:
-    """
-    Numero massimo linee contemporanee.
-    - Legge da config VOICE_MAX (intero) se presente
-    - altrimenti default = 3
-    """
-    try:
-        return int(current_app.config.get("VOICE_MAX", 3))
-    except Exception:
-        return 3
-
-
-def _count_active_calls(rid: int) -> int:
-    """
-    Conteggio 'attivi' stimato:
-    - Conta le sessioni in-memory (`/sessions/<sid>`) che hanno restaurant_id = rid.
-      n8n crea/aggiorna queste sessioni durante la chiamata e le cancella a fine chiamata.
-    - Fallback: conta CallSession con step != 'done' nelle ultime 2 ore.
-    """
-    # 1) In-memory sessions (usate dal tuo /sessions/<sid>)
-    store = current_app.config.setdefault("_sessions", {})
-    active = 0
-    for sid, sess in store.items():
-        try:
-            if int(sess.get("restaurant_id") or 0) == int(rid):
-                if "active" in sess:
-                    if bool(sess["active"]):
-                        active += 1
-                else:
-                    active += 1
-        except Exception:
-            continue
-
-    # 2) Fallback DB: CallSession non conclusi (nelle ultime 2 ore)
-    try:
-        from .models import CallSession  # import lazy per evitare cicli
-        two_hours_ago = datetime.utcnow() - timedelta(hours=2)
-        active_db = (
-            CallSession.query
-            .filter(CallSession.restaurant_id == rid)
-            .filter(CallSession.step != "done")
-            .filter(CallSession.created_at >= two_hours_ago)
-            .count()
-        )
-        active = max(active, active_db)
-    except Exception:
-        pass
-
-    return active
-
-
-@api.get("/public/voice/active/<int:rid>")
-def public_voice_active(rid):
-    """
-    Restituisce lo stato per il badge 'Chiamate attive':
-    {
-      "ok": true,
-      "active": 1,
-      "max": 3,
-      "overload": false
-    }
-    """
-    max_lines = _voice_max_lines(rid)
-    active = _count_active_calls(rid)
-    return jsonify({"ok": True, "active": int(active), "max": int(max_lines), "overload": active >= max_lines})
-
 # ===================================================================
 #  ADMIN SCOPED (CLIENTE LOGGATO) — ORARI / SPECIAL / SETTINGS
 # ===================================================================
-def _load_weekly_as_list(rid: int):
+
+def _load_weekly(rid: int) -> dict:
     """
-    Restituisce:
-    [
-      {"weekday":0, "ranges":[{"start":"12:00","end":"15:00"}, ...]},
-      ...
-    ]
+    Restituisce mappa { "0":[{start,end},...], ..., "6":[...]}.
+    (Compatibile con static/js/dashboard.js)
     """
     rows = (
         OpeningHour.query.filter_by(restaurant_id=rid)
         .order_by(OpeningHour.weekday.asc(), OpeningHour.start_time.asc())
         .all()
     )
-    tmp = {i: [] for i in range(7)}
+    weekly = {str(i): [] for i in range(7)}
     for h in rows:
-        tmp[h.weekday].append({"start": h.start_time, "end": h.end_time})
-    return [{"weekday": i, "ranges": tmp[i]} for i in range(7)]
+        weekly[str(h.weekday)].append({"start": h.start_time, "end": h.end_time})
+    return weekly
 
 
 def _load_settings(rid: int):
@@ -465,7 +395,7 @@ def admin_schedule_state():
     if err:
         return err
 
-    weekly = _load_weekly_as_list(rid)
+    weekly = _load_weekly(rid)
 
     specials = (
         SpecialDay.query.filter_by(restaurant_id=rid)
