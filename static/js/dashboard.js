@@ -26,37 +26,30 @@
     } catch(e) { setBadgeState(0,3,false); }
   }
 
-  // ------------- kebab menu -------------
+  // ------------- kebab menu (SEMPLICE) -------------
   function initKebab() {
-    const btn = $('#btn-kebab'), menu = $('#kebab-menu');
-    if (!btn || !menu) return;
+    const wrap = $('.kebab-wrap');
+    const btn  = $('#btn-kebab');
+    const menu = $('#kebab-menu');
+    if (!wrap || !btn || !menu) return;
 
-    function show() {
-      menu.hidden = false;
-      menu.setAttribute('data-open', '1');
-      const b = btn.getBoundingClientRect();
-      menu.style.left = `${b.left}px`;
-      menu.style.top  = `${b.bottom + 10}px`;
-    }
-    function hide() {
-      menu.removeAttribute('data-open');
-      menu.hidden = true;
-    }
+    const open  = () => wrap.classList.add('open');
+    const close = () => wrap.classList.remove('open');
+    const isOpen = () => wrap.classList.contains('open');
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (menu.getAttribute('data-open') === '1') hide(); else show();
+      isOpen() ? close() : open();
     });
-    document.addEventListener('click', (e) => {
-      if (!menu.contains(e.target) && e.target !== btn) hide();
-    });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
     menu.addEventListener('click', (e)=> e.stopPropagation());
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
 
+    // azioni voci
     menu.querySelectorAll('.k-item').forEach(it => {
       it.addEventListener('click', async () => {
         const act = it.getAttribute('data-act');
-        hide();
+        close();
         if (act==='weekly') openWeekly();
         if (act==='special') openSpecial();
         if (act==='settings') openSettings();
@@ -66,24 +59,19 @@
     });
   }
 
-  // ------------- modali helpers (forza apertura) -------------
+  // ------------- modali helpers -------------
   function openModal(id){
     const m=$(id);
     if(!m) return;
-    // rimuovi eventuale hidden e forza display
     m.removeAttribute('hidden');
     m.style.display = 'flex';
     m.setAttribute('aria-hidden','false');
-
-    // focus al primo elemento interattivo
-    const first = m.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if (first) first.focus();
   }
   function closeModal(btnOrEl){
     const root = btnOrEl.closest('.modal-backdrop');
     if (!root) return;
     root.setAttribute('aria-hidden','true');
-    root.style.display = '';    // lascia al CSS decidere
+    root.style.display = '';
   }
   function initModalClose(){
     $$('.modal .js-close').forEach(b => b.addEventListener('click', ()=> closeModal(b)));
@@ -153,7 +141,6 @@
   const WD = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
   function renderWeeklyForm(weekly){
     const wrap = $('#weekly-form'); wrap.innerHTML='';
-    // weekly può essere dict {"0":[...]} o lista [{weekday, ranges}]
     for(let i=0;i<7;i++){
       let rangesArr = [];
       if (Array.isArray(weekly)) {
@@ -183,6 +170,7 @@
   async function openWeekly(){
     try{
       const st = await getState();
+      // compat sia dict che lista
       renderWeeklyForm(st.weekly||{});
       $('#weekly-save').onclick = async ()=>{
         const payload=[];

@@ -256,6 +256,10 @@ body.app-body{
   max-height:0; opacity:0; transform: translateY(-4px);
   transition: max-height .18s ease, opacity .18s ease, transform .18s ease;
 }
+/* Apri quando:
+   - il wrapper ha .open   (JS che toggla la classe sul contenitore), OPPURE
+   - il menu ha .open      (JS che toggla la classe direttamente sul menu) */
+.kebab-wrap.open .kebab-menu,
 .kebab-menu.open{
   max-height:500px; opacity:1; transform: translateY(0);
 }
