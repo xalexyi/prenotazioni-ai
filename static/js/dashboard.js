@@ -1,4 +1,4 @@
-// static/js/dashboard.js
+/* static/js/dashboard.js */
 (function () {
   // ------------- util -------------
   const $ = (s, r=document) => r.querySelector(s);
@@ -28,38 +28,34 @@
 
   // ------------- kebab menu -------------
   function initKebab() {
-    const wrap = $('.kebab-wrap');
     const btn = $('#btn-kebab'), menu = $('#kebab-menu');
     if (!btn || !menu) return;
 
-    // stato iniziale
-    menu.classList.remove('open');
-    menu.hidden = false; // lasciamo gestire visibilità con CSS (.open)
-    btn.setAttribute('aria-haspopup','menu');
-    btn.setAttribute('aria-expanded','false');
+    function show() {
+      menu.hidden = false; // keep for a11y, but visibility is handled by CSS
+      menu.setAttribute('data-open', '1');
+      // posizionamento sotto al bottone
+      const b = btn.getBoundingClientRect();
+      menu.style.left = `${b.left}px`;
+      menu.style.top  = `${b.bottom + 10}px`;
+    }
+    function hide() {
+      menu.removeAttribute('data-open');
+      menu.hidden = true;
+    }
 
-    const show = () => {
-      menu.classList.add('open');
-      btn.setAttribute('aria-expanded','true');
-      btn.classList.add('kebab-active');
-    };
-    const hide = () => {
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded','false');
-      btn.classList.remove('kebab-active');
-    };
-    const toggle = (e) => {
-      e?.stopPropagation();
-      if (menu.classList.contains('open')) hide(); else show();
-    };
-
-    btn.addEventListener('click', toggle);
-    document.addEventListener('click', (e)=>{
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (menu.getAttribute('data-open') === '1') hide(); else show();
+    });
+    document.addEventListener('click', (e) => {
       if (!menu.contains(e.target) && e.target !== btn) hide();
     });
-    document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') hide(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hide();
+    });
+    menu.addEventListener('click', (e)=> e.stopPropagation());
 
-    // azioni
     menu.querySelectorAll('.k-item').forEach(it => {
       it.addEventListener('click', async () => {
         const act = it.getAttribute('data-act');
@@ -73,14 +69,29 @@
     });
   }
 
-  // ------------- modals helpers -------------
-  function openModal(id){ const m=$(id); if(m){ m.hidden=false; } }
-  function closeModal(el){ el.closest('.modal-backdrop').hidden=true; }
+  // ------------- modals helpers (ARIA) -------------
+  function openModal(id){
+    const m=$(id);
+    if(!m) return;
+    m.setAttribute('aria-hidden','false'); // <-- usa aria-hidden
+    // focus al primo elemento interattivo
+    const first = m.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (first) first.focus();
+  }
+  function closeModal(btnOrEl){
+    const root = btnOrEl.closest('.modal-backdrop');
+    if (root) root.setAttribute('aria-hidden','true');
+  }
   function initModalClose(){
     $$('.modal .js-close').forEach(b => b.addEventListener('click', ()=> closeModal(b)));
     $$('.modal-backdrop').forEach(b => b.addEventListener('click', (e)=>{
-      if(e.target.classList.contains('modal-backdrop')) e.target.hidden=true;
+      if(e.target.classList.contains('modal-backdrop')) e.target.setAttribute('aria-hidden','true');
     }));
+    document.addEventListener('keydown', (e)=>{
+      if (e.key === 'Escape') {
+        $$('.modal-backdrop[aria-hidden="false"]').forEach(m=>m.setAttribute('aria-hidden','true'));
+      }
+    });
   }
 
   // ------------- API helpers -------------
@@ -132,13 +143,12 @@
   // ------------- WEEKLY UI -------------
   const WD = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
   function renderWeeklyForm(weekly){
-    const wrap = $('#weekly-form'); if (!wrap) return;
-    wrap.innerHTML='';
+    const wrap = $('#weekly-form'); wrap.innerHTML='';
     for(let i=0;i<7;i++){
       const row = document.createElement('div'); row.className='w-row';
       const lab = document.createElement('div'); lab.textContent = WD[i];
       const inp = document.createElement('input'); inp.className='input';
-      const ranges = (weekly[String(i)]||[]).map(r=>`${r.start}-${r.end}`).join(', ');
+      const ranges = (weekly[String(i)]||weekly.find?.(w=>w.weekday===i)?.ranges||[]).map(r=>`${r.start}-${r.end}`).join(', ');
       inp.value = ranges;
       inp.setAttribute('data-wd', String(i));
       row.appendChild(lab); row.appendChild(inp);
@@ -156,7 +166,12 @@
   async function openWeekly(){
     try{
       const st = await getState();
-      renderWeeklyForm(st.weekly||{});
+      // accettiamo weekly come dict {"0":[...]} o lista [{weekday, ranges}]
+      let weekly = st.weekly || {};
+      if (Array.isArray(weekly)) {
+        const by = {}; weekly.forEach(w=>{by[String(w.weekday)] = w.ranges || [];}); weekly = by;
+      }
+      renderWeeklyForm(weekly);
       $('#weekly-save').onclick = async ()=>{
         const payload=[];
         $$('#weekly-form input').forEach(inp=>{
@@ -171,7 +186,7 @@
 
   // ------------- SPECIAL DAYS UI -------------
   async function refreshSpecialList(){
-    const box = $('#sp-list'); if (!box) return; box.innerHTML='';
+    const box = $('#sp-list'); box.innerHTML='';
     const items = (await listSpecial()).items || [];
     if(!items.length){ box.innerHTML='<div class="muted">Nessun giorno speciale</div>'; return; }
     items.forEach(it=>{
