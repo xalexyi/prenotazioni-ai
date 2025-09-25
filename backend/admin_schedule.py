@@ -2,12 +2,17 @@
 import os
 import re
 from typing import List, Tuple
-from flask import Blueprint, request, jsonify, abort
+from flask import Blueprint, request, jsonify, abort, render_template
+
 from backend.models import db
 from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
 
+# =======================
+# Config / Auth
+# =======================
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
+# Un unico blueprint per API + pagina admin
 api_admin = Blueprint("api_admin", __name__)
 
 def _auth():
@@ -15,8 +20,27 @@ def _auth():
     if not tok or tok != ADMIN_TOKEN:
         abort(401)
 
-# --------- Utils ---------
+# =======================
+# Pagina admin (UI)
+# =======================
+@api_admin.get("/admin/schedule")
+def admin_schedule_page():
+    """
+    Pagina admin minimale: espone una UI per mandare comandi alla API admin
+    usando l'header X-Admin-Token. Il token LO inserisci dalla pagina,
+    viene salvato nella sessione tramite i tuoi endpoint /api/public/sessions/:sid.
+    """
+    restaurant_id = request.args.get("rid", default=1, type=int)
+    restaurant_name = request.args.get("name", default="Ristorante", type=str)
+    return render_template(
+        "admin_schedule.html",
+        restaurant_id=restaurant_id,
+        restaurant_name=restaurant_name,
+    )
 
+# =======================
+# Utils
+# =======================
 WEEKMAP = {
     "mon": 0, "monday":0, "lun":0, "lunedì":0,
     "tue": 1, "martedi":1, "martedì":1, "tuesday":1,
@@ -33,15 +57,17 @@ def parse_range_list(s: str) -> List[Tuple[str, str]]:
     """
     out: List[Tuple[str,str]] = []
     for part in re.split(r"\s*,\s*", s.strip()):
-        if not part: continue
+        if not part:
+            continue
         m = re.match(r"^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$", part)
-        if not m: 
+        if not m:
             raise ValueError(f"bad range: {part}")
         out.append((m.group(1), m.group(2)))
     return out
 
-# --------- JSON Admin endpoints ---------
-
+# =======================
+# JSON Admin endpoints
+# =======================
 @api_admin.post("/api/admin/opening-hours/bulk")
 def opening_hours_bulk():
     """
@@ -74,7 +100,6 @@ def opening_hours_bulk():
             a,b = s.split("-",1)
             ranges.append((a.strip(), b.strip()))
 
-    # replace
     db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=weekday).delete()
     for a,b in ranges:
         db.session.add(OpeningHour(restaurant_id=rid, weekday=weekday, start_time=a, end_time=b))
@@ -98,7 +123,6 @@ def special_days_upsert():
     closed = bool(data.get("closed"))
     ranges = data.get("ranges")
 
-    # replace intero per quella data
     db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
     if closed:
         db.session.add(SpecialDay(restaurant_id=rid, date=date_s, is_closed=True))
@@ -108,9 +132,26 @@ def special_days_upsert():
         else:
             lst = []
             for s in (ranges or []):
-                a,b = s.split("-",1); lst.append((a.strip(), b.strip()))
+                a,b = s.split("-",1)
+                lst.append((a.strip(), b.strip()))
         for a,b in lst:
             db.session.add(SpecialDay(restaurant_id=rid, date=date_s, is_closed=False, start_time=a, end_time=b))
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@api_admin.post("/api/admin/special-days/delete")
+def special_days_delete():
+    """
+    JSON:
+    { "restaurant_id":1, "date":"2025-12-26" }
+    Elimina la regola speciale per quella data (se c'è).
+    """
+    _auth()
+    data = request.get_json(force=True, silent=True) or {}
+    rid = int(data.get("restaurant_id") or 0)
+    date_s = (data.get("date") or "").strip()
+    db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
     db.session.commit()
     return jsonify({"ok": True}), 200
 
@@ -144,13 +185,16 @@ def settings_update():
     db.session.commit()
     return jsonify({"ok": True}), 200
 
-# --------- Endpoint "comandi" testuali ---------
 
+# =======================
+# Endpoint COMANDI testuali
+# =======================
 @api_admin.post("/api/admin/schedule/commands")
 def schedule_commands():
     """
     Content-Type: text/plain oppure JSON {"commands":"..."}.
     Sintassi (case-insensitive, spazi liberi):
+
       RID=1
       WEEK mon 12:00-15:00,19:00-23:30
       WEEK tue CLOSED
@@ -162,7 +206,6 @@ def schedule_commands():
     Esegue in transazione unica.
     """
     _auth()
-    text = ""
     if request.is_json:
         data = request.get_json() or {}
         text = (data.get("commands") or "").strip()
@@ -230,7 +273,6 @@ def schedule_commands():
     if not rid:
         return jsonify({"ok": False, "error": "missing RID=..."}), 400
 
-    # Esecuzione
     try:
         with db.session.begin():
             for op in ops:
@@ -248,7 +290,8 @@ def schedule_commands():
                     else:
                         for a,b in rngs:
                             db.session.add(SpecialDay(
-                                restaurant_id=rid, date=date_s, is_closed=False, start_time=a, end_time=b
+                                restaurant_id=rid, date=date_s, is_closed=False,
+                                start_time=a, end_time=b
                             ))
 
                 elif op[0] == "SETTINGS":
@@ -261,7 +304,8 @@ def schedule_commands():
                     if "party" in args:
                         m = re.match(r"^(\d+)-(\d+)$", args["party"])
                         if m:
-                            s.min_party = int(m.group(1)); s.max_party = int(m.group(2))
+                            s.min_party = int(m.group(1))
+                            s.max_party = int(m.group(2))
                     db.session.add(s)
 
         return jsonify({"ok": True, "restaurant_id": rid, "ops": len(ops)}), 200
