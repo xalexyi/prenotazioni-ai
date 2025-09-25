@@ -1,8 +1,28 @@
+# --- Core Flask stack ---
 Flask>=3.0
 Flask-SQLAlchemy>=3.1
 Flask-Login>=0.6
-python-dotenv>=1.0
 Werkzeug>=3.0
+python-dotenv>=1.0
+
+# --- Database ---
+psycopg2-binary==2.9.9   # driver PostgreSQL
+
+# --- Server ---
+gunicorn>=21.2           # per deploy in produzione
+
+# --- Twilio integration ---
 twilio>=9.0
-gunicorn>=21.2
-psycopg2-binary==2.9.9
+
+# --- AI / Parsing ---
+openai>=1.45             # SDK ufficiale OpenAI
+phonenumbers>=8.13       # validazione numeri di telefono
+
+# --- Utils ---
+click>=8.1               # CLI (già incluso in Flask, ma lo fissiamo)
+requests>=2.31           # chiamate HTTP (se servono da backend)
+
+# --- Dev / Test (puoi separare in requirements-dev.txt se vuoi) ---
+pytest>=8.2
+black>=24.4
+flake8>=7.1

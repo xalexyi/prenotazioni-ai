@@ -1,9 +1,9 @@
 # backend/rules_service.py
 from __future__ import annotations
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, date, time, timedelta
 from zoneinfo import ZoneInfo
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from backend.models import db
 
@@ -116,20 +116,20 @@ def rules_from_db(restaurant_id: int) -> RestaurantRules:
 
     s = RestaurantSetting.query.get(restaurant_id)
 
-    def val(name):
+    def val(name: str) -> int:
         return getattr(s, name) if s and getattr(s, name) is not None else DEFAULTS[name]
 
     return RestaurantRules(
-        tz= (s.tz if s and s.tz else DEFAULTS["tz"]),
+        tz=(s.tz if s and s.tz else DEFAULTS["tz"]),
         weekly=weekly,
-        slot_step_min=val("slot_step_min"),
-        last_order_min=val("last_order_min"),
-        min_party=val("min_party"),
-        max_party=val("max_party"),
-        capacity_per_slot=val("capacity_per_slot"),
+        slot_step_min=int(val("slot_step_min")),
+        last_order_min=int(val("last_order_min")),
+        min_party=int(val("min_party")),
+        max_party=int(val("max_party")),
+        capacity_per_slot=int(val("capacity_per_slot")),
     )
 
-def special_for_date(restaurant_id: int, date_s: str) -> Optional[List[SlotRule] | str]:
+def special_for_date(restaurant_id: int, date_s: str) -> Optional[Union[List[SlotRule], str]]:
     """
     Ritorna:
       - "closed"          se la data è marcata chiusa
@@ -156,15 +156,26 @@ def special_for_date(restaurant_id: int, date_s: str) -> Optional[List[SlotRule]
 #   VALIDATORE
 # ===========================
 
-def _in_any_slot(t: time, slots: List[SlotRule], last_order_min: int) -> Tuple[bool, Optional[time]]:
+def _in_any_slot(
+    t: time,
+    slots: List[SlotRule],
+    last_order_min: int,
+    base_day: date,
+) -> Tuple[bool, Optional[time]]:
+    """
+    Verifica se l'orario 't' cade in uno degli slot, considerando il margine
+    'last_order_min' prima della fine.
+    """
     for s in slots:
-        end_effective = (datetime.combine(datetime.today(), s.end) - timedelta(minutes=last_order_min)).time()
+        end_effective = (datetime.combine(base_day, s.end) - timedelta(minutes=last_order_min)).time()
         if s.start <= t <= end_effective:
             return True, s.end
     return False, None
 
 def validate_reservation_basic(
-    restaurant_id: int, dt_local: datetime, people: int
+    restaurant_id: int,
+    dt_local: datetime,
+    people: int
 ) -> Tuple[bool, str, Optional[datetime]]:
     """
     Valida data/ora e persone secondo le regole a DB.
@@ -173,7 +184,12 @@ def validate_reservation_basic(
     """
     rules = rules_from_db(restaurant_id)
     tz = ZoneInfo(rules.tz)
-    dt_local = dt_local.astimezone(tz)
+
+    # Normalizza timezone: se naive, attacca tz; se aware, converte.
+    if dt_local.tzinfo is None:
+        dt_local = dt_local.replace(tzinfo=tz)
+    else:
+        dt_local = dt_local.astimezone(tz)
 
     date_s = _fmt_date(dt_local)
 
@@ -181,17 +197,17 @@ def validate_reservation_basic(
     if special == "closed":
         return False, "closed", None
 
-    slots_today: List[SlotRule]
     if isinstance(special, list):
-        slots_today = special
+        slots_today: List[SlotRule] = special
     else:
         slots_today = rules.weekly.get(dt_local.weekday(), [])
 
     if not slots_today:
         return False, "closed", None
 
-    ok_time, _ = _in_any_slot(dt_local.time(), slots_today, rules.last_order_min)
+    ok_time, _ = _in_any_slot(dt_local.time(), slots_today, rules.last_order_min, dt_local.date())
     if not ok_time:
+        # Se siamo prima della prima finestra utile, suggerisci il prossimo start
         for s in slots_today:
             start_dt = datetime.combine(dt_local.date(), s.start, tzinfo=tz)
             if dt_local < start_dt:

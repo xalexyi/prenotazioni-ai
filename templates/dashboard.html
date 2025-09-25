@@ -12,21 +12,21 @@
 
   <!-- MENU ⋮ -->
   <div class="kebab-wrap">
-    <button id="btn-kebab" class="btn btn-icon" aria-label="Menu impostazioni">⋮</button>
+    <button id="btn-kebab" class="btn btn-icon" aria-label="Menu impostazioni" type="button">⋮</button>
     <div id="kebab-menu" class="kebab-menu" hidden>
-      <button class="k-item" data-act="weekly">Orari settimanali…</button>
-      <button class="k-item" data-act="special">Giorni speciali…</button>
-      <button class="k-item" data-act="settings">Impostazioni prenotazioni…</button>
+      <button class="k-item" data-act="weekly" type="button">Orari settimanali…</button>
+      <button class="k-item" data-act="special" type="button">Giorni speciali…</button>
+      <button class="k-item" data-act="settings" type="button">Impostazioni prenotazioni…</button>
       <hr>
-      <button class="k-item" data-act="state">Stato orari</button>
-      <button class="k-item" data-act="help">Guida codici rapidi</button>
+      <button class="k-item" data-act="state" type="button">Stato orari</button>
+      <button class="k-item" data-act="help" type="button">Guida codici rapidi</button>
     </div>
   </div>
 </div>
 {% endblock %}
 
 {% block header_right %}
-<button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte">
+<button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte" type="button">
   <span class="toggle-icon sun">☀️</span>
   <span class="toggle-icon moon">🌙</span>
 </button>
@@ -71,12 +71,12 @@
   <section class="card filters">
     <input id="f-date" class="input" type="date" value="{{ today or '' }}">
     <input id="f-text" class="input" type="text" placeholder="Cerca nome / telefono / orario">
-    <button id="btn-filter" class="btn btn-gray">Filtra</button>
-    <button id="btn-clear" class="btn btn-outline">Elimina filtri</button>
-    <button id="btn-30" class="btn btn-outline">Storico 30gg</button>
-    <button id="btn-today" class="btn btn-outline">Oggi</button>
+    <button id="btn-filter" class="btn btn-gray" type="button">Filtra</button>
+    <button id="btn-clear" class="btn btn-outline" type="button">Elimina filtri</button>
+    <button id="btn-30" class="btn btn-outline" type="button">Storico 30gg</button>
+    <button id="btn-today" class="btn btn-outline" type="button">Oggi</button>
 
-    <button id="btn-new" class="btn btn-primary push-right">+ Nuova prenotazione</button>
+    <button id="btn-new" class="btn btn-primary push-right" type="button">+ Nuova prenotazione</button>
   </section>
 
   <!-- Lista -->
@@ -88,28 +88,28 @@
 <!-- ===== Modali gestione orari ===== -->
 
 <!-- Weekly -->
-<div id="modal-weekly" class="modal-backdrop" hidden>
+<div id="modal-weekly" class="modal-backdrop" hidden role="dialog" aria-labelledby="weekly-title">
   <div class="modal card">
     <div class="modal-head">
-      <h3 class="card-title">Orari settimanali</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="weekly-title">Orari settimanali</h3>
+      <button class="btn btn-icon js-close" type="button">✖</button>
     </div>
     <div class="modal-body">
       <div id="weekly-form" class="weekly-grid"></div>
       <div class="muted">Formato: HH:MM-HH:MM (es. 12:00-15:00). Puoi inserire più fasce separate da virgola.</div>
     </div>
     <div class="modal-foot">
-      <button id="weekly-save" class="btn btn-primary">Salva</button>
+      <button id="weekly-save" class="btn btn-primary" type="button">Salva</button>
     </div>
   </div>
 </div>
 
 <!-- Special days -->
-<div id="modal-special" class="modal-backdrop" hidden>
+<div id="modal-special" class="modal-backdrop" hidden role="dialog" aria-labelledby="special-title">
   <div class="modal card">
     <div class="modal-head">
-      <h3 class="card-title">Giorni speciali</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="special-title">Giorni speciali</h3>
+      <button class="btn btn-icon js-close" type="button">✖</button>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -124,8 +124,8 @@
         <input id="sp-ranges" type="text" class="input" placeholder="18:00-23:00, 12:00-15:00">
       </div>
       <div class="row">
-        <button id="sp-add" class="btn">Aggiungi/aggiorna</button>
-        <button id="sp-del" class="btn btn-outline">Elimina</button>
+        <button id="sp-add" class="btn" type="button">Aggiungi/aggiorna</button>
+        <button id="sp-del" class="btn btn-outline" type="button">Elimina</button>
       </div>
       <hr>
       <div id="sp-list" class="list small"></div>
@@ -134,11 +134,11 @@
 </div>
 
 <!-- Settings -->
-<div id="modal-settings" class="modal-backdrop" hidden>
+<div id="modal-settings" class="modal-backdrop" hidden role="dialog" aria-labelledby="settings-title">
   <div class="modal card">
     <div class="modal-head">
-      <h3 class="card-title">Impostazioni prenotazioni</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="settings-title">Impostazioni prenotazioni</h3>
+      <button class="btn btn-icon js-close" type="button">✖</button>
     </div>
     <div class="modal-body grid-2">
       <div>
@@ -167,17 +167,17 @@
       </div>
     </div>
     <div class="modal-foot">
-      <button id="st-save" class="btn btn-primary">Salva</button>
+      <button id="st-save" class="btn btn-primary" type="button">Salva</button>
     </div>
   </div>
 </div>
 
 <!-- Stato / Help -->
-<div id="modal-state" class="modal-backdrop" hidden>
+<div id="modal-state" class="modal-backdrop" hidden role="dialog" aria-labelledby="state-title">
   <div class="modal card">
     <div class="modal-head">
-      <h3 class="card-title">Stato orari</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="state-title">Stato orari</h3>
+      <button class="btn btn-icon js-close" type="button">✖</button>
     </div>
     <div class="modal-body">
       <pre id="state-pre" class="code"></pre>
@@ -185,11 +185,11 @@
   </div>
 </div>
 
-<div id="modal-help" class="modal-backdrop" hidden>
+<div id="modal-help" class="modal-backdrop" hidden role="dialog" aria-labelledby="help-title">
   <div class="modal card">
     <div class="modal-head">
-      <h3 class="card-title">Guida codici rapidi</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="help-title">Guida codici rapidi</h3>
+      <button class="btn btn-icon js-close" type="button">✖</button>
     </div>
     <div class="modal-body">
       <pre class="code">RID=1

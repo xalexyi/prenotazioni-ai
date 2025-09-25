@@ -46,29 +46,29 @@
 
     <div class="card">
       <div class="muted">
-        La pagina invia comandi alle API admin usando l’header <code>X-Admin-Token</code>.
+        La pagina invia comandi alle API admin usando l’header <code>X-Admin-Token</code>.<br/>
         Il token viene salvato in sessione tramite <code>/api/public/sessions/:sid</code>.
       </div>
     </div>
   </div>
 
   <!-- Modale: Token -->
-  <dialog id="modalToken">
-    <div class="hd">Imposta token admin</div>
+  <dialog id="modalToken" role="dialog" aria-labelledby="modalTokenTitle">
+    <div class="hd" id="modalTokenTitle">Imposta token admin</div>
     <div class="bd">
       <p>Inserisci il token (<code>ADMIN_TOKEN</code> su Render).</p>
       <input id="adminTokenInput" type="text" placeholder="es. alex-super-token"
              style="width:100%; background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:10px;margin-top:10px"/>
     </div>
     <div class="ft">
-      <button class="btn ghost" onclick="document.getElementById('modalToken').close()">Annulla</button>
+      <button class="btn ghost" type="button" onclick="document.getElementById('modalToken').close()">Annulla</button>
       <button class="btn" id="btn-save-token">Salva</button>
     </div>
   </dialog>
 
   <!-- Modale: Orari settimanali -->
-  <dialog id="modalWeekly">
-    <div class="hd">Orari settimanali & impostazioni</div>
+  <dialog id="modalWeekly" role="dialog" aria-labelledby="modalWeeklyTitle">
+    <div class="hd" id="modalWeeklyTitle">Orari settimanali & impostazioni</div>
     <div class="bd">
       <div class="section">
         <h4>Fasce orarie per giorno</h4>
@@ -86,29 +86,29 @@
       <div class="section">
         <h4>Impostazioni</h4>
         <div class="row">
-          <div class="col"><label>Step</label> <input id="set-step" type="number" value="15" style="width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px"/></div>
-          <div class="col"><label>Last</label> <input id="set-last" type="number" value="15" style="width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px"/></div>
-          <div class="col"><label>Capacity</label> <input id="set-capacity" type="number" value="6" style="width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px"/></div>
-          <div class="col"><label>Party min</label> <input id="set-party-min" type="number" value="1" style="width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px"/></div>
-          <div class="col"><label>Party max</label> <input id="set-party-max" type="number" value="12" style="width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px"/></div>
-          <div class="col"><label>Timezone</label> <input id="set-tz" type="text" value="Europe/Rome" style="width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px"/></div>
+          <div class="col"><label>Step</label> <input id="set-step" type="number" value="15"/></div>
+          <div class="col"><label>Last</label> <input id="set-last" type="number" value="15"/></div>
+          <div class="col"><label>Capacity</label> <input id="set-capacity" type="number" value="6"/></div>
+          <div class="col"><label>Party min</label> <input id="set-party-min" type="number" value="1"/></div>
+          <div class="col"><label>Party max</label> <input id="set-party-max" type="number" value="12"/></div>
+          <div class="col"><label>Timezone</label> <input id="set-tz" type="text" value="Europe/Rome"/></div>
         </div>
       </div>
     </div>
     <div class="ft">
-      <button class="btn ghost" onclick="document.getElementById('modalWeekly').close()">Chiudi</button>
+      <button class="btn ghost" type="button" onclick="document.getElementById('modalWeekly').close()">Chiudi</button>
       <button class="btn" id="btn-save-weekly">Salva</button>
     </div>
   </dialog>
 
   <!-- Modale: Giorni speciali -->
-  <dialog id="modalSpecial">
-    <div class="hd">Giorno speciale</div>
+  <dialog id="modalSpecial" role="dialog" aria-labelledby="modalSpecialTitle">
+    <div class="hd" id="modalSpecialTitle">Giorno speciale</div>
     <div class="bd">
       <div class="row" style="gap:16px">
         <div class="col">
           <label>Data</label>
-          <input id="sp-date" type="date" style="width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px"/>
+          <input id="sp-date" type="date"/>
         </div>
         <div class="col">
           <label>Chiuso tutto il giorno</label><br/>
@@ -121,18 +121,18 @@
       <button id="btn-add-sp-row" class="btn ghost">+ fascia</button>
     </div>
     <div class="ft">
-      <button class="btn ghost" onclick="document.getElementById('modalSpecial').close()">Chiudi</button>
+      <button class="btn ghost" type="button" onclick="document.getElementById('modalSpecial').close()">Chiudi</button>
       <button class="btn warn" id="btn-del-special">Elimina regola</button>
       <button class="btn" id="btn-save-special">Salva</button>
     </div>
   </dialog>
 
   <!-- Modale: Guida -->
-  <dialog id="modalHelp">
-    <div class="hd">Guida codici rapidi</div>
+  <dialog id="modalHelp" role="dialog" aria-labelledby="modalHelpTitle">
+    <div class="hd" id="modalHelpTitle">Guida codici rapidi</div>
     <div class="bd">
 <pre style="white-space:pre-wrap;line-height:1.4">
-• Orari settimanali (comando generato dalla pagina):
+• Orari settimanali:
   RID=&lt;id_ristorante&gt;
   WEEK mon 12:00-15:00,19:00-23:30
   ...
@@ -153,7 +153,7 @@
 </pre>
     </div>
     <div class="ft">
-      <button class="btn" onclick="document.getElementById('modalHelp').close()">Ok</button>
+      <button class="btn" type="button" onclick="document.getElementById('modalHelp').close()">Ok</button>
     </div>
   </dialog>
 

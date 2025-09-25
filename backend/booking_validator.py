@@ -1,60 +1,126 @@
 # backend/booking_validator.py
-from datetime import datetime, timedelta, date as date_cls
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import Tuple, Dict, Optional
 from zoneinfo import ZoneInfo
 
-from backend.rules_service import rules_from_db, SpecialDay
+from backend.rules_service import (
+    rules_from_db,
+    special_for_date,
+    SlotRule,
+)
 
+# -------------------------
+# Helpers
+# -------------------------
 def _parse_dt_local(date_str: str, time_str: str, tz_name: str | None) -> tuple[datetime, ZoneInfo]:
-    # Esempio: "2025-10-02", "20:00"
-    if not tz_name:
-        tz_name = "Europe/Rome"
-    tz = ZoneInfo(tz_name)
+    """
+    Costruisce un datetime timezone-aware (nel fuso del ristorante).
+    Esempio: "2025-10-02", "20:00"
+    """
+    tz = ZoneInfo(tz_name or "Europe/Rome")
     dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
     return dt, tz
 
-def check_opening_window(restaurant_id: int, date_str: str, time_str: str, tz_name: str | None) -> tuple[bool, dict]:
+def _end_effective(day_dt: datetime, end_t, last_order_min: int) -> datetime:
     """
-    Ritorna (ok, info_errore)
+    Applica il margine 'last_order_min' sottraendolo dall'orario di fine slot.
+    """
+    eff = datetime.combine(day_dt.date(), end_t, tzinfo=day_dt.tzinfo)
+    if last_order_min:
+        eff -= timedelta(minutes=int(last_order_min))
+    return eff
+
+def _first_future_start(now_local: datetime, slots: list[SlotRule]) -> Optional[datetime]:
+    """
+    Ritorna il prossimo 'start' nel giorno corrente che è > now_local (se esiste).
+    """
+    for s in slots:
+        start_dt = datetime.combine(now_local.date(), s.start, tzinfo=now_local.tzinfo)
+        if now_local < start_dt:
+            return start_dt
+    return None
+
+# -------------------------
+# API principale
+# -------------------------
+def check_opening_window(
+    restaurant_id: int,
+    date_str: str,
+    time_str: str,
+    tz_name: str | None,
+    *,
+    people: Optional[int] = None,
+) -> tuple[bool, Dict]:
+    """
+    Verifica se una prenotazione cade entro le finestre di apertura.
+
+    Ritorna (ok, info)
       ok=True  -> prenotazione consentita
-      ok=False -> fuori orario / chiuso -> info_errore["code"] in {"closed","outside_hours"}
+      ok=False -> info["code"] in {"closed","outside_hours","bad_step","party_out_of_range"}
+                  e può contenere "suggested": "YYYY-MM-DDTHH:MM"
+
     Logica:
-      - Se esiste una special_day con is_closed=True => chiuso
-      - Se esiste una special_day con start/end -> usa quella finestra
-      - Altrimenti usa opening_hours del weekday
-      - Applica last_order_min (se presente) accorciando l'end
+      - carica le regole con rules_from_db(…)
+      - se esistono special days:
+          - "closed" → chiuso
+          - fasce speciali → usale
+        altrimenti usa opening_hours del weekday
+      - applica last_order_min (accorciando la fine slot)
+      - opzionalmente controlla limiti persone (se 'people' fornito)
+      - controlla lo step (slot_step_min) e in caso suggerisce arrotondamento
     """
     rules = rules_from_db(restaurant_id)
-    # timezone per il ristorante (priorità: tz richiesta -> tz da settings -> 'Europe/Rome')
     tz_final = tz_name or getattr(rules, "tz", None) or "Europe/Rome"
     dt_local, tz = _parse_dt_local(date_str, time_str, tz_final)
-    d = dt_local.date()
-    t = dt_local.time()
-    wd = dt_local.weekday()  # 0=Mon..6=Sun
 
-    # 1) Special day?
-    sd = SpecialDay.query.filter_by(restaurant_id=restaurant_id, date=d.isoformat()).first()
-    if sd:
-        if sd.is_closed:
-            return False, {"code": "closed", "reason": "special_day_closed"}
-        if sd.start_time and sd.end_time:
-            # Applica last_order
-            end_dt = datetime.combine(d, sd.end_time)
-            lo = getattr(rules, "last_order_min", 0) or 0
-            if lo:
-                end_dt = end_dt - timedelta(minutes=lo)
-            end_t = end_dt.time()
-            ok = (sd.start_time <= t <= end_t)
-            return (ok, {} if ok else {"code": "outside_hours", "reason": "special_day_window"})
+    # 1) Special day override
+    special = special_for_date(restaurant_id, date_str)
+    if special == "closed":
+        return False, {"code": "closed", "reason": "special_day_closed"}
 
-    # 2) Weekly windows
-    slots = rules.weekly.get(wd, [])
-    lo = getattr(rules, "last_order_min", 0) or 0
-    for s in slots:
-        end_dt = datetime.combine(d, s.end)
-        if lo:
-            end_dt = end_dt - timedelta(minutes=lo)
-        end_t = end_dt.time()
-        if s.start <= t <= end_t:
-            return True, {}
+    if isinstance(special, list):
+        slots_today = special
+    else:
+        # weekly fallback
+        slots_today = rules.weekly.get(dt_local.weekday(), [])
 
-    return False, {"code": "outside_hours", "reason": "weekly_windows"}
+    if not slots_today:
+        return False, {"code": "closed", "reason": "no_weekly_slots"}
+
+    # 2) Controllo persone (se richiesto)
+    if people is not None:
+        if people < rules.min_party or people > rules.max_party:
+            return False, {"code": "party_out_of_range", "reason": f"party {people} not in [{rules.min_party},{rules.max_party}]"}
+
+    # 3) Controllo step
+    step = int(getattr(rules, "slot_step_min", 0) or 0)
+    if step:
+        m = dt_local.minute % step
+        if m != 0:
+            delta = step - m
+            suggested = (dt_local + timedelta(minutes=delta)).strftime("%Y-%m-%dT%H:%M")
+            return False, {"code": "bad_step", "suggested": suggested}
+
+    # 4) Verifica inclusione negli slot con last_order_min
+    last_order = int(getattr(rules, "last_order_min", 0) or 0)
+    t_ok = False
+    for s in slots_today:
+        # s.start / s.end sono oggetti datetime.time (grazie a rules_service)
+        start_dt = datetime.combine(dt_local.date(), s.start, tzinfo=tz)
+        end_eff = _end_effective(dt_local, s.end, last_order)
+        if start_dt <= dt_local <= end_eff:
+            t_ok = True
+            break
+
+    if t_ok:
+        return True, {}
+
+    # 5) Suggerisci il prossimo start utile (se siamo prima delle fasce)
+    next_start = _first_future_start(dt_local, slots_today)
+    if next_start:
+        return False, {"code": "outside_hours", "suggested": next_start.strftime("%Y-%m-%dT%H:%M")}
+
+    # altrimenti siamo oltre l'ultima fascia del giorno
+    return False, {"code": "outside_hours", "reason": "past_last_window"}

@@ -1,374 +1,308 @@
-/* =======================================================
-   Prenotazioni — Frontend
-   - Filtri + CRUD AJAX
-   - Prezzi fascia oraria (12–15 => 20€, 19–23:30 => 30€)
-   - Incasso solo "confirmed"
-   - PIZZERIA: menù, pizze in prenotazione (condizionale)
-   ======================================================= */
+(function () {
+  // ---------------- util ----------------
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+  const host = window.location.origin;
 
-(function(){
-  "use strict";
+  function fmtEuro(n){
+    try{
+      return (n || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+    }catch(e){ return "€ " + Math.round(n||0); }
+  }
 
-  /* ---------------------- Stato ---------------------- */
-  const state = { range: "today", date: null, q: "" };
-  let MENU = []; // /api/menu (solo pizzeria)
-  const IS_PIZZERIA = (typeof window !== "undefined" && window.IS_PIZZERIA === true);
+  function el(tag, cls, text){
+    const x = document.createElement(tag);
+    if (cls) x.className = cls;
+    if (text != null) x.textContent = text;
+    return x;
+  }
 
-  /* ---------------------- Util ----------------------- */
-  const UI = {
-    moneyEUR(v) {
-      try {
-        return new Intl.NumberFormat("it-IT", {
-          style: "currency",
-          currency: "EUR",
-          maximumFractionDigits: 0,
-        }).format(v || 0);
-      } catch {
-        return `€ ${Math.round(v || 0)}`;
-      }
-    },
-    el(tag, cls, html) {
-      const e = document.createElement(tag);
-      if (cls) e.className = cls;
-      if (html != null) e.innerHTML = html;
-      return e;
-    },
-    openModal() {
-      const m = document.getElementById("modal");
-      if (!m) return;
-      m.setAttribute("aria-hidden", "false");
-      m.classList.add("is-open");
-    },
-    closeModal() {
-      const m = document.getElementById("modal");
-      if (!m) return;
-      m.setAttribute("aria-hidden", "true");
-      m.classList.remove("is-open");
-    },
-    toast(m) {
-      console.log(m);
-    },
+  // ---------------- API ----------------
+  async function apiList(params = {}){
+    const u = new URL(`${host}/api/reservations`);
+    Object.entries(params).forEach(([k,v])=>{
+      if (v != null && v !== '') u.searchParams.set(k, v);
+    });
+    const r = await fetch(u.toString(), { credentials:'same-origin' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+
+  async function apiMenu(){
+    const r = await fetch(`${host}/api/menu`, { credentials:'same-origin' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json(); // [{id,name,price}]
+  }
+
+  async function apiCreateReservation(payload){
+    const r = await fetch(`${host}/api/reservations`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify(payload)
+    });
+    if(!r.ok){
+      const j = await r.json().catch(()=>({}));
+      throw new Error(j.error || ('HTTP '+r.status));
+    }
+    return r.json();
+  }
+
+  async function apiUpdateReservation(id, status){
+    const r = await fetch(`${host}/api/reservations/${id}`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify({status})
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+
+  async function apiDeleteReservation(id){
+    const r = await fetch(`${host}/api/reservations/${id}`, {
+      method:'DELETE',
+      credentials:'same-origin'
+    });
+    if(!r.ok && r.status !== 204) throw new Error('HTTP '+r.status);
+    return true;
+  }
+
+  // ---------------- state ----------------
+  const State = {
+    params: { date: $('#f-date')?.value || '', q: '', range: '' },
+    menuMap: new Map(),   // pizzaId -> {name, price}
+    items: []             // prenotazioni correnti
   };
 
-  async function fetchJSON(url, opts = {}) {
-    const res = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      ...opts,
+  // ---------------- KPI ----------------
+  function computeKPIs(){
+    // Prenotazioni oggi
+    const today = $('#f-date')?.value || '';
+    let countToday = 0;
+    let pizzas = 0;
+    let revenue = 0;
+
+    const isPizzeria = !!window.IS_PIZZERIA;
+
+    State.items.forEach(res=>{
+      if (today && res.date === today) countToday++;
+      // Pizze ordinate + ricavi (solo pizzeria)
+      if (isPizzeria && Array.isArray(res.pizzas)) {
+        res.pizzas.forEach(p=>{
+          const qty = Number(p.qty||0);
+          pizzas += qty;
+          const m = State.menuMap.get(p.id);
+          if (m && m.price != null) revenue += qty * Number(m.price||0);
+        });
+      }
     });
-    if (!res.ok) {
-      let msg;
-      try { msg = await res.text(); } catch { msg = `HTTP ${res.status}`; }
-      throw new Error(msg || `HTTP ${res.status}`);
+
+    const kToday = $('#kpi-today');
+    if (kToday) kToday.textContent = String(countToday);
+
+    const kPizzas = $('#kpi-pizzas');
+    if (kPizzas) kPizzas.textContent = String(pizzas);
+
+    const kRevenue = $('#kpi-revenue');
+    if (kRevenue) kRevenue.textContent = fmtEuro(revenue);
+  }
+
+  // ---------------- UI: render list ----------------
+  function renderList(){
+    const box = $('#list');
+    if (!box) return;
+    box.innerHTML = '';
+
+    if (!State.items.length){
+      const empty = el('div','muted','Nessuna prenotazione trovata.');
+      empty.style.padding = '12px';
+      box.appendChild(empty);
+      computeKPIs();
+      return;
     }
-    if (res.status === 204) return null;
-    return res.json();
-  }
 
-  /* --------------- Prezzi dinamici ------------------- */
-  function toMinutes(hhmm) {
-    const [h, m] = (hhmm || "0:0").split(":").map((n) => parseInt(n, 10) || 0);
-    return h * 60 + m;
-  }
-  function priceFor(timeHHMM) {
-    const t = toMinutes(timeHHMM);
-    if (t >= 12 * 60 && t <= 15 * 60) return 20;
-    if (t >= 19 * 60 && t <= 23 * 60 + 30) return 30;
-    return 0;
-  }
+    State.items.forEach(res=>{
+      const row = el('div','list-row');
 
-  /* --------- Rendering lista & KPI ------------------- */
-  function renderEmptyState(container) {
-    const box = UI.el("div", "reservation-row");
-    const empty = UI.el("div", "res-left");
-    empty.append(
-      UI.el("div", "res-name", "Nessuna prenotazione trovata"),
-      UI.el("div", "res-meta", "Prova a cambiare filtri o aggiungi una nuova prenotazione.")
-    );
-    box.append(empty, UI.el("span","badge badge-gray","—"), UI.el("div","res-actions"));
-    container.appendChild(box);
-  }
+      const left = el('div','lr-left');
+      const name = el('div','lr-title', `${res.customer_name || '—'}`);
+      const sub = el('div','lr-sub', `${res.phone || ''}`);
+      left.appendChild(name);
+      left.appendChild(sub);
 
-  function renderList(items) {
-    const list = document.getElementById("list");
-    if (!list) return;
-    list.innerHTML = "";
+      const mid = el('div','lr-mid');
+      mid.appendChild(el('div','badge', `${res.date || ''}`));
+      mid.appendChild(el('div','badge', `${res.time || ''}`));
+      mid.appendChild(el('div','badge', `${res.people || 2} px`));
 
-    const todayISO = new Date().toISOString().slice(0, 10);
-    let kpiToday = 0, revenue = 0, pizzasTotal = 0;
+      // status
+      const status = String(res.status||'pending');
+      const st = el('div','lr-status');
+      const stSpan = el('span','tag ' + (
+        status === 'confirmed' ? 'tag-green' :
+        status === 'rejected' ? 'tag-red' : 'tag-gray'
+      ), status);
+      st.appendChild(stSpan);
 
-    (items || []).forEach((it) => {
-      if (it.date === todayISO) kpiToday++;
-
-      if (it.status === "confirmed") {
-        revenue += (it.people || 0) * priceFor(it.time);
-        (it.pizzas || []).forEach((p) => (pizzasTotal += p.qty || 0));
+      // pizzas summary (se presente)
+      const pWrap = el('div','lr-extra');
+      if (Array.isArray(res.pizzas) && res.pizzas.length){
+        const txt = res.pizzas.map(p=>{
+          const n = State.menuMap.get(p.id)?.name || p.name || 'Pizza';
+          return `${n} ×${p.qty}`;
+        }).join(' · ');
+        pWrap.textContent = txt;
       }
 
-      const row = UI.el("div", "reservation-row");
+      const right = el('div','lr-right');
+      const bConf = el('button','btn btn-xs btn-green','Conferma');
+      const bRej  = el('button','btn btn-xs btn-yellow','Rifiuta');
+      const bDel  = el('button','btn btn-xs btn-outline','Elimina');
 
-      const left = UI.el("div", "res-left");
-      const pill = UI.el("span", "pill people", `${it.people || 1} pers.`);
-      const name = UI.el("div", "res-name", it.customer_name || "");
-      const meta = UI.el(
-        "div",
-        "res-meta",
-        `${it.date || ""} • ${it.time || ""} • ${it.phone || ""}`
-      );
-      left.append(pill, name, meta);
+      bConf.addEventListener('click', async ()=>{
+        try{ await apiUpdateReservation(res.id,'confirmed'); await reload(); }catch(e){ alert('Errore aggiornamento'); }
+      });
+      bRej.addEventListener('click', async ()=>{
+        try{ await apiUpdateReservation(res.id,'rejected'); await reload(); }catch(e){ alert('Errore aggiornamento'); }
+      });
+      bDel.addEventListener('click', async ()=>{
+        if(!confirm('Eliminare la prenotazione?')) return;
+        try{ await apiDeleteReservation(res.id); await reload(); }catch(e){ alert('Errore eliminazione'); }
+      });
 
-      if (it.pizzas && it.pizzas.length) {
-        const pizzasLine = it.pizzas.map((p) => `${p.name} ×${p.qty}`).join(", ");
-        left.append(UI.el("div", "res-meta", `🍕 ${pizzasLine}`));
-      }
+      right.appendChild(bConf);
+      right.appendChild(bRej);
+      right.appendChild(bDel);
 
-      const status = UI.el(
-        "span",
-        "badge " +
-          (it.status === "confirmed"
-            ? "badge-green"
-            : it.status === "rejected"
-            ? "badge-red"
-            : "badge-gray"),
-        it.status
-      );
+      row.appendChild(left);
+      row.appendChild(mid);
+      row.appendChild(st);
+      if (pWrap.textContent) row.appendChild(pWrap);
+      row.appendChild(right);
 
-      const actions = UI.el("div", "res-actions");
-      const bC = UI.el("button", "btn btn-outline", "Conferma");
-      const bR = UI.el("button", "btn btn-outline", "Rifiuta");
-      const bD = UI.el("button", "btn btn-outline", "Elimina");
-
-      bC.onclick = async () => {
-        try {
-          await fetchJSON(`/api/reservations/${it.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "confirmed" }),
-          });
-          await load();
-        } catch (e) { UI.toast(e.message); }
-      };
-      bR.onclick = async () => {
-        try {
-          await fetchJSON(`/api/reservations/${it.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "rejected" }),
-          });
-          await load();
-        } catch (e) { UI.toast(e.message); }
-      };
-      bD.onclick = async () => {
-        try {
-          await fetchJSON(`/api/reservations/${it.id}`, { method: "DELETE" });
-          await load();
-        } catch (e) { UI.toast(e.message); }
-      };
-
-      actions.append(bC, bR, bD);
-      row.append(left, status, actions);
-      list.appendChild(row);
+      box.appendChild(row);
     });
 
-    if (!items || items.length === 0) renderEmptyState(list);
-
-    const elToday = document.getElementById("kpi-today");
-    if (elToday) elToday.textContent = String(kpiToday);
-
-    const elRev = document.getElementById("kpi-revenue");
-    if (elRev) elRev.textContent = UI.moneyEUR(revenue);
-
-    const kpiPizze = document.getElementById("kpi-pizzas");
-    if (kpiPizze) kpiPizze.textContent = String(pizzasTotal);
+    computeKPIs();
   }
 
-  /* -------------------- Load & filtri -------------------- */
-  async function load() {
-    const p = new URLSearchParams();
-    if (state.range) p.set("range", state.range);
-    if (state.date)  p.set("date", state.date);
-    if (state.q)     p.set("q", state.q);
-
-    try {
-      const data = await fetchJSON(`/api/reservations?${p.toString()}`);
-      renderList(data);
-    } catch (e) {
-      UI.toast("Errore caricamento: " + e.message);
+  // ---------------- load & reload ----------------
+  async function ensureMenu(){
+    if (State.menuMap.size) return;
+    try{
+      const menu = await apiMenu(); // [{id,name,price}]
+      menu.forEach(p => State.menuMap.set(p.id, {name:p.name, price:p.price}));
+    }catch(e){
+      // se fallisce, continuiamo senza prezzi
+      State.menuMap.clear();
     }
   }
 
-  function setupFilters() {
-    const fDate = document.getElementById("f-date");
-    const fText = document.getElementById("f-text");
-    const bFilter = document.getElementById("btn-filter");
-    const bClear  = document.getElementById("btn-clear");
-    const b30     = document.getElementById("btn-30");
-    const bToday  = document.getElementById("btn-today");
+  async function reload(){
+    await ensureMenu();
+    const params = {};
+    if (State.params.date) params.date = State.params.date;
+    if (State.params.q) params.q = State.params.q;
+    if (State.params.range) params.range = State.params.range;
 
-    if (bFilter)
-      bFilter.onclick = (e)=> {
-        e.preventDefault();
-        state.date = fDate?.value || null;
-        state.q = (fText?.value || "").trim();
-        state.range = null; // passa a filtro libero
-        load();
-      };
-
-    if (bClear)
-      bClear.onclick  = (e)=> {
-        e.preventDefault();
-        if (fDate) fDate.value = "";
-        if (fText) fText.value = "";
-        state.date = null;
-        state.q = "";
-        state.range = null;
-        load();
-      };
-
-    if (b30)
-      b30.onclick     = (e)=> { e.preventDefault(); state.range = "30days"; state.date = null; load(); };
-
-    if (bToday)
-      bToday.onclick  = (e)=> { e.preventDefault(); state.range = "today";  state.date = null; load(); };
-
-    // invio con Enter nel campo testo
-    if (fText)
-      fText.addEventListener("keydown",(ev)=>{
-        if (ev.key === "Enter") { ev.preventDefault(); bFilter?.click(); }
-      });
+    const items = await apiList(params);
+    State.items = Array.isArray(items) ? items : [];
+    renderList();
   }
 
-  /* -------------------- Modale & Pizze -------------------- */
-  function pizzaRowTemplate(options) {
-    const row = UI.el("div", "pizza-row");
-    row.style.display = "grid";
-    row.style.gridTemplateColumns = "1fr 80px 90px";
-    row.style.gap = "8px";
-    row.style.marginTop = "8px";
+  // ---------------- filters ----------------
+  function initFilters(){
+    const fDate = $('#f-date');
+    const fText = $('#f-text');
+    const bFilter = $('#btn-filter');
+    const bClear = $('#btn-clear');
+    const b30 = $('#btn-30');
+    const bToday = $('#btn-today');
+    const bNew = $('#btn-new');
 
-    const select = UI.el("select", "input pizza-select");
-    (options || []).forEach((o) => {
-      const opt = document.createElement("option");
-      opt.value = o.id;
-      opt.textContent = `${o.name} (${o.price}€)`;
-      select.appendChild(opt);
-    });
-
-    const qty = UI.el("input", "input pizza-qty");
-    qty.type = "number";
-    qty.min = "1";
-    qty.value = "1";
-
-    const remove = UI.el("button", "btn btn-outline", "Rimuovi");
-    remove.type = "button";
-    remove.onclick = () => row.remove();
-
-    row.append(select, qty, remove);
-    return row;
-  }
-
-  async function ensureMenu() {
-    if (!IS_PIZZERIA) return; // niente menu per sushi
-    try {
-      if (!MENU.length) MENU = await fetchJSON("/api/menu");
-    } catch {
-      MENU = [];
-    }
-  }
-
-  function setupModal() {
-    const openBtn  = document.getElementById("btn-new");
-    const closeBtn = document.getElementById("modalClose");
-    const saveBtn  = document.getElementById("modalSave");
-
-    // elementi "pizze" potrebbero NON esistere (sushi)
-    const addPizza = document.getElementById("pizzaAdd");
-    const rowsBox  = document.getElementById("pizzaRows");
-    const modal    = document.getElementById("modal");
-
-    if (openBtn)
-      openBtn.onclick = async (e) => {
-        e.preventDefault();
-        await ensureMenu();
-        if (IS_PIZZERIA && rowsBox) {
-          rowsBox.innerHTML = "";
-          if (MENU.length) rowsBox.appendChild(pizzaRowTemplate(MENU));
-        }
-        UI.openModal();
-      };
-
-    if (closeBtn)
-      closeBtn.onclick = (e) => { e.preventDefault(); UI.closeModal(); };
-
-    // click fuori modale = chiudi
-    if (modal)
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) UI.closeModal();
-      });
-
-    // ESC chiude
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") UI.closeModal();
-    });
-
-    if (addPizza)
-      addPizza.onclick = (e) => {
-        e.preventDefault();
-        if (!IS_PIZZERIA || !rowsBox) return;
-        if (!MENU.length) { UI.toast("Nessun menu disponibile."); return; }
-        rowsBox.appendChild(pizzaRowTemplate(MENU));
-      };
-
-    if (saveBtn)
-      saveBtn.onclick = async (e) => {
-        e.preventDefault();
-
-        const body = {
-          customer_name: (document.getElementById("m-name")?.value || "").trim(),
-          phone: (document.getElementById("m-phone")?.value || "").trim(),
-          date: document.getElementById("m-date")?.value || "",
-          time: document.getElementById("m-time")?.value || "",
-          people: Number(document.getElementById("m-people")?.value || 1),
-          pizzas: [],
+    if (bFilter){
+      bFilter.addEventListener('click', async ()=>{
+        State.params = {
+          date: fDate?.value || '',
+          q: fText?.value || '',
+          range: ''
         };
+        await reload();
+      });
+    }
 
-        if (IS_PIZZERIA) {
-          document.querySelectorAll(".pizza-row").forEach((r) => {
-            const pid = Number(r.querySelector(".pizza-select")?.value || 0);
-            const qty = Number(r.querySelector(".pizza-qty")?.value || 0);
-            if (pid > 0 && qty > 0) body.pizzas.push({ pizza_id: pid, qty });
+    if (bClear){
+      bClear.addEventListener('click', async ()=>{
+        if (fDate) fDate.value = '';
+        if (fText) fText.value = '';
+        State.params = { date:'', q:'', range:'' };
+        await reload();
+      });
+    }
+
+    if (b30){
+      b30.addEventListener('click', async ()=>{
+        State.params = { date:'', q:'', range:'30days' };
+        if (fDate) fDate.value = '';
+        if (fText) fText.value = '';
+        await reload();
+      });
+    }
+
+    if (bToday){
+      bToday.addEventListener('click', async ()=>{
+        State.params = { date:'', q:'', range:'today' };
+        await reload();
+      });
+    }
+
+    if (bNew){
+      bNew.addEventListener('click', async ()=>{
+        // Modal “nuova prenotazione” non è nel template: uso prompt snello.
+        try{
+          const name = prompt('Nome cliente?'); if(!name) return;
+          const phone = prompt('Telefono?') || '';
+          const date = prompt('Data (YYYY-MM-DD)?'); if(!date) return;
+          const time = prompt('Ora (HH:MM)?'); if(!time) return;
+          const people = Number(prompt('Persone?') || '2') || 2;
+
+          // opzionale: se pizzeria, chiedi pizze in formato id:qty,id:qty
+          let pizzas = [];
+          if (window.IS_PIZZERIA) {
+            await ensureMenu();
+            const guide = Array.from(State.menuMap.entries()).map(([id, m])=>`${id}=${m.name}`).join(' | ');
+            const raw = prompt('Pizze (formato id:qty,id:qty). Disponibili: '+guide+'\nLascia vuoto per nessuna.');
+            if (raw){
+              pizzas = raw.split(',').map(s=>s.trim()).filter(Boolean).map(pair=>{
+                const [pid, q] = pair.split(':').map(x=>x.trim());
+                return { pizza_id: Number(pid), qty: Number(q||1) };
+              }).filter(x => x.pizza_id && x.qty>0);
+            }
+          }
+
+          await apiCreateReservation({
+            customer_name: name,
+            phone, date, time, people,
+            pizzas
           });
+          await reload();
+        }catch(e){
+          alert('Errore creazione prenotazione');
         }
-
-        if (!body.customer_name || !body.date || !body.time || body.people < 1) {
-          UI.toast("Compila almeno Nome, Data, Ora e Persone.");
-          return;
-        }
-
-        try {
-          await fetchJSON("/api/reservations", {
-            method: "POST",
-            body: JSON.stringify(body),
-          });
-          UI.closeModal();
-
-          // reset campi principali
-          const nm = document.getElementById("m-name");
-          const ph = document.getElementById("m-phone");
-          if (nm) nm.value = "";
-          if (ph) ph.value = "";
-          if (IS_PIZZERIA && rowsBox) rowsBox.innerHTML = "";
-
-          await load();
-        } catch (err) {
-          UI.toast("Errore salvataggio: " + err.message);
-        }
-      };
+      });
+    }
   }
 
-  /* -------------------- Init -------------------- */
-  document.addEventListener("DOMContentLoaded", () => {
-    setupFilters();
-    setupModal();
-    load();
+  // ---------------- init ----------------
+  document.addEventListener('DOMContentLoaded', async ()=>{
+    try{
+      initFilters();
+      await reload();
+    }catch(e){
+      // fallback UI
+      const list = $('#list');
+      if (list) list.innerHTML = '<div class="muted">Errore nel caricamento.</div>';
+    }
   });
-
 })();

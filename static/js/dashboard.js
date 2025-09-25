@@ -4,6 +4,41 @@
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
   const host = window.location.origin;
 
+  // Converte weekly in OBJECT { "0":[{start,end}], ... } a prescindere dal formato API
+  function weeklyToObj(weekly) {
+    const out = { "0":[], "1":[], "2":[], "3":[], "4":[], "5":[], "6":[] };
+    if (!weekly) return out;
+
+    // Caso nuovo: array [{weekday, ranges:[{start,end}]}]
+    if (Array.isArray(weekly)) {
+      weekly.forEach(w => {
+        const k = String(w.weekday ?? "");
+        if (k in out) out[k] = (w.ranges || []).map(r => ({ start: r.start, end: r.end }));
+      });
+      return out;
+    }
+
+    // Caso legacy: oggetto { "0":[{start,end}], ... }
+    Object.keys(out).forEach(k => {
+      if (Array.isArray(weekly[k])) {
+        out[k] = weekly[k].map(r => ({ start: r.start, end: r.end }));
+      }
+    });
+    return out;
+  }
+
+  function toHHMM(s) {
+    if (!s) return s;
+    const m = String(s).trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return s;
+    let hh = parseInt(m[1], 10);
+    let mm = parseInt(m[2], 10);
+    if (isNaN(hh) || isNaN(mm)) return s;
+    if (hh < 0) hh = 0; if (hh > 23) hh = 23;
+    if (mm < 0) mm = 0; if (mm > 59) mm = 59;
+    return String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+  }
+
   // ------------- badge chiamate -------------
   function setBadgeState(active, max, overload) {
     const a = $('#vb-active'), m = $('#vb-max'), dot = $('#vb-dot'), lab = $('#vb-label');
@@ -52,7 +87,7 @@
 
   // ------------- modals helpers -------------
   function openModal(id){ const m=$(id); if(m){ m.hidden=false; } }
-  function closeModal(el){ el.closest('.modal-backdrop').hidden=true; }
+  function closeModal(el){ const bd = el?.closest?.('.modal-backdrop'); if(bd) bd.hidden=true; }
   function initModalClose(){
     $$('.modal .js-close').forEach(b => b.addEventListener('click', ()=> closeModal(b)));
     $$('.modal-backdrop').forEach(b => b.addEventListener('click', (e)=>{
@@ -108,23 +143,32 @@
 
   // ------------- WEEKLY UI -------------
   const WD = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
+
   function renderWeeklyForm(weekly){
-    const wrap = $('#weekly-form'); wrap.innerHTML='';
+    const wrap = $('#weekly-form'); if (!wrap) return;
+    wrap.innerHTML='';
+    const wobj = weeklyToObj(weekly);
     for(let i=0;i<7;i++){
       const row = document.createElement('div'); row.className='w-row';
       const lab = document.createElement('div'); lab.textContent = WD[i];
       const inp = document.createElement('input'); inp.className='input';
-      const ranges = (weekly[String(i)]||[]).map(r=>`${r.start}-${r.end}`).join(', ');
+      const ranges = (wobj[String(i)]||[]).map(r=>`${r.start}-${r.end}`).join(', ');
       inp.value = ranges;
       inp.setAttribute('data-wd', String(i));
       row.appendChild(lab); row.appendChild(inp);
       wrap.appendChild(row);
     }
   }
+
   function parseRanges(str){
     const out=[]; if(!str) return out;
     str.split(',').map(s=>s.trim()).filter(Boolean).forEach(p=>{
-      const m = p.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/); if(m) out.push({start:m[1], end:m[2]});
+      const m = p.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+      if(m){
+        const a = toHHMM(m[1]);
+        const b = toHHMM(m[2]);
+        out.push({start:a, end:b});
+      }
     });
     return out;
   }
@@ -134,12 +178,16 @@
       const st = await getState();
       renderWeeklyForm(st.weekly||{});
       $('#weekly-save').onclick = async ()=>{
-        const payload=[];
-        $$('#weekly-form input').forEach(inp=>{
-          payload.push({weekday: Number(inp.getAttribute('data-wd')), ranges: parseRanges(inp.value)});
-        });
-        await saveWeekly(payload);
-        closeModal($('#weekly-save'));
+        try {
+          const payload=[];
+          $$('#weekly-form input').forEach(inp=>{
+            payload.push({weekday: Number(inp.getAttribute('data-wd')), ranges: parseRanges(inp.value)});
+          });
+          await saveWeekly(payload);
+          closeModal($('#weekly-save'));
+        } catch (e) {
+          alert('Errore salvataggio orari. Controlla il formato HH:MM-HH:MM');
+        }
       };
       openModal('#modal-weekly');
     }catch(e){ alert('Errore caricamento orari'); }
@@ -147,7 +195,8 @@
 
   // ------------- SPECIAL DAYS UI -------------
   async function refreshSpecialList(){
-    const box = $('#sp-list'); box.innerHTML='';
+    const box = $('#sp-list'); if (!box) return;
+    box.innerHTML='';
     const items = (await listSpecial()).items || [];
     if(!items.length){ box.innerHTML='<div class="muted">Nessun giorno speciale</div>'; return; }
     items.forEach(it=>{
@@ -162,18 +211,22 @@
     try{
       await refreshSpecialList();
       $('#sp-add').onclick = async ()=>{
-        const d = $('#sp-date').value;
-        if(!d) return alert('Seleziona la data');
-        const closed = $('#sp-closed').checked;
-        const ranges = parseRanges($('#sp-ranges').value);
-        await upsertSpecial(d, closed, ranges);
-        await refreshSpecialList();
+        try{
+          const d = $('#sp-date').value;
+          if(!d) return alert('Seleziona la data');
+          const closed = $('#sp-closed').checked;
+          const ranges = parseRanges($('#sp-ranges').value);
+          await upsertSpecial(d, closed, ranges);
+          await refreshSpecialList();
+        }catch(e){ alert('Errore salvataggio giorno speciale'); }
       };
       $('#sp-del').onclick = async ()=>{
-        const d = $('#sp-date').value;
-        if(!d) return alert('Seleziona la data');
-        await deleteSpecial(d);
-        await refreshSpecialList();
+        try{
+          const d = $('#sp-date').value;
+          if(!d) return alert('Seleziona la data');
+          await deleteSpecial(d);
+          await refreshSpecialList();
+        }catch(e){ alert('Errore eliminazione giorno speciale'); }
       };
       openModal('#modal-special');
     }catch(e){ alert('Errore giorni speciali'); }
@@ -192,15 +245,17 @@
       $('#st-tz').value   = s.tz || 'Europe/Rome';
 
       $('#st-save').onclick = async ()=>{
-        await saveSettings({
-          slot_step_min: Number($('#st-step').value),
-          last_order_min: Number($('#st-last').value),
-          capacity_per_slot: Number($('#st-cap').value),
-          min_party: Number($('#st-minp').value),
-          max_party: Number($('#st-maxp').value),
-          tz: $('#st-tz').value
-        });
-        closeModal($('#st-save'));
+        try{
+          await saveSettings({
+            slot_step_min: Number($('#st-step').value),
+            last_order_min: Number($('#st-last').value),
+            capacity_per_slot: Number($('#st-cap').value),
+            min_party: Number($('#st-minp').value),
+            max_party: Number($('#st-maxp').value),
+            tz: $('#st-tz').value
+          });
+          closeModal($('#st-save'));
+        }catch(e){ alert('Errore salvataggio impostazioni'); }
       };
 
       openModal('#modal-settings');

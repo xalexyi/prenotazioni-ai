@@ -12,7 +12,11 @@
 
 {% block header_right %}
 <!-- Solo toggle sul login -->
-<button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte">
+<button id="themeToggle"
+        class="toggle theme-toggle"
+        aria-label="Tema Giorno/Notte"
+        title="Giorno/Notte"
+        type="button">
   <span class="toggle-icon sun">☀️</span>
   <span class="toggle-icon moon">🌙</span>
 </button>
@@ -52,10 +56,20 @@
   <section class="card login-panel card-elev">
     <form action="{{ url_for('auth.login') }}" method="post" class="login-form">
       <label class="form-label" for="username">Username</label>
-      <input class="input" id="username" name="username" type="text" placeholder="es. sushitokyo" required>
+      <input class="input"
+             id="username"
+             name="username"
+             type="text"
+             placeholder="es. sushitokyo"
+             required>
 
       <label class="form-label" for="password">Password</label>
-      <input class="input" id="password" name="password" type="password" placeholder="Password123!" required>
+      <input class="input"
+             id="password"
+             name="password"
+             type="password"
+             placeholder="Password123!"
+             required>
 
       {% if error %}
       <div class="alert error">Credenziali non valide</div>
@@ -64,7 +78,7 @@
       <button class="btn btn-red w-100" type="submit">Log in</button>
 
       <p class="demo-msg">
-        Demo: <strong>sushitokyo</strong> / <strong>Password123!</strong> — 
+        Demo: <strong>sushitokyo</strong> / <strong>Password123!</strong> —
         <strong>pizzerianapoli</strong> / <strong>Password123!</strong>
       </p>
     </form>
