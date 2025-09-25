@@ -32,9 +32,8 @@
     if (!btn || !menu) return;
 
     function show() {
-      menu.hidden = false; // keep for a11y, but visibility is handled by CSS
+      menu.hidden = false;
       menu.setAttribute('data-open', '1');
-      // posizionamento sotto al bottone
       const b = btn.getBoundingClientRect();
       menu.style.left = `${b.left}px`;
       menu.style.top  = `${b.bottom + 10}px`;
@@ -51,9 +50,7 @@
     document.addEventListener('click', (e) => {
       if (!menu.contains(e.target) && e.target !== btn) hide();
     });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hide();
-    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
     menu.addEventListener('click', (e)=> e.stopPropagation());
 
     menu.querySelectorAll('.k-item').forEach(it => {
@@ -69,27 +66,39 @@
     });
   }
 
-  // ------------- modals helpers (ARIA) -------------
+  // ------------- modali helpers (forza apertura) -------------
   function openModal(id){
     const m=$(id);
     if(!m) return;
-    m.setAttribute('aria-hidden','false'); // <-- usa aria-hidden
+    // rimuovi eventuale hidden e forza display
+    m.removeAttribute('hidden');
+    m.style.display = 'flex';
+    m.setAttribute('aria-hidden','false');
+
     // focus al primo elemento interattivo
     const first = m.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if (first) first.focus();
   }
   function closeModal(btnOrEl){
     const root = btnOrEl.closest('.modal-backdrop');
-    if (root) root.setAttribute('aria-hidden','true');
+    if (!root) return;
+    root.setAttribute('aria-hidden','true');
+    root.style.display = '';    // lascia al CSS decidere
   }
   function initModalClose(){
     $$('.modal .js-close').forEach(b => b.addEventListener('click', ()=> closeModal(b)));
     $$('.modal-backdrop').forEach(b => b.addEventListener('click', (e)=>{
-      if(e.target.classList.contains('modal-backdrop')) e.target.setAttribute('aria-hidden','true');
+      if(e.target.classList.contains('modal-backdrop')){
+        e.target.setAttribute('aria-hidden','true');
+        e.target.style.display = '';
+      }
     }));
     document.addEventListener('keydown', (e)=>{
       if (e.key === 'Escape') {
-        $$('.modal-backdrop[aria-hidden="false"]').forEach(m=>m.setAttribute('aria-hidden','true'));
+        $$('.modal-backdrop[aria-hidden="false"]').forEach(m=>{
+          m.setAttribute('aria-hidden','true');
+          m.style.display = '';
+        });
       }
     });
   }
@@ -144,11 +153,19 @@
   const WD = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
   function renderWeeklyForm(weekly){
     const wrap = $('#weekly-form'); wrap.innerHTML='';
+    // weekly può essere dict {"0":[...]} o lista [{weekday, ranges}]
     for(let i=0;i<7;i++){
+      let rangesArr = [];
+      if (Array.isArray(weekly)) {
+        const found = weekly.find(w=>w.weekday===i);
+        rangesArr = (found?.ranges)||[];
+      } else {
+        rangesArr = (weekly[String(i)]||[]);
+      }
       const row = document.createElement('div'); row.className='w-row';
       const lab = document.createElement('div'); lab.textContent = WD[i];
       const inp = document.createElement('input'); inp.className='input';
-      const ranges = (weekly[String(i)]||weekly.find?.(w=>w.weekday===i)?.ranges||[]).map(r=>`${r.start}-${r.end}`).join(', ');
+      const ranges = rangesArr.map(r=>`${r.start}-${r.end}`).join(', ');
       inp.value = ranges;
       inp.setAttribute('data-wd', String(i));
       row.appendChild(lab); row.appendChild(inp);
@@ -166,12 +183,7 @@
   async function openWeekly(){
     try{
       const st = await getState();
-      // accettiamo weekly come dict {"0":[...]} o lista [{weekday, ranges}]
-      let weekly = st.weekly || {};
-      if (Array.isArray(weekly)) {
-        const by = {}; weekly.forEach(w=>{by[String(w.weekday)] = w.ranges || [];}); weekly = by;
-      }
-      renderWeeklyForm(weekly);
+      renderWeeklyForm(st.weekly||{});
       $('#weekly-save').onclick = async ()=>{
         const payload=[];
         $$('#weekly-form input').forEach(inp=>{
