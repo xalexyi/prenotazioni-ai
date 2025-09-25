@@ -12,15 +12,14 @@
 
   <!-- MENU ⋮ -->
   <div class="kebab-wrap">
-    <button id="btn-kebab" class="btn btn-icon" aria-haspopup="true" aria-expanded="false" aria-controls="kebab-menu" aria-label="Menu impostazioni">⋮</button>
-    <!-- IMPORTANTISSIMO: niente "hidden". Usiamo aria-hidden + .open -->
-    <div id="kebab-menu" class="kebab-menu" aria-hidden="true">
-      <button class="k-item" data-act="weekly">Orari settimanali…</button>
-      <button class="k-item" data-act="special">Giorni speciali…</button>
-      <button class="k-item" data-act="settings">Impostazioni prenotazioni…</button>
+    <button id="btn-kebab" class="btn btn-icon" aria-haspopup="menu" aria-expanded="false" aria-label="Menu impostazioni">⋮</button>
+    <div id="kebab-menu" class="kebab-menu" hidden role="menu" aria-labelledby="btn-kebab">
+      <button class="k-item" data-act="weekly"  role="menuitem">Orari settimanali…</button>
+      <button class="k-item" data-act="special" role="menuitem">Giorni speciali…</button>
+      <button class="k-item" data-act="settings" role="menuitem">Impostazioni prenotazioni…</button>
       <hr>
-      <button class="k-item" data-act="state">Stato orari</button>
-      <button class="k-item" data-act="help">Guida codici rapidi</button>
+      <button class="k-item" data-act="state" role="menuitem">Stato orari</button>
+      <button class="k-item" data-act="help"  role="menuitem">Guida codici rapidi</button>
     </div>
   </div>
 </div>
@@ -90,14 +89,14 @@
 
 <!-- Weekly -->
 <div id="modal-weekly" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="weekly-title">
     <div class="modal-head">
-      <h3 class="card-title">Orari settimanali</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="weekly-title">Orari settimanali</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
       <div id="weekly-form" class="weekly-grid"></div>
-      <div class="muted">Formato: HH:MM-HH:MM (es. 12:00-15:00). Puoi inserire più fasce separate da virgola.</div>
+      <div class="muted">Formato: <strong>HH:MM-HH:MM</strong> (es. <code>12:00-15:00,19:00-23:30</code>).</div>
     </div>
     <div class="modal-foot">
       <button id="weekly-save" class="btn btn-primary">Salva</button>
@@ -107,10 +106,10 @@
 
 <!-- Special days -->
 <div id="modal-special" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="special-title">
     <div class="modal-head">
-      <h3 class="card-title">Giorni speciali</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="special-title">Giorni speciali</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -136,31 +135,31 @@
 
 <!-- Settings -->
 <div id="modal-settings" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-head">
-      <h3 class="card-title">Impostazioni prenotazioni</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="settings-title">Impostazioni prenotazioni</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body grid-2">
       <div>
         <label>Step (min)</label>
-        <input id="st-step" type="number" class="input" value="15">
+        <input id="st-step" type="number" class="input" value="15" min="1">
       </div>
       <div>
         <label>Ultimo anticipo (min)</label>
-        <input id="st-last" type="number" class="input" value="15">
+        <input id="st-last" type="number" class="input" value="15" min="0">
       </div>
       <div>
         <label>Capacità per slot</label>
-        <input id="st-cap" type="number" class="input" value="6">
+        <input id="st-cap" type="number" class="input" value="6" min="1">
       </div>
       <div>
         <label>Persone min</label>
-        <input id="st-minp" type="number" class="input" value="1">
+        <input id="st-minp" type="number" class="input" value="1" min="1">
       </div>
       <div>
         <label>Persone max</label>
-        <input id="st-maxp" type="number" class="input" value="12">
+        <input id="st-maxp" type="number" class="input" value="12" min="1">
       </div>
       <div>
         <label>Timezone</label>
@@ -175,10 +174,10 @@
 
 <!-- Stato / Help -->
 <div id="modal-state" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="state-title">
     <div class="modal-head">
-      <h3 class="card-title">Stato orari</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="state-title">Stato orari</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
       <pre id="state-pre" class="code"></pre>
@@ -187,10 +186,10 @@
 </div>
 
 <div id="modal-help" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="help-title">
     <div class="modal-head">
-      <h3 class="card-title">Guida codici rapidi</h3>
-      <button class="btn btn-icon js-close">✖</button>
+      <h3 class="card-title" id="help-title">Guida codici rapidi</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
       <pre class="code">RID=1
