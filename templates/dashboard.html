@@ -12,25 +12,21 @@
 
   <!-- MENU ⋮ -->
   <div class="kebab-wrap">
-    <button id="btn-kebab" class="btn btn-icon" aria-haspopup="menu" aria-expanded="false" aria-label="Menu impostazioni">⋮</button>
+    <button id="btn-kebab"
+            class="btn btn-icon"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-label="Menu impostazioni">⋮</button>
     <div id="kebab-menu" class="kebab-menu" hidden role="menu" aria-labelledby="btn-kebab">
       <button class="k-item" data-act="weekly"  role="menuitem">Orari settimanali…</button>
       <button class="k-item" data-act="special" role="menuitem">Giorni speciali…</button>
-      <button class="k-item" data-act="settings" role="menuitem">Impostazioni prenotazioni…</button>
+      <button class="k-item" data-act="settings" role="menuitem">Impostazioni…</button>
       <hr>
-      <button class="k-item" data-act="state" role="menuitem">Stato orari</button>
-      <button class="k-item" data-act="help"  role="menuitem">Guida codici rapidi</button>
+      <button class="k-item" data-act="state"   role="menuitem">Stato & JSON…</button>
+      <button class="k-item" data-act="help"    role="menuitem">Guida codici rapidi</button>
     </div>
   </div>
 </div>
-{% endblock %}
-
-{% block header_right %}
-<button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte">
-  <span class="toggle-icon sun">☀️</span>
-  <span class="toggle-icon moon">🌙</span>
-</button>
-<a class="btn btn-red logout-btn" href="{{ url_for('auth.logout') }}">Logout</a>
 {% endblock %}
 
 {% block content %}
@@ -53,39 +49,30 @@
       <div class="kpi-title">Prenotazioni oggi</div>
       <div class="kpi-value" id="kpi-today">0</div>
     </div>
-
     {% if is_pizzeria %}
     <div class="card kpi-card">
       <div class="kpi-title">Pizze ordinate</div>
       <div class="kpi-value" id="kpi-pizzas">0</div>
     </div>
     {% endif %}
-
     <div class="card kpi-card">
       <div class="kpi-title">Incasso stimato</div>
       <div class="kpi-value" id="kpi-revenue">€ 0</div>
     </div>
   </section>
 
-  <!-- Filtri -->
-  <section class="card filters">
-    <input id="f-date" class="input" type="date" value="{{ today or '' }}">
-    <input id="f-text" class="input" type="text" placeholder="Cerca nome / telefono / orario">
-    <button id="btn-filter" class="btn btn-gray">Filtra</button>
-    <button id="btn-clear" class="btn btn-outline">Elimina filtri</button>
-    <button id="btn-30" class="btn btn-outline">Storico 30gg</button>
-    <button id="btn-today" class="btn btn-outline">Oggi</button>
-
-    <button id="btn-new" class="btn btn-primary push-right">+ Nuova prenotazione</button>
-  </section>
-
-  <!-- Lista -->
+  <!-- Prenotazioni -->
   <section class="card">
-    <div id="list" class="list"></div>
+    <div class="card-head">
+      <h3 class="card-title">Prenotazioni</h3>
+      <div class="row">
+        <input type="date" id="resv-date" class="input" value="{{ today }}">
+        <button class="btn btn-outline" id="resv-refresh">Aggiorna</button>
+      </div>
+    </div>
+    <div id="resv-table" class="table"></div>
   </section>
 </div>
-
-<!-- ===== Modali gestione orari ===== -->
 
 <!-- Weekly -->
 <div id="modal-weekly" class="modal-backdrop" aria-hidden="true">
@@ -95,16 +82,17 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
-      <div id="weekly-form" class="weekly-grid"></div>
-      <div class="muted">Formato: <strong>HH:MM-HH:MM</strong> (es. <code>12:00-15:00,19:00-23:30</code>).</div>
+      <p class="muted">Scrivi gli orari per ogni giorno (es: <code>12:00-15:00, 19:00-23:30</code>). Giorno vuoto = chiuso.</p>
+      <div id="weekly-form" class="weekly-form"></div>
     </div>
     <div class="modal-foot">
-      <button id="weekly-save" class="btn btn-primary">Salva</button>
+      <button class="btn" id="weekly-save">Salva</button>
+      <button class="btn btn-outline js-close">Annulla</button>
     </div>
   </div>
 </div>
 
-<!-- Special days -->
+<!-- Special Days -->
 <div id="modal-special" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="special-title">
     <div class="modal-head">
@@ -161,30 +149,32 @@
         <label>Persone max</label>
         <input id="st-maxp" type="number" class="input" value="12" min="1">
       </div>
-      <div>
+      <div class="col-span-2">
         <label>Timezone</label>
-        <input id="st-tz" type="text" class="input" value="Europe/Rome">
+        <input id="st-tz" type="text" class="input" value="Europe/Rome" placeholder="Europe/Rome">
       </div>
     </div>
     <div class="modal-foot">
-      <button id="st-save" class="btn btn-primary">Salva</button>
+      <button class="btn" id="settings-save">Salva</button>
+      <button class="btn btn-outline js-close">Annulla</button>
     </div>
   </div>
 </div>
 
-<!-- Stato / Help -->
+<!-- State (debug) -->
 <div id="modal-state" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="state-title">
     <div class="modal-head">
-      <h3 class="card-title" id="state-title">Stato orari</h3>
+      <h3 class="card-title" id="state-title">Stato & JSON</h3>
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
-      <pre id="state-pre" class="code"></pre>
+      <pre id="state-json" class="codebox"></pre>
     </div>
   </div>
 </div>
 
+<!-- Help -->
 <div id="modal-help" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="help-title">
     <div class="modal-head">
@@ -192,28 +182,20 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
-      <pre class="code">RID=1
+      <pre class="codebox">RID=1
 WEEK mon 12:00-15:00,19:00-23:30
 WEEK tue CLOSED
 SPECIAL 2025-12-25 CLOSED
 SPECIAL 2025-08-15 18:00-23:00
-SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</pre>
-      <div class="muted">Questi comandi sono equivalenti alle azioni che trovi nei modali.</div>
+SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome
+      </pre>
     </div>
   </div>
 </div>
 
-<!-- Flag JS + accent -->
-<script>
-  window.IS_PIZZERIA = {{ 1 if is_pizzeria else 0 }} === 1;
-  (function(){
-    var slug = "{{ restaurant.slug or '' }}";
-    if (slug === "pizzerianapoli") document.body.classList.add("accent-pizza");
-  })();
-</script>
 {% endblock %}
 
 {% block scripts %}
 <script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
-<script defer src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ config['BUILD_VERSION'] }}"></script>
 {% endblock %}
