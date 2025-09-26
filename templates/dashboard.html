@@ -22,7 +22,7 @@
       <button class="k-item" data-act="special" role="menuitem">Giorni speciali…</button>
       <button class="k-item" data-act="settings" role="menuitem">Impostazioni…</button>
       <hr>
-      <button class="k-item" data-act="state"   role="menuitem">Stato & JSON…</button>
+      <button class="k-item" data-act="state"   role="menuitem">Stato & riepilogo…</button>
       <button class="k-item" data-act="help"    role="menuitem">Guida codici rapidi</button>
     </div>
   </div>
@@ -74,7 +74,7 @@
   </section>
 </div>
 
-<!-- Weekly -->
+<!-- ====== MODAL: Orari settimanali ====== -->
 <div id="modal-weekly" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="weekly-title">
     <div class="modal-head">
@@ -82,17 +82,20 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
-      <p class="muted">Scrivi gli orari per ogni giorno (es: <code>12:00-15:00, 19:00-23:30</code>). Giorno vuoto = chiuso.</p>
+      <div class="muted small">
+        Formato: <b>HH:MM-HH:MM</b> (es. <span class="chip">12:00-15:00</span>, <span class="chip">19:00-23:30</span>).
+        Giorno vuoto = <b>CHIUSO</b>.
+      </div>
       <div id="weekly-form" class="weekly-form"></div>
     </div>
     <div class="modal-foot">
+      <button class="btn btn-light js-close">Chiudi</button>
       <button class="btn" id="weekly-save">Salva</button>
-      <button class="btn btn-outline js-close">Annulla</button>
     </div>
   </div>
 </div>
 
-<!-- Special Days -->
+<!-- ====== MODAL: Giorni speciali ====== -->
 <div id="modal-special" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="special-title">
     <div class="modal-head">
@@ -100,28 +103,34 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
-      <div class="form-row">
-        <label>Data</label>
-        <input id="sp-date" type="date" class="input">
+      <div class="grid-2">
+        <div>
+          <label>Data</label>
+          <input id="sp-date" type="date" class="input" data-autofocus>
+        </div>
+        <div class="v-end">
+          <label class="checkbox"><input type="checkbox" id="sp-closed"> Chiudi tutto il giorno</label>
+        </div>
+        <div class="col-span-2">
+          <label>Finestre (se aperto)</label>
+          <input id="sp-ranges" type="text" class="input" placeholder="18:00-23:00, 12:00-15:00">
+        </div>
       </div>
-      <div class="form-row">
-        <label><input type="checkbox" id="sp-closed"> Chiudi tutto il giorno</label>
-      </div>
-      <div class="form-row">
-        <label>Finestre (se aperto)</label>
-        <input id="sp-ranges" type="text" class="input" placeholder="18:00-23:00, 12:00-15:00">
-      </div>
-      <div class="row">
-        <button id="sp-add" class="btn">Aggiungi/aggiorna</button>
-        <button id="sp-del" class="btn btn-outline">Elimina</button>
+      <div class="btn-row">
+        <button id="sp-del" class="btn btn-danger-outline">Elimina</button>
+        <div class="flex-1"></div>
+        <button id="sp-add" class="btn">Aggiungi / Aggiorna</button>
       </div>
       <hr>
-      <div id="sp-list" class="list small"></div>
+      <div id="sp-list" class="sp-list"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light js-close">Chiudi</button>
     </div>
   </div>
 </div>
 
-<!-- Settings -->
+<!-- ====== MODAL: Impostazioni ====== -->
 <div id="modal-settings" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-head">
@@ -129,66 +138,58 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body grid-2">
-      <div>
-        <label>Step (min)</label>
-        <input id="st-step" type="number" class="input" value="15" min="1">
-      </div>
-      <div>
-        <label>Ultimo anticipo (min)</label>
-        <input id="st-last" type="number" class="input" value="15" min="0">
-      </div>
-      <div>
-        <label>Capacità per slot</label>
-        <input id="st-cap" type="number" class="input" value="6" min="1">
-      </div>
-      <div>
-        <label>Persone min</label>
-        <input id="st-minp" type="number" class="input" value="1" min="1">
-      </div>
-      <div>
-        <label>Persone max</label>
-        <input id="st-maxp" type="number" class="input" value="12" min="1">
-      </div>
-      <div class="col-span-2">
-        <label>Timezone</label>
-        <input id="st-tz" type="text" class="input" value="Europe/Rome" placeholder="Europe/Rome">
-      </div>
+      <div><label>Step (min)</label><input id="st-step" type="number" class="input" min="1" value="15" data-autofocus></div>
+      <div><label>Ultimo anticipo (min)</label><input id="st-last" type="number" class="input" min="0" value="15"></div>
+      <div><label>Capacità per slot</label><input id="st-cap" type="number" class="input" min="1" value="6"></div>
+      <div><label>Persone min</label><input id="st-minp" type="number" class="input" min="1" value="1"></div>
+      <div><label>Persone max</label><input id="st-maxp" type="number" class="input" min="1" value="12"></div>
+      <div class="col-span-2"><label>Timezone</label><input id="st-tz" type="text" class="input" value="Europe/Rome"></div>
     </div>
     <div class="modal-foot">
+      <button class="btn btn-light js-close">Chiudi</button>
       <button class="btn" id="settings-save">Salva</button>
-      <button class="btn btn-outline js-close">Annulla</button>
     </div>
   </div>
 </div>
 
-<!-- State (debug) -->
+<!-- ====== MODAL: Stato & riepilogo ====== -->
 <div id="modal-state" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="state-title">
     <div class="modal-head">
-      <h3 class="card-title" id="state-title">Stato & JSON</h3>
+      <h3 class="card-title" id="state-title">Stato & riepilogo</h3>
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
-    <div class="modal-body">
-      <pre id="state-json" class="codebox"></pre>
+    <div class="modal-body state-wrap">
+      <!-- Riepilogo leggibile (non monospace) -->
+      <div id="state-human"></div>
+      <!-- JSON opzionale sotto details -->
+      <details class="state-json">
+        <summary>Vedi JSON</summary>
+        <pre id="state-json" class="codebox"></pre>
+      </details>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light js-close">Chiudi</button>
     </div>
   </div>
 </div>
 
-<!-- Help -->
+<!-- ====== MODAL: Guida codici rapidi ====== -->
 <div id="modal-help" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="help-title">
     <div class="modal-head">
       <h3 class="card-title" id="help-title">Guida codici rapidi</h3>
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
-    <div class="modal-body">
-      <pre class="codebox">RID=1
-WEEK mon 12:00-15:00,19:00-23:30
-WEEK tue CLOSED
-SPECIAL 2025-12-25 CLOSED
-SPECIAL 2025-08-15 18:00-23:00
-SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome
-      </pre>
+    <div class="modal-body help-body">
+      <div class="help-row"><div class="help-k">RID</div><div class="help-v">ID ristorante (es. <span class="chip">1</span>)</div></div>
+      <div class="help-row"><div class="help-k">WEEK</div><div class="help-v">Orari settimanali (es. <span class="chip">mon 12:00-15:00,19:00-23:30</span>)</div></div>
+      <div class="help-row"><div class="help-k">SPECIAL</div><div class="help-v">Giorno speciale (es. <span class="chip">2025-12-25 CLOSED</span> o <span class="chip">2025-08-15 18:00-23:00</span>)</div></div>
+      <div class="help-row"><div class="help-k">SETTINGS</div><div class="help-v">Impostazioni (es. <span class="chip">step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</span>)</div></div>
+      <div class="muted small">Questi comandi sono equivalenti alle azioni presenti nei modali.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light js-close">Chiudi</button>
     </div>
   </div>
 </div>
