@@ -1,4 +1,5 @@
-(function () {
+// static/js/reservations.js — completo
+(() => {
   // ---------------- util ----------------
   const $ = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
@@ -77,7 +78,6 @@
 
   // ---------------- KPI ----------------
   function computeKPIs(){
-    // Prenotazioni oggi
     const today = $('#f-date')?.value || '';
     let countToday = 0;
     let pizzas = 0;
@@ -87,7 +87,6 @@
 
     State.items.forEach(res=>{
       if (today && res.date === today) countToday++;
-      // Pizze ordinate + ricavi (solo pizzeria)
       if (isPizzeria && Array.isArray(res.pizzas)) {
         res.pizzas.forEach(p=>{
           const qty = Number(p.qty||0);
@@ -98,14 +97,9 @@
       }
     });
 
-    const kToday = $('#kpi-today');
-    if (kToday) kToday.textContent = String(countToday);
-
-    const kPizzas = $('#kpi-pizzas');
-    if (kPizzas) kPizzas.textContent = String(pizzas);
-
-    const kRevenue = $('#kpi-revenue');
-    if (kRevenue) kRevenue.textContent = fmtEuro(revenue);
+    const kToday = $('#kpi-today'); if (kToday) kToday.textContent = String(countToday);
+    const kPizzas = $('#kpi-pizzas'); if (kPizzas) kPizzas.textContent = String(pizzas);
+    const kRevenue = $('#kpi-revenue'); if (kRevenue) kRevenue.textContent = fmtEuro(revenue);
   }
 
   // ---------------- UI: render list ----------------
@@ -136,7 +130,6 @@
       mid.appendChild(el('div','badge', `${res.time || ''}`));
       mid.appendChild(el('div','badge', `${res.people || 2} px`));
 
-      // status
       const status = String(res.status||'pending');
       const st = el('div','lr-status');
       const stSpan = el('span','tag ' + (
@@ -145,7 +138,6 @@
       ), status);
       st.appendChild(stSpan);
 
-      // pizzas summary (se presente)
       const pWrap = el('div','lr-extra');
       if (Array.isArray(res.pizzas) && res.pizzas.length){
         const txt = res.pizzas.map(p=>{
@@ -191,10 +183,9 @@
   async function ensureMenu(){
     if (State.menuMap.size) return;
     try{
-      const menu = await apiMenu(); // [{id,name,price}]
+      const menu = await apiMenu();
       menu.forEach(p => State.menuMap.set(p.id, {name:p.name, price:p.price}));
     }catch(e){
-      // se fallisce, continuiamo senza prezzi
       State.menuMap.clear();
     }
   }
@@ -259,7 +250,6 @@
 
     if (bNew){
       bNew.addEventListener('click', async ()=>{
-        // Modal “nuova prenotazione” non è nel template: uso prompt snello.
         try{
           const name = prompt('Nome cliente?'); if(!name) return;
           const phone = prompt('Telefono?') || '';
@@ -267,7 +257,6 @@
           const time = prompt('Ora (HH:MM)?'); if(!time) return;
           const people = Number(prompt('Persone?') || '2') || 2;
 
-          // opzionale: se pizzeria, chiedi pizze in formato id:qty,id:qty
           let pizzas = [];
           if (window.IS_PIZZERIA) {
             await ensureMenu();
@@ -281,11 +270,7 @@
             }
           }
 
-          await apiCreateReservation({
-            customer_name: name,
-            phone, date, time, people,
-            pizzas
-          });
+          await apiCreateReservation({ customer_name: name, phone, date, time, people, pizzas });
           await reload();
         }catch(e){
           alert('Errore creazione prenotazione');
@@ -300,7 +285,6 @@
       initFilters();
       await reload();
     }catch(e){
-      // fallback UI
       const list = $('#list');
       if (list) list.innerHTML = '<div class="muted">Errore nel caricamento.</div>';
     }
