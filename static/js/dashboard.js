@@ -1,4 +1,4 @@
-/* static/js/dashboard.js — COMPLETO, VERIFICATO */
+/* static/js/dashboard.js — COMPLETO con fallback anti-400 */
 (()=>{
   const $ =(s,r=document)=>r.querySelector(s);
   const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
@@ -62,29 +62,23 @@
 
   // ---------- Helpers ----------
   const dayNames=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
-  const isHHMM = (s)=>/^\d{1,2}:\d{2}$/.test(s);
+  const isHHMM=(s)=>/^\d{1,2}:\d{2}$/.test(s);
+  const isoDate=(s)=>s?.slice(0,10); // yyyy-mm-dd da <input type="date">
 
-  function rangesToString(arr){
-    return (arr||[]).map(r=>`${r.start}-${r.end}`).join(", ");
-  }
+  function rangesToString(arr){ return (arr||[]).map(r=>`${r.start}-${r.end}`).join(", "); }
   function parseRanges(s){
-    const out=[];
-    const raw=(s||"").trim();
-    if(!raw) return out; // vuoto = chiuso
+    const out=[], raw=(s||"").trim(); if(!raw) return out;
     raw.split(",").forEach(part=>{
-      const p=part.trim();
-      if(!p) return;
+      const p=part.trim(); if(!p) return;
       const m=p.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
       if(!m) throw new Error(`Intervallo non valido: "${p}" (usa HH:MM-HH:MM)`);
-      const a=m[1], b=m[2];
-      if(!isHHMM(a)||!isHHMM(b)) throw new Error(`Formato orario non valido in "${p}"`);
-      if(a===b) throw new Error(`"${p}" ha inizio= fine`);
+      const a=m[1],b=m[2];
+      if(a===b) throw new Error(`"${p}" ha inizio=fine`);
       out.push({start:a,end:b});
     });
     return out;
   }
   function normalizeWeekly(weekly){
-    // accetta: mappa {"0":[{start,end}],...} o lista {weekday,ranges}
     const out=Array.from({length:7},()=>[]);
     if(Array.isArray(weekly)){
       weekly.forEach(d=>{
@@ -100,51 +94,20 @@
     return out;
   }
 
-  // ---------- API ----------
+  // ---------- API helpers (con fallback) ----------
+  async function postJSON(url, payload){
+    const r=await fetch(url,{
+      method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    let data=null;
+    try{ data=await r.json(); }catch{}
+    return {ok:r.ok, status:r.status, data};
+  }
+
   async function getState(){
     const r=await fetch("/api/admin/schedule/state",{credentials:"same-origin",headers:{"Accept":"application/json"}});
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    try{return await r.json();}catch{throw new Error("Risposta non valida");}
-  }
-  async function saveWeekly(weekly){
-    // Il backend si aspetta { weekly: { "0":[{start,end}], ... } }
-    const r=await fetch("/api/admin/schedule/weekly",{
-      method:"POST", credentials:"same-origin",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({weekly})
-    });
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    return r.json();
-  }
-  async function saveSettings(payload){
-    const r=await fetch("/api/admin/schedule/settings",{
-      method:"POST", credentials:"same-origin",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(payload)
-    });
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    return r.json();
-  }
-  async function listSpecials(){
-    const r=await fetch("/api/admin/special-days/list",{credentials:"same-origin"});
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    return r.json();
-  }
-  async function upsertSpecial(payload){
-    const r=await fetch("/api/admin/special-days/upsert",{
-      method:"POST", credentials:"same-origin",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(payload)
-    });
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    return r.json();
-  }
-  async function deleteSpecial(date){
-    const r=await fetch("/api/admin/special-days/delete",{
-      method:"POST", credentials:"same-origin",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({date})
-    });
     if(!r.ok) throw new Error("HTTP "+r.status);
     return r.json();
   }
@@ -178,14 +141,20 @@
   $("#weekly-save")?.addEventListener("click", async ()=>{
     try{
       const inputs=$$("#weekly-form input[data-wd]");
-      // costruiamo Mappa: {"0":[{start,end}], ...}
-      const weeklyMap={};
+      const weeklyMap={}, weeklyArr=[];
       for(const inp of inputs){
         const wd=Number(inp.dataset.wd);
         const ranges=parseRanges(inp.value);
-        weeklyMap[wd]=ranges; // [] = chiuso
+        weeklyMap[wd]=ranges;
+        weeklyArr.push({weekday:wd, ranges});
       }
-      await saveWeekly(weeklyMap);
+      // 1° tentativo: ARRAY (alcuni backend vogliono questo)
+      let resp=await postJSON("/api/admin/schedule/weekly",{weekly: weeklyArr});
+      if(!resp.ok){
+        // 2° tentativo: MAPPA { "0":[...] }
+        resp=await postJSON("/api/admin/schedule/weekly",{weekly: weeklyMap});
+      }
+      if(!resp.ok) throw new Error("HTTP "+resp.status);
       closeModal("#modal-weekly");
       toast("Orari settimanali aggiornati");
     }catch(e){
@@ -210,6 +179,11 @@
       cont.appendChild(row);
     });
   }
+  async function listSpecials(){
+    const r=await fetch("/api/admin/special-days/list",{credentials:"same-origin"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  }
   async function refreshSpecialList(){
     const {ok,items}=await listSpecials();
     if(ok===false) throw new Error("Errore elenco giorni speciali");
@@ -224,18 +198,26 @@
       console.error(e);
     }
   }
+
   $("#sp-add")?.addEventListener("click", async ()=>{
     try{
-      const date=$("#sp-date").value;
+      const date=isoDate($("#sp-date").value);
       const closed=$("#sp-closed").checked;
       if(!date) throw new Error("Seleziona una data");
+
+      let resp;
       if(closed){
-        // alcuni backend richiedono sempre ranges: []
-        await upsertSpecial({date, closed:true, ranges:[]});
+        // Tenta forme diverse per massima compatibilità
+        resp = await postJSON("/api/admin/special-days/upsert",{date, closed:true});
+        if(!resp.ok) resp = await postJSON("/api/admin/special-days/upsert",{date, closed:true, ranges:[]});
+        if(!resp.ok) resp = await postJSON("/api/admin/special-days/upsert",{date, is_closed:true});
       }else{
         const ranges=parseRanges($("#sp-ranges").value);
-        await upsertSpecial({date, closed:false, ranges});
+        resp = await postJSON("/api/admin/special-days/upsert",{date, closed:false, ranges});
+        if(!resp.ok) resp = await postJSON("/api/admin/special-days/upsert",{date, ranges}); // senza closed
       }
+      if(!resp.ok) throw new Error("HTTP "+resp.status);
+
       await refreshSpecialList();
       toast("Regola salvata");
     }catch(e){
@@ -243,11 +225,13 @@
       console.error(e);
     }
   });
+
   $("#sp-del")?.addEventListener("click", async ()=>{
     try{
-      const date=$("#sp-date").value;
+      const date=isoDate($("#sp-date").value);
       if(!date) throw new Error("Seleziona una data");
-      await deleteSpecial(date);
+      const resp=await postJSON("/api/admin/special-days/delete",{date});
+      if(!resp.ok) throw new Error("HTTP "+resp.status);
       await refreshSpecialList();
       toast("Regola eliminata");
     }catch(e){
@@ -256,7 +240,12 @@
     }
   });
 
-  // ---------- SETTINGS UI ----------
+  // ---------- SETTINGS ----------
+  async function saveSettings(payload){
+    const resp=await postJSON("/api/admin/schedule/settings",payload);
+    if(!resp.ok) throw new Error("HTTP "+resp.status);
+    return resp.data;
+  }
   async function actionSettings(){
     try{
       const st=await getState();
@@ -292,7 +281,7 @@
     }
   });
 
-  // ---------- STATE (human + json) ----------
+  // ---------- STATO / RIEPILOGO ----------
   function humanState(st){
     const weekly=normalizeWeekly(st.weekly);
     const wrap=document.createElement("div"); wrap.className="state-outer";

@@ -65,9 +65,14 @@
   <section class="card">
     <div class="card-head">
       <h3 class="card-title">Prenotazioni</h3>
-      <div class="row">
+      <div class="row" style="flex-wrap:wrap; gap:8px 10px">
         <input type="date" id="resv-date" class="input" value="{{ today }}">
-        <button class="btn btn-outline" id="resv-refresh">Aggiorna</button>
+        <input type="text" id="resv-q" class="input" placeholder="Cerca nome / telefono / orario">
+        <button class="btn btn-outline" id="resv-filter">Filtra</button>
+        <button class="btn btn-outline" id="resv-clear">Elimina filtri</button>
+        <button class="btn btn-outline" id="resv-last30">Storico 30gg</button>
+        <button class="btn btn-outline" id="resv-today">Oggi</button>
+        <button class="btn" id="resv-refresh">Aggiorna</button>
       </div>
     </div>
     <div id="resv-table" class="table"></div>
@@ -179,14 +184,14 @@
     <div class="modal-body help-body">
       <div class="help-row">
         <div class="help-k">Cos’è</div>
-        <div class="help-v">Comandi testuali equivalenti ai modali. Incolli una riga, aggiorni gli orari o le regole in un colpo.</div>
+        <div class="help-v">Comandi testuali equivalenti ai modali. Incolli una riga, aggiorni orari o regole in un colpo.</div>
       </div>
       <div class="help-row">
         <div class="help-k">Come usare</div>
         <div class="help-v">
           <ol style="margin:0; padding-left:18px">
             <li>Apri il menu ⋮ e scegli il pannello (Orari, Speciali, Impostazioni).</li>
-            <li>Copia <u>uno</u> degli esempi sotto, modifica i valori, incolla/compila e salva.</li>
+            <li>Prendi un esempio sotto, modifica i valori e salva.</li>
             <li>Controlla in “Stato & riepilogo”.</li>
           </ol>
         </div>
@@ -209,10 +214,8 @@
         <div class="help-k">SETTINGS</div>
         <div class="help-v">Impostazioni:
           <div class="chip">step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</div>
-          <div class="muted small">step=durata slot • last=ultimo anticipo • capacity=capienza slot • party=min-max</div>
         </div>
       </div>
-      <div class="muted small">Gli esempi corrispondono alle azioni dei modali: non serve scriverli nella UI, sono una scorciatoia di riferimento.</div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
@@ -222,7 +225,6 @@
 
 <!-- Toast -->
 <div id="_toast" role="status" aria-live="polite"></div>
-
 {% endblock %}
 
 {% block scripts %}
