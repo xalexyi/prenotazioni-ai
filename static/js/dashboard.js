@@ -1,4 +1,4 @@
-/* static/js/dashboard.js — completo */
+/* static/js/dashboard.js — complete, verified */
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -71,7 +71,7 @@
 
   function rangesToString(arr) {
     return (arr || []).map(r => `${r.start}-${r.end}`).join(", ");
-    }
+  }
   function parseRanges(s) {
     const out = [];
     (s || "").split(",").forEach(part => {
@@ -85,6 +85,7 @@
     return out;
   }
   function normalizeWeekly(weekly) {
+    // Accept: dict {0:[{start,end}],..} OR list [{weekday,ranges:[..]},..]
     const out = new Array(7).fill(0).map(() => []);
     if (Array.isArray(weekly)) {
       weekly.forEach(d => {
@@ -99,6 +100,12 @@
     }
     return out;
   }
+  function weeklyArrToDict(weeklyArr){
+    // Converti [[range...], ...] → {"0":[...],"1":[...],...}
+    const dict = {};
+    for (let i=0;i<7;i++) dict[String(i)] = weeklyArr[i] || [];
+    return dict;
+  }
 
   // ---------- API ----------
   async function getState() {
@@ -107,17 +114,21 @@
     try { return await r.json(); }
     catch { throw new Error("Risposta non valida (probabile login scaduto)"); }
   }
-  async function saveWeekly(weekly) {
+  async function saveWeekly(weeklyDict) {
     const r = await fetch("/api/admin/schedule/weekly", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weekly }),
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ weekly: weeklyDict }),
     });
     if (!r.ok) throw new Error("HTTP " + r.status);
     return r.json();
   }
   async function saveSettings(payload) {
     const r = await fetch("/api/admin/schedule/settings", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -130,7 +141,9 @@
   }
   async function upsertSpecial(payload) {
     const r = await fetch("/api/admin/special-days/upsert", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -138,7 +151,9 @@
   }
   async function deleteSpecial(date) {
     const r = await fetch("/api/admin/special-days/delete", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date }),
     });
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -175,13 +190,15 @@
   $("#weekly-save")?.addEventListener("click", async () => {
     try {
       const inputs = $$("#weekly-form input[data-wd]");
-      const weekly = [];
+      const weeklyArr = new Array(7).fill(0).map(()=>[]);
       for (const inp of inputs) {
         const wd = Number(inp.dataset.wd);
         const ranges = parseRanges(inp.value);
-        weekly.push({ weekday: wd, ranges });
+        weeklyArr[wd] = ranges;
       }
-      await saveWeekly(weekly);
+      // Il backend si aspetta un DIZIONARIO con chiavi 0..6
+      const weeklyDict = weeklyArrToDict(weeklyArr);
+      await saveWeekly(weeklyDict);
       alert("Orari settimanali aggiornati ✅");
       closeModal("#modal-weekly");
     } catch (e) {
@@ -224,7 +241,7 @@
   }
   $("#sp-add")?.addEventListener("click", async () => {
     try {
-      const date = $("#sp-date").value;
+      const date = $("#sp-date").value;            // YYYY-MM-DD da <input type="date">
       const closed = $("#sp-closed").checked;
       if (!date) throw new Error("Seleziona una data");
       if (closed) {
