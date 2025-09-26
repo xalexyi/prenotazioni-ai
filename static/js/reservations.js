@@ -76,8 +76,9 @@
   }
 
   // ---------------- state ----------------
+  const initialDate = $('#f-date')?.value || $('#resv-date')?.value || '';
   const State = {
-    params: { date: $('#f-date')?.value || '', q: '', range: '' },
+    params: { date: initialDate, q: '', range: '' },
     menuMap: new Map(),   // pizzaId -> {name, price}
     items: []             // prenotazioni correnti
   };
@@ -106,8 +107,12 @@
   }
 
   // ---------------- UI: render list ----------------
+  function getListBox(){
+    return $('#list') || $('#resv-table') || $('#reservations-list');
+  }
+
   function renderList(){
-    const box = $('#list') || $('#resv-table') || $('#reservations-list');
+    const box = getListBox();
     if (!box) return;
     box.innerHTML = '';
 
@@ -207,14 +212,14 @@
 
   // ---------------- filters ----------------
   function initFilters(){
-    const fDate = $('#f-date');
-    const fText = $('#f-text') || $('#resv-search');
-    const bFilter = $('#btn-filter') || $('#resv-filter');
-    const bClear = $('#btn-clear') || $('#resv-clear');
-    const b30 = $('#btn-30') || $('#resv-last30');
-    const bToday = $('#btn-today') || $('#resv-today');
-    const bRefresh = $('#resv-refresh');
-    const bNew = $('#btn-new');
+    const fDate = $('#f-date') || $('#resv-date');
+    const fText = $('#f-text') || $('#resv-q') || $('#resv-search');
+    const bFilter  = $('#btn-filter')  || $('#resv-filter');
+    const bClear   = $('#btn-clear')   || $('#resv-clear');
+    const b30      = $('#btn-30')      || $('#resv-last30');
+    const bToday   = $('#btn-today')   || $('#resv-today');
+    const bRefresh = $('#btn-refresh') || $('#resv-refresh');
+    const bNew     = $('#btn-new');
 
     if (bFilter){
       bFilter.addEventListener('click', async ()=>{
@@ -247,7 +252,6 @@
 
     if (bToday){
       bToday.addEventListener('click', async ()=>{
-        // FIX: filtra per data odierna impostandola esplicitamente
         const t = todayISO();
         if (fDate) fDate.value = t;
         State.params = { date:t, q:fText?.value || '', range:'' };
@@ -299,7 +303,7 @@
       initFilters();
       await reload();
     }catch(e){
-      const list = $('#list') || $('#resv-table') || $('#reservations-list');
+      const list = getListBox();
       if (list) list.innerHTML = '<div class="muted">Errore nel caricamento.</div>';
     }
   });

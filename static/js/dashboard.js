@@ -239,7 +239,7 @@
         const ranges = parseRanges(inp.value);
         weeklyArr[wd] = ranges;
       }
-      // backend expects map {0:[..],1:[..]...}
+      // payload sempre con 7 chiavi 0..6
       const weeklyMap = arrayToWeekMap(weeklyArr);
       await saveWeekly(weeklyMap);
       showToast("Orari settimanali salvati ✅", "ok");
@@ -252,12 +252,9 @@
 
   // ---------- SPECIAL DAYS UI ----------
   function isoFromInput(val) {
-    // <input type="date"> ritorna già YYYY-MM-DD; in caso di locale con / lo normalizzo
     if (!val) return "";
-    // 2026-01-01
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-    // 01/01/2026
-    const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;         // 2026-01-01
+    const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);   // 01/01/2026
     if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
     return val;
   }
@@ -298,10 +295,10 @@
       const closed = $("#sp-closed").checked;
       if (!date) throw new Error("Seleziona una data");
       if (closed) {
-        await upsertSpecial({ date, closed: 1 });
+        await upsertSpecial({ date, closed: true });
       } else {
         const ranges = parseRanges($("#sp-ranges").value);
-        await upsertSpecial({ date, closed: 0, ranges });
+        await upsertSpecial({ date, closed: false, ranges });
       }
       await refreshSpecialList();
       showToast("Giorno speciale salvato ✅", "ok");
@@ -388,11 +385,11 @@
     if (act === "help") return actionHelp();
   });
 
-  // ---------- Filtri “Oggi” (fix lato dashboard) ----------
-  // Se esiste il bottone “Oggi” nel pannello prenotazioni:
+  // ---------- Filtri “Oggi” (trigger per reservations.js) ----------
   $("#btn-today")?.addEventListener("click", () => {
-    const fDate = $("#f-date");
-    if (fDate) fDate.value = todayISO();
-    // Il file reservations.js farà il reload sui click dei bottoni propri.
+    // emette l’evento che ascolta reservations.js
+    window.dispatchEvent(new CustomEvent('reservations:filter', {
+      detail: { date: '', q: '', range: 'today' }
+    }));
   });
 })();

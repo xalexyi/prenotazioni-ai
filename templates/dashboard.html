@@ -75,7 +75,8 @@
         <button class="btn" id="resv-refresh">Aggiorna</button>
       </div>
     </div>
-    <div id="resv-table" class="table"></div>
+    <!-- Contenitore usato da reservations.js -->
+    <div id="list" class="table"></div>
   </section>
 </div>
 
@@ -228,6 +229,33 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Shim di compatibilità per vecchi ID usati da alcune versioni di reservations.js -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const rd = document.getElementById('resv-date');
+  const rq = document.getElementById('resv-q');
+
+  // alias nascosti per #f-date e #f-text
+  const fd = document.createElement('input'); fd.type='hidden'; fd.id='f-date'; fd.value = rd?.value || '';
+  const ft = document.createElement('input'); ft.type='hidden'; ft.id='f-text'; ft.value = rq?.value || '';
+  document.body.appendChild(fd); document.body.appendChild(ft);
+  rd?.addEventListener('input', ()=> fd.value = rd.value);
+  rq?.addEventListener('input', ()=> ft.value = rq.value);
+
+  // alias bottoni
+  function alias(oldId, targetId){
+    let b = document.getElementById(oldId);
+    if(!b){ b = document.createElement('button'); b.id = oldId; b.type='button'; b.style.display='none'; document.body.appendChild(b); }
+    b.addEventListener('click', ()=> document.getElementById(targetId)?.click());
+  }
+  alias('btn-filter',  'resv-filter');
+  alias('btn-clear',   'resv-clear');
+  alias('btn-30',      'resv-last30');
+  alias('btn-today',   'resv-today');
+  alias('btn-refresh', 'resv-refresh');
+});
+</script>
+
 <script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ config['BUILD_VERSION'] }}"></script>
 {% endblock %}
