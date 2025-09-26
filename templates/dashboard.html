@@ -158,7 +158,10 @@
     </div>
     <div class="modal-body state-wrap">
       <div id="state-human"></div>
-      <details class="state-json"><summary>Vedi JSON</summary><pre id="state-json" class="codebox"></pre></details>
+      <details class="state-json">
+        <summary>Vedi JSON</summary>
+        <pre id="state-json" class="codebox"></pre>
+      </details>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
@@ -176,54 +179,50 @@
     <div class="modal-body help-body">
       <div class="help-row">
         <div class="help-k">Cos’è</div>
-        <div class="help-v">Comandi testuali equivalenti ai modali. Servono a copiare/incollare orari e regole in un colpo solo.</div>
+        <div class="help-v">Comandi testuali equivalenti ai modali. Incolli una riga, aggiorni gli orari o le regole in un colpo.</div>
       </div>
-
       <div class="help-row">
-        <div class="help-k">Come si usa</div>
+        <div class="help-k">Come usare</div>
         <div class="help-v">
-          1) Apri il menu ⋮ e scegli il pannello che vuoi aggiornare.<br>
-          2) Copia un esempio qui sotto e adatta i valori.<br>
-          3) Incolla/compila i campi del pannello e <b>Salva</b>.
+          <ol style="margin:0; padding-left:18px">
+            <li>Apri il menu ⋮ e scegli il pannello (Orari, Speciali, Impostazioni).</li>
+            <li>Copia <u>uno</u> degli esempi sotto, modifica i valori, incolla/compila e salva.</li>
+            <li>Controlla in “Stato & riepilogo”.</li>
+          </ol>
         </div>
       </div>
-
-      <div class="help-row">
-        <div class="help-k">RID</div>
-        <div class="help-v">ID ristorante (es. <span class="chip">1</span>)</div>
-      </div>
-
       <div class="help-row">
         <div class="help-k">WEEK</div>
         <div class="help-v">Orari settimanali (mon…sun):
           <div class="chip">mon 12:00-15:00,19:00-23:30</div>
-          <div class="muted small">Giorno vuoto = chiuso</div>
+          <div class="muted small">Lascia vuoto un giorno per chiuderlo.</div>
         </div>
       </div>
-
       <div class="help-row">
         <div class="help-k">SPECIAL</div>
-        <div class="help-v">Giorno speciale (una data):
+        <div class="help-v">Giorno speciale:
           <div class="chip">2025-12-25 CLOSED</div>
           <div class="chip">2025-08-15 18:00-23:00</div>
         </div>
       </div>
-
       <div class="help-row">
         <div class="help-k">SETTINGS</div>
-        <div class="help-v">Impostazioni prenotazioni:
+        <div class="help-v">Impostazioni:
           <div class="chip">step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</div>
-          <div class="muted small">step=durata slot (min), last=ultimo anticipo (min), capacity=capienza slot, party=min-max</div>
+          <div class="muted small">step=durata slot • last=ultimo anticipo • capacity=capienza slot • party=min-max</div>
         </div>
       </div>
-
-      <div class="muted small">Gli esempi sono equivalenti alle azioni dei modali.</div>
+      <div class="muted small">Gli esempi corrispondono alle azioni dei modali: non serve scriverli nella UI, sono una scorciatoia di riferimento.</div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
     </div>
   </div>
 </div>
+
+<!-- Toast -->
+<div id="_toast" role="status" aria-live="polite"></div>
+
 {% endblock %}
 
 {% block scripts %}
