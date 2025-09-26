@@ -1,16 +1,21 @@
-// static/js/reservations.js — completo
-(() => {
-  // ---------------- util ----------------
+/* Prenotazioni: lista, filtri e azioni
+   - Compat con ID vecchi/nuovi (resv-*)
+   - KPI aggiornati
+*/
+(function () {
+  // ---------- util ----------
   const $ = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
   const host = window.location.origin;
+
+  // compat: primo selettore che esiste
+  function firstSel(...sels){ for(const s of sels){ const n=$(s); if(n) return n; } return null; }
 
   function fmtEuro(n){
     try{
       return (n || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
     }catch(e){ return "€ " + Math.round(n||0); }
   }
-
   function el(tag, cls, text){
     const x = document.createElement(tag);
     if (cls) x.className = cls;
@@ -18,7 +23,7 @@
     return x;
   }
 
-  // ---------------- API ----------------
+  // ---------- API ----------
   async function apiList(params = {}){
     const u = new URL(`${host}/api/reservations`);
     Object.entries(params).forEach(([k,v])=>{
@@ -28,13 +33,29 @@
     if(!r.ok) throw new Error('HTTP '+r.status);
     return r.json();
   }
-
   async function apiMenu(){
     const r = await fetch(`${host}/api/menu`, { credentials:'same-origin' });
     if(!r.ok) throw new Error('HTTP '+r.status);
-    return r.json(); // [{id,name,price}]
+    return r.json();
   }
-
+  async function apiUpdateReservation(id, status){
+    const r = await fetch(`${host}/api/reservations/${id}`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify({status})
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+  async function apiDeleteReservation(id){
+    const r = await fetch(`${host}/api/reservations/${id}`, {
+      method:'DELETE',
+      credentials:'same-origin'
+    });
+    if(!r.ok && r.status !== 204) throw new Error('HTTP '+r.status);
+    return true;
+  }
   async function apiCreateReservation(payload){
     const r = await fetch(`${host}/api/reservations`, {
       method:'POST',
@@ -49,40 +70,17 @@
     return r.json();
   }
 
-  async function apiUpdateReservation(id, status){
-    const r = await fetch(`${host}/api/reservations/${id}`, {
-      method:'PATCH',
-      headers:{'Content-Type':'application/json'},
-      credentials:'same-origin',
-      body: JSON.stringify({status})
-    });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    return r.json();
-  }
-
-  async function apiDeleteReservation(id){
-    const r = await fetch(`${host}/api/reservations/${id}`, {
-      method:'DELETE',
-      credentials:'same-origin'
-    });
-    if(!r.ok && r.status !== 204) throw new Error('HTTP '+r.status);
-    return true;
-  }
-
-  // ---------------- state ----------------
+  // ---------- state ----------
   const State = {
-    params: { date: $('#f-date')?.value || '', q: '', range: '' },
-    menuMap: new Map(),   // pizzaId -> {name, price}
-    items: []             // prenotazioni correnti
+    params: { date: '', q: '', range: '' },
+    menuMap: new Map(),
+    items: []
   };
 
-  // ---------------- KPI ----------------
+  // ---------- KPI ----------
   function computeKPIs(){
-    const today = $('#f-date')?.value || '';
-    let countToday = 0;
-    let pizzas = 0;
-    let revenue = 0;
-
+    const today = firstSel('#resv-date', '#f-date')?.value || '';
+    let countToday = 0, pizzas = 0, revenue = 0;
     const isPizzeria = !!window.IS_PIZZERIA;
 
     State.items.forEach(res=>{
@@ -91,7 +89,7 @@
         res.pizzas.forEach(p=>{
           const qty = Number(p.qty||0);
           pizzas += qty;
-          const m = State.menuMap.get(p.id);
+          const m = State.menuMap.get(p.id) || State.menuMap.get(p.pizza_id);
           if (m && m.price != null) revenue += qty * Number(m.price||0);
         });
       }
@@ -102,9 +100,9 @@
     const kRevenue = $('#kpi-revenue'); if (kRevenue) kRevenue.textContent = fmtEuro(revenue);
   }
 
-  // ---------------- UI: render list ----------------
+  // ---------- render ----------
   function renderList(){
-    const box = $('#list');
+    const box = firstSel('#resv-table', '#list');
     if (!box) return;
     box.innerHTML = '';
 
@@ -117,40 +115,32 @@
     }
 
     State.items.forEach(res=>{
-      const row = el('div','list-row');
+      const row = el('div','reservation-row');
 
-      const left = el('div','lr-left');
-      const name = el('div','lr-title', `${res.customer_name || '—'}`);
-      const sub = el('div','lr-sub', `${res.phone || ''}`);
-      left.appendChild(name);
-      left.appendChild(sub);
+      const left = el('div','res-left');
+      const name = el('div','res-name', res.customer_name || '—');
+      const sub = el('div','res-meta', res.phone || '');
+      left.appendChild(name); left.appendChild(sub);
 
-      const mid = el('div','lr-mid');
-      mid.appendChild(el('div','badge', `${res.date || ''}`));
-      mid.appendChild(el('div','badge', `${res.time || ''}`));
-      mid.appendChild(el('div','badge', `${res.people || 2} px`));
+      const mid = el('div','res-meta');
+      mid.appendChild(el('span','pill', res.date || ''));
+      mid.appendChild(document.createTextNode(' '));
+      mid.appendChild(el('span','pill', res.time || ''));
+      mid.appendChild(document.createTextNode(' '));
+      mid.appendChild(el('span','pill people', (res.people || 2)+' px'));
 
       const status = String(res.status||'pending');
-      const st = el('div','lr-status');
-      const stSpan = el('span','tag ' + (
-        status === 'confirmed' ? 'tag-green' :
-        status === 'rejected' ? 'tag-red' : 'tag-gray'
-      ), status);
+      const st = el('div','res-meta');
+      const stSpan = el('span','badge ' + (
+        status === 'confirmed' ? 'badge-green' :
+        status === 'rejected' ? 'badge-red' : 'badge-gray'
+      ), status.toUpperCase());
       st.appendChild(stSpan);
 
-      const pWrap = el('div','lr-extra');
-      if (Array.isArray(res.pizzas) && res.pizzas.length){
-        const txt = res.pizzas.map(p=>{
-          const n = State.menuMap.get(p.id)?.name || p.name || 'Pizza';
-          return `${n} ×${p.qty}`;
-        }).join(' · ');
-        pWrap.textContent = txt;
-      }
-
-      const right = el('div','lr-right');
-      const bConf = el('button','btn btn-xs btn-green','Conferma');
-      const bRej  = el('button','btn btn-xs btn-yellow','Rifiuta');
-      const bDel  = el('button','btn btn-xs btn-outline','Elimina');
+      const right = el('div','res-actions');
+      const bConf = el('button','btn btn-outline','Conferma');
+      const bRej  = el('button','btn btn-gray','Rifiuta');
+      const bDel  = el('button','btn btn-red','Elimina');
 
       bConf.addEventListener('click', async ()=>{
         try{ await apiUpdateReservation(res.id,'confirmed'); await reload(); }catch(e){ alert('Errore aggiornamento'); }
@@ -163,14 +153,11 @@
         try{ await apiDeleteReservation(res.id); await reload(); }catch(e){ alert('Errore eliminazione'); }
       });
 
-      right.appendChild(bConf);
-      right.appendChild(bRej);
-      right.appendChild(bDel);
+      right.appendChild(bConf); right.appendChild(bRej); right.appendChild(bDel);
 
       row.appendChild(left);
       row.appendChild(mid);
       row.appendChild(st);
-      if (pWrap.textContent) row.appendChild(pWrap);
       row.appendChild(right);
 
       box.appendChild(row);
@@ -179,38 +166,34 @@
     computeKPIs();
   }
 
-  // ---------------- load & reload ----------------
+  // ---------- load ----------
   async function ensureMenu(){
     if (State.menuMap.size) return;
     try{
       const menu = await apiMenu();
       menu.forEach(p => State.menuMap.set(p.id, {name:p.name, price:p.price}));
-    }catch(e){
-      State.menuMap.clear();
-    }
+    }catch{ State.menuMap.clear(); }
   }
-
   async function reload(){
     await ensureMenu();
     const params = {};
     if (State.params.date) params.date = State.params.date;
     if (State.params.q) params.q = State.params.q;
     if (State.params.range) params.range = State.params.range;
-
     const items = await apiList(params);
     State.items = Array.isArray(items) ? items : [];
     renderList();
   }
 
-  // ---------------- filters ----------------
+  // ---------- filters ----------
   function initFilters(){
-    const fDate = $('#f-date');
-    const fText = $('#f-text');
-    const bFilter = $('#btn-filter');
-    const bClear = $('#btn-clear');
-    const b30 = $('#btn-30');
-    const bToday = $('#btn-today');
-    const bNew = $('#btn-new');
+    const fDate   = firstSel('#resv-date', '#f-date');
+    const fText   = firstSel('#resv-search', '#f-text');
+    const bFilter = firstSel('#resv-filter', '#btn-filter');
+    const bClear  = firstSel('#resv-clear',  '#btn-clear');
+    const b30     = firstSel('#resv-last30', '#btn-30');
+    const bToday  = firstSel('#resv-today',  '#btn-today');
+    const bRefresh= firstSel('#resv-refresh', '#btn-refresh');
 
     if (bFilter){
       bFilter.addEventListener('click', async ()=>{
@@ -222,70 +205,42 @@
         await reload();
       });
     }
-
     if (bClear){
       bClear.addEventListener('click', async ()=>{
-        if (fDate) fDate.value = '';
+        if (fDate) fDate.value = (fDate.type==='date' ? '' : '');
         if (fText) fText.value = '';
         State.params = { date:'', q:'', range:'' };
         await reload();
       });
     }
-
     if (b30){
       b30.addEventListener('click', async ()=>{
-        State.params = { date:'', q:'', range:'30days' };
         if (fDate) fDate.value = '';
         if (fText) fText.value = '';
+        State.params = { date:'', q:'', range:'30days' };
         await reload();
       });
     }
-
     if (bToday){
       bToday.addEventListener('click', async ()=>{
         State.params = { date:'', q:'', range:'today' };
         await reload();
       });
     }
-
-    if (bNew){
-      bNew.addEventListener('click', async ()=>{
-        try{
-          const name = prompt('Nome cliente?'); if(!name) return;
-          const phone = prompt('Telefono?') || '';
-          const date = prompt('Data (YYYY-MM-DD)?'); if(!date) return;
-          const time = prompt('Ora (HH:MM)?'); if(!time) return;
-          const people = Number(prompt('Persone?') || '2') || 2;
-
-          let pizzas = [];
-          if (window.IS_PIZZERIA) {
-            await ensureMenu();
-            const guide = Array.from(State.menuMap.entries()).map(([id, m])=>`${id}=${m.name}`).join(' | ');
-            const raw = prompt('Pizze (formato id:qty,id:qty). Disponibili: '+guide+'\nLascia vuoto per nessuna.');
-            if (raw){
-              pizzas = raw.split(',').map(s=>s.trim()).filter(Boolean).map(pair=>{
-                const [pid, q] = pair.split(':').map(x=>x.trim());
-                return { pizza_id: Number(pid), qty: Number(q||1) };
-              }).filter(x => x.pizza_id && x.qty>0);
-            }
-          }
-
-          await apiCreateReservation({ customer_name: name, phone, date, time, people, pizzas });
-          await reload();
-        }catch(e){
-          alert('Errore creazione prenotazione');
-        }
-      });
+    if (bRefresh){
+      bRefresh.addEventListener('click', reload);
     }
   }
 
-  // ---------------- init ----------------
+  // ---------- init ----------
   document.addEventListener('DOMContentLoaded', async ()=>{
     try{
       initFilters();
+      // inizializza date dal campo pagina se presente
+      const d = firstSel('#resv-date', '#f-date'); State.params.date = d?.value || '';
       await reload();
-    }catch(e){
-      const list = $('#list');
+    }catch{
+      const list = firstSel('#resv-table', '#list');
       if (list) list.innerHTML = '<div class="muted">Errore nel caricamento.</div>';
     }
   });
