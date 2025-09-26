@@ -1,4 +1,4 @@
-/* static/js/dashboard.js — complete, verified (UI+API wired, all aligned) */
+/* static/js/dashboard.js — complete, verified (UI+API wired, payloads OK) */
 (() => {
   const $  = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
@@ -36,8 +36,7 @@
   const kebabMenu=$("#kebab-menu");
   function kebabOpen(){
     if(!kebabMenu) return;
-    kebabMenu.hidden=false;
-    kebabMenu.classList.add("open");
+    kebabMenu.hidden=false; kebabMenu.classList.add("open");
     kebabBtn?.classList.add("kebab-active");
     kebabBtn?.setAttribute("aria-expanded","true");
     const onDoc=(e)=>{ if(!kebabMenu.contains(e.target) && e.target!==kebabBtn) kebabClose(); };
@@ -136,13 +135,14 @@
   $("#weekly-save")?.addEventListener("click", async ()=>{
     try{
       const inputs=$$("#weekly-form input[data-wd]");
-      const weekly=[];
+      // invia come mappa {0:[{start,end}], 1:[...], ...}
+      const weeklyMap = {};
       for(const inp of inputs){
         const wd=Number(inp.dataset.wd);
-        const ranges=parseRanges(inp.value);
-        weekly.push({ weekday: wd, ranges });
+        const ranges=parseRanges(inp.value); // [] se vuoto = CHIUSO
+        weeklyMap[wd] = ranges;
       }
-      await saveWeekly(weekly);
+      await saveWeekly(weeklyMap);
       closeModal("#modal-weekly");
       toast("Orari settimanali aggiornati");
     }catch(e){
@@ -187,7 +187,7 @@
       const closed=$("#sp-closed").checked;
       if(!date) throw new Error("Seleziona una data");
       if(closed){
-        await upsertSpecial({ date, closed:true });
+        await upsertSpecial({ date, closed:true, ranges: [] });
       }else{
         const ranges=parseRanges($("#sp-ranges").value);
         await upsertSpecial({ date, closed:false, ranges });
@@ -232,12 +232,12 @@
   $("#settings-save")?.addEventListener("click", async ()=>{
     try{
       const payload={
-        slot_step_min:   Number($("#st-step").value) || 15,
-        last_order_min:  Number($("#st-last").value) || 15,
+        slot_step_min:     Number($("#st-step").value) || 15,
+        last_order_min:    Number($("#st-last").value) || 15,
         capacity_per_slot: Number($("#st-cap").value) || 6,
-        min_party:       Number($("#st-minp").value) || 1,
-        max_party:       Number($("#st-maxp").value) || 12,
-        tz:              ($("#st-tz").value || "Europe/Rome").trim(),
+        min_party:         Number($("#st-minp").value) || 1,
+        max_party:         Number($("#st-maxp").value) || 12,
+        tz:                ($("#st-tz").value || "Europe/Rome").trim(),
       };
       await saveSettings(payload);
       closeModal("#modal-settings");

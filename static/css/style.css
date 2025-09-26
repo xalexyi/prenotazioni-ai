@@ -1,7 +1,10 @@
 /* =======================================================
+   static/css/style.css
    Dashboard Ristorante — Stili globali (LIGHT + DARK)
+   Versione: 2025-09-26
    ======================================================= */
 
+/* ------------------ THEME VARIABLES (LIGHT) ------------------ */
 :root{
   --bg:#f5f6f8;
   --card:#ffffff;
@@ -13,7 +16,7 @@
   --primary-contrast:#ffffff;
   --primary-hover:#1f4fd6;
 
-  --red:#e11d48;                  /* bottoni danger/outline */
+  --red:#e11d48;                  /* danger */
   --red-contrast:#ffffff;
   --red-hover:#c10f3b;
 
@@ -96,6 +99,7 @@ body.app-body{
 }
 a{color:var(--primary); text-decoration:none}
 .muted{color:var(--muted)} .small{font-size:.9rem}
+hr{border:none; border-top:1px solid var(--gray); margin:12px 0}
 
 /* ------------------ HEADER ------------------ */
 .app-header{
@@ -116,6 +120,14 @@ a{color:var(--primary); text-decoration:none}
   padding:8px 12px; border-radius:999px; box-shadow:var(--shadow);
   display:flex; align-items:center; gap:8px; cursor:pointer;
 }
+
+/* --------- Logout rosso forzato --------- */
+.logout-btn.btn{
+  background:var(--red) !important;
+  color:var(--red-contrast) !important;
+  border: none !important;
+}
+.logout-btn.btn:hover{ background:var(--red-hover) !important; }
 .logout-btn,
 .logout-btn:visited,
 .logout-btn:hover,
@@ -169,6 +181,7 @@ a{color:var(--primary); text-decoration:none}
 
 /* ------------------ INPUTS ------------------ */
 label{display:block; font-weight:700; margin-bottom:6px}
+.checkbox{display:inline-flex; align-items:center; gap:8px}
 .form-label{font-size:13px; color:var(--muted)}
 .input{
   width:100%; height:36px; padding:0 12px;
@@ -178,7 +191,7 @@ label{display:block; font-weight:700; margin-bottom:6px}
 .input:focus{outline:2px solid var(--input-focus)}
 .row{display:flex; gap:10px; align-items:center}
 
-/* ------------------ LOGIN (sezione landing) ------------------ */
+/* ------------------ LOGIN / WELCOME ------------------ */
 .welcome-grid{display:grid; grid-template-columns:1.3fr 1fr; gap:24px; align-items:start}
 .welcome-card.gradient-soft{background:var(--soft)}
 .welcome-title{margin:4px 0 6px 0; font-size:36px; font-weight:800}
@@ -262,7 +275,7 @@ label{display:block; font-weight:700; margin-bottom:6px}
   min-width:240px; background:var(--menu-bg); color:var(--text);
   border:1px solid var(--gray); border-radius:14px; box-shadow:var(--shadow);
   padding:6px; overflow:hidden;
-  /* animazione tendina */
+  /* animazione */
   opacity:0; transform: translateY(-4px); pointer-events:none;
   transition: opacity .16s ease, transform .16s ease;
 }

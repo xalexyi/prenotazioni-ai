@@ -38,7 +38,7 @@
       <span class="strong"><span id="vb-active">0</span>/<span id="vb-max">3</span></span>
     </div>
     <div class="soft-right">
-      <span class="dot" id="vb-dot"></span>
+      <span class="dot dot-green" id="vb-dot"></span>
       <span class="soft-label" id="vb-label">Disponibile</span>
     </div>
   </section>
@@ -116,16 +116,13 @@
           <input id="sp-ranges" type="text" class="input" placeholder="18:00-23:00, 12:00-15:00">
         </div>
       </div>
-      <div class="btn-row">
-        <button id="sp-del" class="btn btn-danger-outline">Elimina</button>
-        <div class="flex-1"></div>
-        <button id="sp-add" class="btn">Aggiungi / Aggiorna</button>
-      </div>
       <hr>
       <div id="sp-list" class="sp-list"></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
+      <button id="sp-del" class="btn btn-danger-outline">Elimina</button>
+      <button id="sp-add" class="btn">Aggiungi / Aggiorna</button>
     </div>
   </div>
 </div>
@@ -160,13 +157,8 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body state-wrap">
-      <!-- Riepilogo leggibile (non monospace) -->
       <div id="state-human"></div>
-      <!-- JSON opzionale sotto details -->
-      <details class="state-json">
-        <summary>Vedi JSON</summary>
-        <pre id="state-json" class="codebox"></pre>
-      </details>
+      <details class="state-json"><summary>Vedi JSON</summary><pre id="state-json" class="codebox"></pre></details>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
@@ -182,18 +174,56 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body help-body">
-      <div class="help-row"><div class="help-k">RID</div><div class="help-v">ID ristorante (es. <span class="chip">1</span>)</div></div>
-      <div class="help-row"><div class="help-k">WEEK</div><div class="help-v">Orari settimanali (es. <span class="chip">mon 12:00-15:00,19:00-23:30</span>)</div></div>
-      <div class="help-row"><div class="help-k">SPECIAL</div><div class="help-v">Giorno speciale (es. <span class="chip">2025-12-25 CLOSED</span> o <span class="chip">2025-08-15 18:00-23:00</span>)</div></div>
-      <div class="help-row"><div class="help-k">SETTINGS</div><div class="help-v">Impostazioni (es. <span class="chip">step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</span>)</div></div>
-      <div class="muted small">Questi comandi sono equivalenti alle azioni presenti nei modali.</div>
+      <div class="help-row">
+        <div class="help-k">Cos’è</div>
+        <div class="help-v">Comandi testuali equivalenti ai modali. Servono a copiare/incollare orari e regole in un colpo solo.</div>
+      </div>
+
+      <div class="help-row">
+        <div class="help-k">Come si usa</div>
+        <div class="help-v">
+          1) Apri il menu ⋮ e scegli il pannello che vuoi aggiornare.<br>
+          2) Copia un esempio qui sotto e adatta i valori.<br>
+          3) Incolla/compila i campi del pannello e <b>Salva</b>.
+        </div>
+      </div>
+
+      <div class="help-row">
+        <div class="help-k">RID</div>
+        <div class="help-v">ID ristorante (es. <span class="chip">1</span>)</div>
+      </div>
+
+      <div class="help-row">
+        <div class="help-k">WEEK</div>
+        <div class="help-v">Orari settimanali (mon…sun):
+          <div class="chip">mon 12:00-15:00,19:00-23:30</div>
+          <div class="muted small">Giorno vuoto = chiuso</div>
+        </div>
+      </div>
+
+      <div class="help-row">
+        <div class="help-k">SPECIAL</div>
+        <div class="help-v">Giorno speciale (una data):
+          <div class="chip">2025-12-25 CLOSED</div>
+          <div class="chip">2025-08-15 18:00-23:00</div>
+        </div>
+      </div>
+
+      <div class="help-row">
+        <div class="help-k">SETTINGS</div>
+        <div class="help-v">Impostazioni prenotazioni:
+          <div class="chip">step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</div>
+          <div class="muted small">step=durata slot (min), last=ultimo anticipo (min), capacity=capienza slot, party=min-max</div>
+        </div>
+      </div>
+
+      <div class="muted small">Gli esempi sono equivalenti alle azioni dei modali.</div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
     </div>
   </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
