@@ -1,7 +1,7 @@
 /* static/js/reservations.js — complete, verified */
 (function () {
   // ---------------- util ----------------
-  const $ = (s, r=document) => r.querySelector(s);
+  const $  = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
   const host = window.location.origin;
 
@@ -76,9 +76,9 @@
   }
 
   // ---------------- state ----------------
-  const initialDate = $('#f-date')?.value || $('#resv-date')?.value || '';
+  const fDateInit = $('#f-date') || $('#resv-date');
   const State = {
-    params: { date: initialDate, q: '', range: '' },
+    params: { date: fDateInit?.value || '', q: '', range: '' },
     menuMap: new Map(),   // pizzaId -> {name, price}
     items: []             // prenotazioni correnti
   };
@@ -101,18 +101,14 @@
       }
     });
 
-    $('#kpi-today') && ($('#kpi-today').textContent = String(countToday));
-    $('#kpi-pizzas') && ($('#kpi-pizzas').textContent = String(pizzas));
-    $('#kpi-revenue') && ($('#kpi-revenue').textContent = fmtEuro(revenue));
+    const k1 = $('#kpi-today');   if (k1) k1.textContent   = String(countToday);
+    const k2 = $('#kpi-pizzas');  if (k2) k2.textContent  = String(pizzas);
+    const k3 = $('#kpi-revenue'); if (k3) k3.textContent = fmtEuro(revenue);
   }
 
   // ---------------- UI: render list ----------------
-  function getListBox(){
-    return $('#list') || $('#resv-table') || $('#reservations-list');
-  }
-
   function renderList(){
-    const box = getListBox();
+    const box = $('#list') || $('#resv-table') || $('#reservations-list');
     if (!box) return;
     box.innerHTML = '';
 
@@ -142,7 +138,7 @@
       const st = el('div','lr-status');
       const stSpan = el('span','tag ' + (
         status === 'confirmed' ? 'tag-green' :
-        status === 'rejected' ? 'tag-red' : 'tag-gray'
+        status === 'rejected'  ? 'tag-red'   : 'tag-gray'
       ), status);
       st.appendChild(stSpan);
 
@@ -201,8 +197,8 @@
   async function reload(){
     await ensureMenu();
     const params = {};
-    if (State.params.date) params.date = State.params.date;
-    if (State.params.q) params.q = State.params.q;
+    if (State.params.date)  params.date  = State.params.date;
+    if (State.params.q)     params.q     = State.params.q;
     if (State.params.range) params.range = State.params.range;
 
     const items = await apiList(params);
@@ -212,8 +208,8 @@
 
   // ---------------- filters ----------------
   function initFilters(){
-    const fDate = $('#f-date') || $('#resv-date');
-    const fText = $('#f-text') || $('#resv-q') || $('#resv-search');
+    const fDate    = $('#f-date') || $('#resv-date');
+    const fText    = $('#f-text') || $('#resv-q') || $('#resv-search');
     const bFilter  = $('#btn-filter')  || $('#resv-filter');
     const bClear   = $('#btn-clear')   || $('#resv-clear');
     const b30      = $('#btn-30')      || $('#resv-last30');
@@ -223,11 +219,7 @@
 
     if (bFilter){
       bFilter.addEventListener('click', async ()=>{
-        State.params = {
-          date: fDate?.value || '',
-          q: fText?.value || '',
-          range: ''
-        };
+        State.params = { date: fDate?.value || '', q: fText?.value || '', range: '' };
         await reload();
       });
     }
@@ -303,7 +295,7 @@
       initFilters();
       await reload();
     }catch(e){
-      const list = getListBox();
+      const list = $('#list') || $('#resv-table') || $('#reservations-list');
       if (list) list.innerHTML = '<div class="muted">Errore nel caricamento.</div>';
     }
   });

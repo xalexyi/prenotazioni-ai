@@ -1,11 +1,10 @@
 /* static/js/dashboard.js — complete, verified */
 (() => {
-  const $ = (s, r = document) => r.querySelector(s);
+  const $  = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
   // ---------- Toast ----------
   function showToast(msg, type = "ok") {
-    // type: ok | err | warn
     let bar = $("#toast-bar");
     if (!bar) {
       bar = document.createElement("div");
@@ -25,11 +24,10 @@
     pill.style.fontWeight = "700";
     pill.style.boxShadow = "0 10px 30px rgba(0,0,0,.35)";
     pill.style.marginTop = "8px";
-    pill.style.background = type === "ok"
-      ? "linear-gradient(135deg,#16a34a,#059669)"
-      : type === "warn"
-        ? "linear-gradient(135deg,#f59e0b,#d97706)"
-        : "linear-gradient(135deg,#dc2626,#b91c1c)";
+    pill.style.background =
+      type === "ok"   ? "linear-gradient(135deg,#16a34a,#059669)" :
+      type === "warn" ? "linear-gradient(135deg,#f59e0b,#d97706)" :
+                        "linear-gradient(135deg,#dc2626,#b91c1c)";
     bar.appendChild(pill);
     setTimeout(() => pill.remove(), 2600);
   }
@@ -73,9 +71,7 @@
     kebabMenu.classList.add("open");
     kebabBtn?.classList.add("kebab-active");
     kebabBtn?.setAttribute("aria-expanded", "true");
-    const onDoc = (e) => {
-      if (!kebabMenu.contains(e.target) && e.target !== kebabBtn) kebabClose();
-    };
+    const onDoc = (e) => { if (!kebabMenu.contains(e.target) && e.target !== kebabBtn) kebabClose(); };
     const onKey = (e) => { if (e.key === "Escape") kebabClose(); };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -96,17 +92,13 @@
     if (kebabMenu.hidden) kebabOpen(); else kebabClose();
   });
 
-  // ---------- Generic helpers ----------
+  // ---------- Helpers ----------
   const dayNames = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
   const isHHMM = (s) => /^\d{1,2}:\d{2}$/.test(s);
   const pad2 = (n) => String(n).padStart(2, "0");
   function todayISO() {
     const d = new Date();
     return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-  }
-
-  function rangesToString(arr) {
-    return (arr || []).map(r => `${r.start}-${r.end}`).join(", ");
   }
   function parseRanges(s) {
     const out = [];
@@ -119,6 +111,9 @@
       out.push({ start: m[1], end: m[2] });
     });
     return out;
+  }
+  function rangesToString(arr) {
+    return (arr || []).map(r => `${r.start}-${r.end}`).join(", ");
   }
   function normalizeWeeklyToArray(weekly) {
     const out = new Array(7).fill(0).map(() => []);
@@ -135,25 +130,19 @@
     }
     return out;
   }
-  function arrayToWeekMap(weeklyArr) {
-    const m = {};
-    weeklyArr.forEach((ranges, idx) => { m[idx] = ranges || []; });
-    return m;
-  }
 
   // ---------- API ----------
   async function getState() {
     const r = await fetch("/api/admin/schedule/state", { credentials: "same-origin", headers: { "Accept": "application/json" }});
     if (!r.ok) throw new Error("HTTP " + r.status);
-    try { return await r.json(); }
-    catch { throw new Error("Risposta non valida (probabile login scaduto)"); }
+    return r.json();
   }
-  async function saveWeekly(weeklyMap) {
+  async function saveWeekly(weeklyList) {
     const r = await fetch("/api/admin/schedule/weekly", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weekly: weeklyMap }),
+      body: JSON.stringify({ weekly: weeklyList }),   // <— LISTA [{weekday, ranges:[{start,end}]}]
     });
     if (!r.ok) {
       const j = await r.json().catch(()=> ({}));
@@ -233,15 +222,13 @@
   $("#weekly-save")?.addEventListener("click", async () => {
     try {
       const inputs = $$("#weekly-form input[data-wd]");
-      const weeklyArr = new Array(7).fill(0).map(()=>[]);
+      const list = [];
       for (const inp of inputs) {
         const wd = Number(inp.dataset.wd);
         const ranges = parseRanges(inp.value);
-        weeklyArr[wd] = ranges;
+        list.push({ weekday: wd, ranges });
       }
-      // payload sempre con 7 chiavi 0..6
-      const weeklyMap = arrayToWeekMap(weeklyArr);
-      await saveWeekly(weeklyMap);
+      await saveWeekly(list);
       showToast("Orari settimanali salvati ✅", "ok");
       closeModal("#modal-weekly");
     } catch (e) {
@@ -253,8 +240,8 @@
   // ---------- SPECIAL DAYS UI ----------
   function isoFromInput(val) {
     if (!val) return "";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;         // 2026-01-01
-    const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);   // 01/01/2026
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;           // 2026-01-01
+    const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);    // 01/01/2026
     if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
     return val;
   }
@@ -295,16 +282,16 @@
       const closed = $("#sp-closed").checked;
       if (!date) throw new Error("Seleziona una data");
       if (closed) {
-        await upsertSpecial({ date, closed: true });
+        await upsertSpecial({ date, closed: 1, ranges: [] });
       } else {
         const ranges = parseRanges($("#sp-ranges").value);
-        await upsertSpecial({ date, closed: false, ranges });
+        await upsertSpecial({ date, closed: 0, ranges });
       }
       await refreshSpecialList();
       showToast("Giorno speciale salvato ✅", "ok");
     } catch (e) {
       console.error(e);
-      showToast(e.message || "Errore salvataggio", "err");
+      showToast(e.message || "db_error", "err");
     }
   });
   $("#sp-del")?.addEventListener("click", async () => {
@@ -340,12 +327,12 @@
   $("#settings-save")?.addEventListener("click", async () => {
     try {
       const payload = {
-        slot_step_min: Number($("#st-step").value) || 15,
-        last_order_min: Number($("#st-last").value) || 15,
-        capacity_per_slot: Number($("#st-cap").value) || 6,
-        min_party: Number($("#st-minp").value) || 1,
-        max_party: Number($("#st-maxp").value) || 12,
-        tz: $("#st-tz").value.trim() || "Europe/Rome",
+        slot_step_min:    Number($("#st-step").value) || 15,
+        last_order_min:   Number($("#st-last").value) || 15,
+        capacity_per_slot:Number($("#st-cap").value)  || 6,
+        min_party:        Number($("#st-minp").value) || 1,
+        max_party:        Number($("#st-maxp").value) || 12,
+        tz:               ($("#st-tz").value || "Europe/Rome").trim(),
       };
       await saveSettings(payload);
       showToast("Impostazioni salvate ✅", "ok");
@@ -356,12 +343,47 @@
     }
   });
 
-  // ---------- STATE (debug / riepilogo) ----------
+  // ---------- STATE (riepilogo) ----------
+  function humanState(st) {
+    const wrap = document.createElement("div");
+    const wk = normalizeWeeklyToArray(st.weekly);
+    const w = document.createElement("div");
+    w.innerHTML = "<strong>Orari settimanali</strong>";
+    const ul = document.createElement("ul");
+    wk.forEach((ranges, idx) => {
+      const li = document.createElement("li");
+      li.textContent = `${dayNames[idx]}: ${ranges.length ? ranges.map(r=>`${r.start}-${r.end}`).join(", ") : "CHIUSO"}`;
+      ul.appendChild(li);
+    });
+    w.appendChild(ul);
+    wrap.appendChild(w);
+
+    if (Array.isArray(st.specials) && st.specials.length) {
+      const s = document.createElement("div");
+      s.style.marginTop = "8px";
+      s.innerHTML = "<strong>Giorni speciali</strong>";
+      const ul2 = document.createElement("ul");
+      st.specials.forEach(it=>{
+        const li = document.createElement("li");
+        const ranges = (it.ranges||[]).map(r=>`${r.start}-${r.end}`).join(", ");
+        li.textContent = `${it.date}: ${it.closed ? "CHIUSO" : (ranges||"aperto")}`;
+        ul2.appendChild(li);
+      });
+      s.appendChild(ul2);
+      wrap.appendChild(s);
+    }
+    return wrap;
+  }
   async function actionState() {
     try {
       const st = await getState();
-      const box = $("#state-json");
-      if (box) box.textContent = JSON.stringify(st, null, 2);
+      const boxH = $("#state-human");
+      const boxJ = $("#state-json");
+      if (boxH) {
+        boxH.innerHTML = "";
+        boxH.appendChild(humanState(st));
+      }
+      if (boxJ) boxJ.textContent = JSON.stringify(st, null, 2);
       openModal("#modal-state");
     } catch (e) {
       alert("Errore lettura stato: " + (e.message || e));
@@ -372,24 +394,22 @@
   // ---------- HELP ----------
   function actionHelp() { openModal("#modal-help"); }
 
-  // ---------- Wire menu items ----------
+  // ---------- Wire menu ----------
   kebabMenu?.addEventListener("click", (e) => {
     const btn = e.target.closest(".k-item");
     if (!btn) return;
     const act = btn.dataset.act;
     kebabClose();
-    if (act === "weekly") return actionWeekly();
-    if (act === "special") return actionSpecial();
+    if (act === "weekly")   return actionWeekly();
+    if (act === "special")  return actionSpecial();
     if (act === "settings") return actionSettings();
-    if (act === "state") return actionState();
-    if (act === "help") return actionHelp();
+    if (act === "state")    return actionState();
+    if (act === "help")     return actionHelp();
   });
 
-  // ---------- Filtri “Oggi” (trigger per reservations.js) ----------
+  // ---------- Ponte con il pannello prenotazioni: “Oggi” ----------
   $("#btn-today")?.addEventListener("click", () => {
-    // emette l’evento che ascolta reservations.js
-    window.dispatchEvent(new CustomEvent('reservations:filter', {
-      detail: { date: '', q: '', range: 'today' }
-    }));
+    const fDate = $("#f-date") || $("#resv-date");
+    if (fDate) fDate.value = todayISO();
   });
 })();
