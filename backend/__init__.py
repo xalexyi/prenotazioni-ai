@@ -1,68 +1,98 @@
+# -*- coding: utf-8 -*-
 # backend/__init__.py
+
 import os
 from pathlib import Path
+from typing import Optional, Dict, Any
+
 from flask import Flask
 from flask_login import LoginManager
 
 from backend.models import db, Restaurant
 
 
+# -----------------------------
+# Helpers
+# -----------------------------
+BASE_DIR = Path(__file__).resolve().parent.parent  # cartella progetto (che contiene /backend, /templates, /static)
+
+
 def _maybe_create_instance_dir(db_uri: str) -> None:
-    """
-    Se stiamo usando SQLite in instance/, assicuriamoci che la cartella esista.
-    """
+    """Se usiamo SQLite in instance/, assicuriamoci che la cartella esista."""
     if db_uri.startswith("sqlite:///instance/"):
-        Path("instance").mkdir(parents=True, exist_ok=True)
+        (BASE_DIR / "instance").mkdir(parents=True, exist_ok=True)
 
 
-def create_app():
+def _normalize_db_url(raw: str) -> str:
+    """
+    Normalizza DATABASE_URL per compat vecchi Heroku e Render:
+    - postgres://  -> postgresql://
+    - aggiunge sslmode=require se Postgres e manca
+    """
+    if raw.startswith("postgres://"):
+        raw = raw.replace("postgres://", "postgresql://", 1)
+    if raw.startswith("postgresql://") and "sslmode=" not in raw:
+        # Render in genere richiede SSL; se già presente, non toccare
+        sep = "&" if "?" in raw else "?"
+        raw = f"{raw}{sep}sslmode=require"
+    return raw
+
+
+# -----------------------------
+# App factory
+# -----------------------------
+def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     app = Flask(
         __name__,
-        static_folder="../static",
-        template_folder="../templates",
+        static_folder=str((BASE_DIR / "static").resolve()),
+        template_folder=str((BASE_DIR / "templates").resolve()),
     )
 
     # ===== Secret =====
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
-    # ===== Database (Render/Heroku compatibile) =====
+    # ===== Database =====
     db_url = os.environ.get("DATABASE_URL", "sqlite:///instance/database.db")
-    if db_url.startswith("postgres://"):
-        # compat vecchi URI Heroku
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    db_url = _normalize_db_url(db_url)
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,   # evita connessioni zombie (es. Render)
+    }
     _maybe_create_instance_dir(db_url)
 
-    # ===== SQLAlchemy =====
+    # ===== Config extra utili =====
+    app.config.setdefault("VOICE_MAX", int(os.environ.get("VOICE_MAX_ACTIVE", "3")))
+    app.config["BUILD_VERSION"] = os.environ.get("BUILD_VERSION", "dev")
+    app.config.setdefault("JSON_SORT_KEYS", False)
+    app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
+
+    if test_config:
+        app.config.update(test_config)
+
+    # ===== Estensioni =====
     db.init_app(app)
 
-    # ===== Login =====
+    # ===== Login (il "tenant" è il Restaurant) =====
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
     login_manager.init_app(app)
 
     @login_manager.user_loader
-    def load_user(user_id):
+    def load_user(user_id: str):
         try:
             return Restaurant.query.get(int(user_id))
         except Exception:
             return None
-
-    # ===== Config aggiuntive utili =====
-    # Badge voce: numero massimo linee (fallback 3)
-    app.config.setdefault("VOICE_MAX", int(os.environ.get("VOICE_MAX_ACTIVE", "3")))
-    # Versione build per eventuale cache-busting client
-    app.config["BUILD_VERSION"] = os.environ.get("BUILD_VERSION", "dev")
 
     # ===== Blueprint =====
     from backend.root import bp as root_bp
     from backend.auth import auth_bp
     from backend.dashboard import bp as dashboard_bp
     from backend.api import api as api_bp
-    from backend.voice_slots import voice_bp          # /api/public/voice/*
-    from backend.admin_schedule import api_admin       # /api/admin/* (token)
-    from backend.twilio_voice import twilio_bp         # /twilio/*
+    from backend.voice_slots import voice_bp           # /api/public/voice/*
+    from backend.admin_schedule import api_admin        # /api/admin/* (token)
+    from backend.twilio_voice import twilio_bp          # /twilio/*
 
     app.register_blueprint(root_bp)
     app.register_blueprint(auth_bp)
@@ -72,7 +102,7 @@ def create_app():
     app.register_blueprint(api_admin)
     app.register_blueprint(twilio_bp)
 
-    # ===== Context processor (facoltativo ma utile) =====
+    # ===== Context processor =====
     @app.context_processor
     def inject_build_version():
         return {"BUILD_VERSION": app.config.get("BUILD_VERSION", "dev")}
@@ -80,5 +110,5 @@ def create_app():
     return app
 
 
-# Entry-point WSGI (gunicorn usa "app:app")
+# Entry-point WSGI (es. gunicorn "backend:app")
 app = create_app()

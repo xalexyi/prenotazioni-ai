@@ -1,249 +1,432 @@
-# backend/ai.py
+# -*- coding: utf-8 -*-
+# backend/admin_schedule.py
+
 import os
 import re
-import json
-from typing import Dict, List, Optional, Tuple, Any
+from typing import List, Tuple, Dict, Any
 
-from datetime import date, timedelta, datetime
-from flask import Blueprint, current_app, request, jsonify
+from flask import Blueprint, request, jsonify, abort, render_template
 
-from backend.models import db, Restaurant, Reservation, ReservationPizza, Pizza
+from backend.models import db
+from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
 
-# Se vuoi usare OpenAI: pip install openai
-# Il codice tenta l'import dinamico solo se c'è OPENAI_API_KEY
-_OPENAI_AVAILABLE = False
-try:
-    from openai import OpenAI  # type: ignore
-    _OPENAI_AVAILABLE = True
-except Exception:
-    _OPENAI_AVAILABLE = False
+# =======================
+# Config / Auth
+# =======================
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
-ai_bp = Blueprint("ai_bp", __name__)
+# Un unico blueprint per API + pagina admin
+api_admin = Blueprint("api_admin", __name__)
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
-_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
-_PHONE_RE = re.compile(r"(?:\+?\d[\d\s\-]{6,}\d)")
+def _auth() -> None:
+    """Autenticazione tramite X-Admin-Token (o ?token=...)."""
+    tok = request.headers.get("X-Admin-Token") or request.args.get("token")
+    if not tok or tok != ADMIN_TOKEN:
+        abort(401, description="unauthorized")
 
-def _hhmm(s: str, default: str = "20:00") -> str:
+
+# =======================
+# Pagina admin (UI)
+# =======================
+@api_admin.get("/admin/schedule")
+def admin_schedule_page():
     """
-    Normalizza orario HH:MM. Se non conforme, torna default.
+    Pagina admin minimale per inviare comandi alle API admin
+    usando l'header X-Admin-Token.
     """
-    if not s:
-        return default
-    s = s.strip()
-    m = _TIME_RE.match(s)
-    if not m:
-        return default
-    return f"{m.group(1).zfill(2)}:{m.group(2)}"
-
-def _rel_date_from_words(text: str) -> str:
-    """
-    Converte parole semplici ('oggi', 'domani', 'dopodomani') in YYYY-MM-DD.
-    Se non trova nulla, ritorna la data di oggi.
-    """
-    t = text.lower()
-    if "dopodomani" in t:
-        return (date.today() + timedelta(days=2)).isoformat()
-    if "domani" in t:
-        return (date.today() + timedelta(days=1)).isoformat()
-    if "oggi" in t:
-        return date.today().isoformat()
-    # fallback: oggi
-    return date.today().isoformat()
-
-def _extract_phone(raw: str) -> str:
-    m = _PHONE_RE.search(raw or "")
-    if not m:
-        return ""
-    return re.sub(r"\s+", "", m.group(0)).replace("-", "")
-
-# ---------------------------------------------------------------------
-# Parsing
-# ---------------------------------------------------------------------
-def _naive_parse(text: str) -> Dict[str, Any]:
-    """
-    Estrae (in modo semplice) persone, data, ora, nome, telefono, pizze.
-    NOTA: volutamente semplice; useremo OpenAI appena metti la chiave.
-    """
-    t = (text or "").strip()
-    tl = t.lower()
-
-    # persone
-    m_people = re.search(r"(\d+)\s*(persone|pers|pax)", tl)
-    people = int(m_people.group(1)) if m_people else 2
-
-    # orario hh:mm
-    m_time = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", tl)
-    time_str = _hhmm(f"{m_time.group(1)}:{m_time.group(2)}") if m_time else "20:00"
-
-    # data: parole chiave semplici (oggi / domani / dopodomani)
-    d = _rel_date_from_words(tl)
-
-    # nome (grezzo): dopo "mi chiamo"
-    name = "Cliente"
-    m_name = re.search(r"mi chiamo\s+([a-zA-Zàèéìòùç' ]+)", tl)
-    if m_name:
-        name = m_name.group(1).strip().title()
-
-    # telefono
-    phone = _extract_phone(t)
-
-    # pizze: cerca pattern "margherita x2", "2 margherita"
-    pizzas: List[Dict[str, Any]] = []
-    known = [
-        "margherita", "marinara", "diavola", "quattro formaggi", "capricciosa",
-        "prosciutto e funghi", "quattro stagioni", "napoli", "vegetariana", "bufalina"
-    ]
-    for name_p in known:
-        # x2
-        m1 = re.search(rf"{re.escape(name_p)}\s*[x×]\s*(\d+)", tl)
-        # 2 margherita
-        m2 = re.search(rf"(\d+)\s+{re.escape(name_p)}", tl)
-        qty = None
-        if m1:
-            qty = int(m1.group(1))
-        elif m2:
-            qty = int(m2.group(1))
-        if qty:
-            pizzas.append({"name": name_p.title(), "qty": qty})
-
-    return {
-        "customer_name": name or "Cliente",
-        "phone": phone,
-        "date": d,
-        "time": time_str,
-        "people": people,
-        "pizzas": pizzas,  # solo pizzeria userà questo
-    }
-
-def parse_with_ai(text: str) -> Dict[str, Any]:
-    """
-    Parser “AI-first” con fallback naif se non c'è API key o libreria.
-    """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or not _OPENAI_AVAILABLE:
-        return _naive_parse(text)
-
-    try:
-        client = OpenAI(api_key=api_key)
-        prompt = (
-            "Estrai da questo testo una prenotazione ristorante. "
-            "Rispondi in JSON con campi: "
-            "customer_name, phone, date(YYYY-MM-DD), time(HH:MM), people, "
-            "pizzas=[{name, qty}]. "
-            f"Testo: {text}"
-        )
-        chat = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Sei un assistente che estrae dati strutturati."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.1,
-        )
-        raw = chat.choices[0].message.content
-        data = json.loads(raw)
-        # Hardening minimo sui campi critici
-        data["time"] = _hhmm(str(data.get("time", "20:00")))
-        data["date"] = str(data.get("date") or _rel_date_from_words(text))
-        data["people"] = int(data.get("people") or 2)
-        data["customer_name"] = (data.get("customer_name") or "Cliente").strip() or "Cliente"
-        data["phone"] = _extract_phone(data.get("phone") or text)
-        if "pizzas" in data and not isinstance(data["pizzas"], list):
-            data["pizzas"] = []
-        return data
-    except Exception:
-        return _naive_parse(text)
-
-# ---------------------------------------------------------------------
-# DB writer
-# ---------------------------------------------------------------------
-def create_reservation_db(restaurant: Restaurant, parsed: Dict[str, Any]) -> int:
-    """
-    Crea la prenotazione nel DB (e associa pizze se è una pizzeria con menu).
-    """
-    res = Reservation(
-        restaurant_id=restaurant.id,
-        customer_name=parsed.get("customer_name") or "Cliente",
-        phone=parsed.get("phone") or "",
-        date=str(parsed.get("date") or date.today().isoformat()),
-        time=_hhmm(str(parsed.get("time") or "20:00")),
-        people=int(parsed.get("people") or 2),
-        status="pending",
+    restaurant_id = request.args.get("rid", default=1, type=int)
+    restaurant_name = request.args.get("name", default="Ristorante", type=str)
+    return render_template(
+        "admin_schedule.html",
+        restaurant_id=restaurant_id,
+        restaurant_name=restaurant_name,
     )
-    db.session.add(res)
-    db.session.flush()
 
-    # Se il ristorante ha un menu pizze, prova a collegare le pizze
-    pizzas = parsed.get("pizzas") or []
-    if pizzas:
-        menu = {p.name.lower(): p for p in Pizza.query.filter_by(restaurant_id=restaurant.id).all()}
-        for item in pizzas:
-            n = (item.get("name") or "").lower().strip()
-            q = int(item.get("qty") or 0)
-            if n in menu and q > 0:
-                db.session.add(
-                    ReservationPizza(reservation_id=res.id, pizza_id=menu[n].id, quantity=q)
-                )
 
-    db.session.commit()
-    return res.id
+# =======================
+# Utils
+# =======================
+WEEKMAP: Dict[str, int] = {
+    "mon": 0, "monday": 0, "lun": 0, "lunedì": 0, "lunedi": 0,
+    "tue": 1, "tuesday": 1, "mar": 1, "martedì": 1, "martedi": 1,
+    "wed": 2, "wednesday": 2, "mer": 2, "mercoledì": 2, "mercoledi": 2,
+    "thu": 3, "thursday": 3, "gio": 3, "giovedì": 3, "giovedi": 3,
+    "fri": 4, "friday": 4, "ven": 4, "venerdì": 4, "venerdi": 4,
+    "sat": 5, "saturday": 5, "sab": 5, "sabato": 5,
+    "sun": 6, "sunday": 6, "dom": 6, "domenica": 6,
+}
 
-# ---------------------------------------------------------------------
-# API endpoints (opzionali ma utili per n8n/test)
-# ---------------------------------------------------------------------
-@ai_bp.post("/api/ai/parse")
-def api_ai_parse():
+TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")   # HH:MM 24h
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")           # YYYY-MM-DD
+
+def _is_hhmm(s: str) -> bool:
+    return bool(TIME_RE.match((s or "").strip()))
+
+def parse_range_list(s: str) -> List[Tuple[str, str]]:
     """
-    Body JSON: { "text": "..." }
-    Ritorna:   { "ok": true, "parsed": {...} }
+    "12:00-15:00,19:00-23:30" -> [("12:00","15:00"), ("19:00","23:30")]
     """
-    data = request.get_json(force=True, silent=True) or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"ok": False, "error": "missing text"}), 400
-    parsed = parse_with_ai(text)
-    return jsonify({"ok": True, "parsed": parsed}), 200
+    out: List[Tuple[str, str]] = []
+    if s is None:
+        return out
+    for part in re.split(r"\s*,\s*", str(s).strip()):
+        if not part:
+            continue
+        m = re.match(r"^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$", part)
+        if not m:
+            raise ValueError(f"bad range: {part}")
+        a, b = m.group(1), m.group(2)
+        if not (_is_hhmm(a) and _is_hhmm(b)):
+            raise ValueError(f"invalid time (use HH:MM): {part}")
+        out.append((a, b))
+    return out
+
+def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
+    """
+    Accetta stringa "12:00-15:00,19:00-23:30" o lista ["12:00-15:00", ...]
+    e ritorna lista di tuple (start, end) validate HH:MM.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return parse_range_list(value)
+
+    ranges: List[Tuple[str, str]] = []
+    for s in value:
+        if not s:
+            continue
+        if isinstance(s, str):
+            if "-" not in s:
+                raise ValueError(f"bad range: {s}")
+            a, b = s.split("-", 1)
+            a, b = a.strip(), b.strip()
+        else:
+            # tolleranza: ["12:00", "15:00"]
+            try:
+                a, b = s
+            except Exception:
+                raise ValueError(f"bad range: {s}")
+        if not (_is_hhmm(a) and _is_hhmm(b)):
+            raise ValueError(f"invalid time (use HH:MM): {a}-{b}")
+        ranges.append((a, b))
+    return ranges
 
 
-@ai_bp.post("/api/ai/create")
-def api_ai_create():
+# =======================
+# JSON Admin endpoints
+# =======================
+@api_admin.post("/api/admin/opening-hours/bulk")
+def opening_hours_bulk():
     """
-    Body JSON:
+    JSON:
     {
       "restaurant_id": 1,
-      "text": "vorrei prenotare ...",
-      // opzionali override dei campi già parsati:
-      "override": { "date": "2025-08-15", "time": "20:30", "people": 4 }
+      "weekday": "mon" | 0..6,
+      "ranges": "12:00-15:00,19:00-23:30" | ["12:00-15:00", ...]
     }
-
-    Effettua il parse (AI o naive), applica eventuali override e crea la prenotazione.
+    Sostituisce completamente le fasce per quel weekday.
     """
+    _auth()
     data = request.get_json(force=True, silent=True) or {}
-    rid = int(data.get("restaurant_id") or 0)
-    text = (data.get("text") or "").strip()
-    override = data.get("override") or {}
 
+    rid = int(data.get("restaurant_id") or 0)
     if not rid:
         return jsonify({"ok": False, "error": "missing restaurant_id"}), 400
-    if not text:
-        return jsonify({"ok": False, "error": "missing text"}), 400
 
-    r = Restaurant.query.get(rid)
-    if not r:
-        return jsonify({"ok": False, "error": "restaurant_not_found"}), 404
+    wd = data.get("weekday", None)
+    try:
+        if isinstance(wd, str):
+            wd_key = wd.strip().lower()
+            if wd_key not in WEEKMAP:
+                return jsonify({"ok": False, "error": "bad_weekday"}), 400
+            weekday = WEEKMAP[wd_key]
+        else:
+            weekday = int(wd)
+    except Exception:
+        return jsonify({"ok": False, "error": "bad_weekday"}), 400
 
-    parsed = parse_with_ai(text)
-
-    # Applica override sicuri
-    for k, v in override.items():
-        parsed[k] = v
+    if weekday < 0 or weekday > 6:
+        return jsonify({"ok": False, "error": "bad_weekday"}), 400
 
     try:
-        new_id = create_reservation_db(r, parsed)
-        return jsonify({"ok": True, "id": new_id, "parsed": parsed}), 201
+        ranges = _coerce_ranges(data.get("ranges"))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    try:
+        with db.session.begin():
+            db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=weekday).delete()
+            for a, b in ranges:
+                db.session.add(
+                    OpeningHour(
+                        restaurant_id=rid,
+                        weekday=weekday,
+                        start_time=a,
+                        end_time=b,
+                    )
+                )
+        return jsonify({"ok": True, "weekday": weekday, "count": len(ranges)}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+
+
+@api_admin.post("/api/admin/special-days/upsert")
+def special_days_upsert():
+    """
+    JSON:
+    { "restaurant_id":1, "date":"2025-12-25", "closed":true }
+    oppure
+    { "restaurant_id":1, "date":"2025-08-15", "ranges":"18:00-23:00" }
+    (se ranges è lista o stringa multipla, inserisce più righe)
+    """
+    _auth()
+    data = request.get_json(force=True, silent=True) or {}
+
+    rid = int(data.get("restaurant_id") or 0)
+    if not rid:
+        return jsonify({"ok": False, "error": "missing restaurant_id"}), 400
+
+    date_s = (data.get("date") or "").strip()
+    if not date_s or not DATE_RE.match(date_s):
+        return jsonify({"ok": False, "error": "bad_date"}), 400
+
+    closed = bool(data.get("closed"))
+    if closed:
+        ranges: List[Tuple[str, str]] = []
+    else:
+        try:
+            ranges = _coerce_ranges(data.get("ranges"))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    try:
+        with db.session.begin():
+            db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+            if closed:
+                db.session.add(SpecialDay(restaurant_id=rid, date=date_s, is_closed=True))
+            else:
+                for a, b in ranges:
+                    db.session.add(
+                        SpecialDay(
+                            restaurant_id=rid,
+                            date=date_s,
+                            is_closed=False,
+                            start_time=a,
+                            end_time=b,
+                        )
+                    )
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+
+
+@api_admin.post("/api/admin/special-days/delete")
+def special_days_delete():
+    """
+    JSON:
+    { "restaurant_id":1, "date":"2025-12-26" }
+    Elimina la regola speciale per quella data (se c'è).
+    """
+    _auth()
+    data = request.get_json(force=True, silent=True) or {}
+
+    rid = int(data.get("restaurant_id") or 0)
+    if not rid:
+        return jsonify({"ok": False, "error": "missing restaurant_id"}), 400
+
+    date_s = (data.get("date") or "").strip()
+    if not date_s or not DATE_RE.match(date_s):
+        return jsonify({"ok": False, "error": "bad_date"}), 400
+
+    try:
+        with db.session.begin():
+            db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+
+
+@api_admin.post("/api/admin/settings/update")
+def settings_update():
+    """
+    JSON:
+    {
+      "restaurant_id":1,
+      "tz":"Europe/Rome",
+      "slot_step_min":15,
+      "last_order_min":15,
+      "min_party":1,
+      "max_party":12,
+      "capacity_per_slot":6
+    }
+    Qualsiasi campo assente non viene toccato.
+    """
+    _auth()
+    data = request.get_json(force=True, silent=True) or {}
+
+    rid = int(data.get("restaurant_id") or 0)
+    if not rid:
+        return jsonify({"ok": False, "error": "missing restaurant_id"}), 400
+
+    try:
+        # Evito .get(rid) perché la PK potrebbe non essere restaurant_id
+        s = RestaurantSetting.query.filter_by(restaurant_id=rid).first() or RestaurantSetting(restaurant_id=rid)
+        if "tz" in data and data["tz"] is not None:
+            s.tz = str(data["tz"])
+        for k in ["slot_step_min", "last_order_min", "min_party", "max_party", "capacity_per_slot"]:
+            if k in data and data[k] is not None:
+                setattr(s, k, int(data[k]))
+        db.session.add(s)
+        db.session.commit()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+
+
+# =======================
+# Endpoint COMANDI testuali
+# =======================
+@api_admin.post("/api/admin/schedule/commands")
+def schedule_commands():
+    """
+    Content-Type: text/plain oppure JSON {"commands":"..."}.
+    Sintassi (case-insensitive, spazi liberi):
+
+      RID=1
+      WEEK mon 12:00-15:00,19:00-23:30
+      WEEK tue CLOSED
+      WEEK sun 12:00-15:00
+      SPECIAL 2025-12-25 CLOSED
+      SPECIAL 2025-08-15 18:00-23:00
+      SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome
+
+    Esegue in transazione unica.
+    """
+    _auth()
+    if request.is_json:
+        data = request.get_json() or {}
+        text = (data.get("commands") or "").strip()
+    else:
+        text = (request.get_data(as_text=True) or "").strip()
+
+    rid: int | None = None
+    ops: List[Tuple] = []
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        u = line.lower()
+
+        # RID=1
+        m = re.match(r"^rid\s*=\s*(\d+)$", u)
+        if m:
+            rid = int(m.group(1))
+            continue
+
+        # WEEK <weekday> <ranges|CLOSED>
+        m = re.match(r"^week\s+([a-zàèéìòù]+)\s+(.+)$", u)
+        if m:
+            wdkey = m.group(1)
+            val = m.group(2).strip()
+            if wdkey not in WEEKMAP:
+                return jsonify({"ok": False, "error": f"bad weekday: {wdkey}"}), 400
+            weekday = WEEKMAP[wdkey]
+            if val == "closed":
+                ops.append(("WEEK_REPLACE", weekday, []))
+            else:
+                try:
+                    rngs = parse_range_list(val)
+                except Exception as e:
+                    return jsonify({"ok": False, "error": str(e)}), 400
+                ops.append(("WEEK_REPLACE", weekday, rngs))
+            continue
+
+        # SPECIAL <YYYY-MM-DD> CLOSED | <ranges>
+        m = re.match(r"^special\s+(\d{4}-\d{2}-\d{2})\s+(.+)$", u)
+        if m:
+            date_s = m.group(1)
+            if not DATE_RE.match(date_s):
+                return jsonify({"ok": False, "error": "bad_date"}), 400
+            val = m.group(2).strip()
+            if val == "closed":
+                ops.append(("SPECIAL_REPLACE", date_s, "closed", []))
+            else:
+                try:
+                    rngs = parse_range_list(val)
+                except Exception as e:
+                    return jsonify({"ok": False, "error": str(e)}), 400
+                ops.append(("SPECIAL_REPLACE", date_s, "open", rngs))
+            continue
+
+        # SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome
+        m = re.match(r"^settings\s+(.+)$", u)
+        if m:
+            kv = m.group(1)
+            args = dict(re.findall(r"([a-z]+)=([^\s]+)", kv))
+            ops.append(("SETTINGS", args))
+            continue
+
+        return jsonify({"ok": False, "error": f"bad command: {line}"}), 400
+
+    if not rid:
+        return jsonify({"ok": False, "error": "missing RID=..."}), 400
+
+    try:
+        with db.session.begin():
+            for op in ops:
+                if op[0] == "WEEK_REPLACE":
+                    weekday, rngs = op[1], op[2]
+                    db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=weekday).delete()
+                    for a, b in rngs:
+                        db.session.add(
+                            OpeningHour(
+                                restaurant_id=rid,
+                                weekday=weekday,
+                                start_time=a,
+                                end_time=b,
+                            )
+                        )
+
+                elif op[0] == "SPECIAL_REPLACE":
+                    date_s, mode, rngs = op[1], op[2], op[3]
+                    db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+                    if mode == "closed":
+                        db.session.add(SpecialDay(restaurant_id=rid, date=date_s, is_closed=True))
+                    else:
+                        for a, b in rngs:
+                            db.session.add(
+                                SpecialDay(
+                                    restaurant_id=rid,
+                                    date=date_s,
+                                    is_closed=False,
+                                    start_time=a,
+                                    end_time=b,
+                                )
+                            )
+
+                elif op[0] == "SETTINGS":
+                    args = op[1]
+                    s = (
+                        RestaurantSetting.query.filter_by(restaurant_id=rid).first()
+                        or RestaurantSetting(restaurant_id=rid)
+                    )
+                    if "step" in args: s.slot_step_min = int(args["step"])
+                    if "last" in args: s.last_order_min = int(args["last"])
+                    if "capacity" in args: s.capacity_per_slot = int(args["capacity"])
+                    if "tz" in args: s.tz = args["tz"]
+                    if "party" in args:
+                        m2 = re.match(r"^(\d+)-(\d+)$", args["party"])
+                        if m2:
+                            s.min_party = int(m2.group(1))
+                            s.max_party = int(m2.group(2))
+                    db.session.add(s)
+
+        return jsonify({"ok": True, "restaurant_id": rid, "ops": len(ops)}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500

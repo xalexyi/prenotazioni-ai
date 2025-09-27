@@ -191,8 +191,8 @@
       if (!closed) {
         const rows = collectDayRows(el('#sp-rows'));
         if (!rows.length) { toast('Aggiungi almeno una fascia','warn'); return; }
-        // invia come array strutturato [{start,end}]
-        payload.ranges = rows.map(r => ({ start: r.start, end: r.end }));
+        // ✅ ranges come array di stringhe "HH:MM-HH:MM" in sync con backend
+        payload.ranges = rows.map(r => `${r.start}-${r.end}`);
       } else {
         payload.ranges = [];
       }

@@ -4,7 +4,7 @@
 <div class="brand-row">
   <img class="logo-robot" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo" />
   <div class="brand-title">
-    <span class="brand-strong">Ristorante AI</span> —
+    <span class="brand-strong">Ristorante AI</span>
     <span class="brand-sub">Area riservata ristoranti</span>
   </div>
 </div>
@@ -54,13 +54,15 @@
 
   <!-- Pannello destro “Login form” -->
   <section class="card login-panel card-elev">
-    <form action="{{ url_for('auth.login') }}" method="post" class="login-form">
+    <form action="{{ url_for('auth.login') }}" method="post" class="login-form" autocomplete="on">
       <label class="form-label" for="username">Username</label>
       <input class="input"
              id="username"
              name="username"
              type="text"
              placeholder="es. sushitokyo"
+             autocomplete="username"
+             autofocus
              required>
 
       <label class="form-label" for="password">Password</label>
@@ -69,13 +71,20 @@
              name="password"
              type="password"
              placeholder="Password123!"
+             autocomplete="current-password"
              required>
+
+      <label class="checkbox" style="margin-top:6px">
+        <input type="checkbox" name="remember" value="1">
+        Rimani connesso
+      </label>
 
       {% if error %}
       <div class="alert error">Credenziali non valide</div>
       {% endif %}
 
-      <button class="btn btn-red w-100" type="submit">Log in</button>
+      <!-- Usa il primario (blu). Se vuoi rosso, aggiungi anche la classe 'logout-btn' che forza il tema rosso nel CSS -->
+      <button class="btn w-100" type="submit">Log in</button>
 
       <p class="demo-msg">
         Demo: <strong>sushitokyo</strong> / <strong>Password123!</strong> —

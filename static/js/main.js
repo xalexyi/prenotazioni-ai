@@ -16,7 +16,9 @@
     if (!el.hasAttribute('role')) el.setAttribute('role', 'dialog');
     if (!el.hasAttribute('aria-modal')) el.setAttribute('aria-modal', 'true');
     // focus iniziale
-    const focusable = el.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const focusable = el.querySelector(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
     (focusable || el).focus?.();
   }
 
@@ -29,7 +31,11 @@
     moneyEUR(v) {
       const n = Number(v || 0);
       try {
-        return n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+        return n.toLocaleString('it-IT', {
+          style: 'currency',
+          currency: 'EUR',
+          maximumFractionDigits: 0
+        });
       } catch (e) {
         return '€ ' + Math.round(n);
       }

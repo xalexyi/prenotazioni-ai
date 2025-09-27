@@ -1,5 +1,7 @@
+# -*- coding: utf-8 -*-
 # backend/rules_service.py
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
 from zoneinfo import ZoneInfo
@@ -18,6 +20,7 @@ class OpeningHour(db.Model):
     start_time / end_time: 'HH:MM'
     """
     __tablename__ = "opening_hours"
+
     id = db.Column(db.Integer, primary_key=True)
     restaurant_id = db.Column(db.Integer, nullable=False, index=True)
     weekday = db.Column(db.Integer, nullable=False)  # 0..6
@@ -32,10 +35,11 @@ class OpeningHour(db.Model):
 class SpecialDay(db.Model):
     """
     Eccezioni sul calendario: festività/chiusure o aperture speciali.
-    - is_closed=True, nessuna fascia -> chiuso tutto il giorno
-    - is_closed=False + una o più righe (stessa data) -> aperture speciali
+    - is_closed=True → chiuso tutto il giorno
+    - is_closed=False + più righe (stessa data) → aperture speciali
     """
     __tablename__ = "special_days"
+
     id = db.Column(db.Integer, primary_key=True)
     restaurant_id = db.Column(db.Integer, nullable=False, index=True)
     date = db.Column(db.String(10), nullable=False, index=True)  # "YYYY-MM-DD"
@@ -54,6 +58,7 @@ class RestaurantSetting(db.Model):
     Se un campo è NULL → usa default.
     """
     __tablename__ = "restaurant_settings"
+
     restaurant_id = db.Column(db.Integer, primary_key=True)
     tz = db.Column(db.String(64), nullable=True)                 # es. "Europe/Rome"
     slot_step_min = db.Column(db.Integer, nullable=True)         # 15/30...
@@ -61,6 +66,7 @@ class RestaurantSetting(db.Model):
     min_party = db.Column(db.Integer, nullable=True)
     max_party = db.Column(db.Integer, nullable=True)
     capacity_per_slot = db.Column(db.Integer, nullable=True)
+
 
 # ===========================
 #   STRUTTURA REGOLE
@@ -70,6 +76,7 @@ class RestaurantSetting(db.Model):
 class SlotRule:
     start: time
     end: time
+
 
 @dataclass
 class RestaurantRules:
@@ -81,12 +88,6 @@ class RestaurantRules:
     max_party: int
     capacity_per_slot: int
 
-def _parse_hhmm(s: str) -> time:
-    h, m = s.split(":")
-    return time(hour=int(h), minute=int(m))
-
-def _fmt_date(dt: datetime) -> str:
-    return dt.date().isoformat()
 
 DEFAULTS = {
     "tz": "Europe/Rome",
@@ -97,12 +98,26 @@ DEFAULTS = {
     "capacity_per_slot": 6,
 }
 
+
+# ===========================
+#   HELPERS
+# ===========================
+
+def _parse_hhmm(s: str) -> time:
+    h, m = s.split(":")
+    return time(hour=int(h), minute=int(m))
+
+
+def _fmt_date(dt: datetime) -> str:
+    return dt.date().isoformat()
+
+
 # ===========================
 #   CARICAMENTO DAL DB
 # ===========================
 
 def rules_from_db(restaurant_id: int) -> RestaurantRules:
-    """Costruisce le regole orarie leggendo opening_hours, special_days e settings."""
+    """Costruisce le regole orarie leggendo opening_hours e settings."""
     weekly: Dict[int, List[SlotRule]] = {i: [] for i in range(7)}
 
     rows = (
@@ -112,11 +127,13 @@ def rules_from_db(restaurant_id: int) -> RestaurantRules:
         .all()
     )
     for r in rows:
-        weekly[r.weekday].append(SlotRule(_parse_hhmm(r.start_time), _parse_hhmm(r.end_time)))
+        weekly[r.weekday].append(
+            SlotRule(_parse_hhmm(r.start_time), _parse_hhmm(r.end_time))
+        )
 
     s = RestaurantSetting.query.get(restaurant_id)
 
-    def val(name: str) -> int:
+    def val(name: str):
         return getattr(s, name) if s and getattr(s, name) is not None else DEFAULTS[name]
 
     return RestaurantRules(
@@ -128,6 +145,7 @@ def rules_from_db(restaurant_id: int) -> RestaurantRules:
         max_party=int(val("max_party")),
         capacity_per_slot=int(val("capacity_per_slot")),
     )
+
 
 def special_for_date(restaurant_id: int, date_s: str) -> Optional[Union[List[SlotRule], str]]:
     """
@@ -152,8 +170,9 @@ def special_for_date(restaurant_id: int, date_s: str) -> Optional[Union[List[Slo
             slots.append(SlotRule(_parse_hhmm(r.start_time), _parse_hhmm(r.end_time)))
     return slots or "closed"
 
+
 # ===========================
-#   VALIDATORE
+#   VALIDATORE BASE
 # ===========================
 
 def _in_any_slot(
@@ -163,29 +182,33 @@ def _in_any_slot(
     base_day: date,
 ) -> Tuple[bool, Optional[time]]:
     """
-    Verifica se l'orario 't' cade in uno degli slot, considerando il margine
-    'last_order_min' prima della fine.
+    Verifica se l'orario 't' cade in uno degli slot, considerando
+    il margine 'last_order_min' prima della fine.
     """
     for s in slots:
-        end_effective = (datetime.combine(base_day, s.end) - timedelta(minutes=last_order_min)).time()
+        end_effective = (
+            datetime.combine(base_day, s.end) - timedelta(minutes=last_order_min)
+        ).time()
         if s.start <= t <= end_effective:
             return True, s.end
     return False, None
 
+
 def validate_reservation_basic(
     restaurant_id: int,
     dt_local: datetime,
-    people: int
+    people: int,
 ) -> Tuple[bool, str, Optional[datetime]]:
     """
     Valida data/ora e persone secondo le regole a DB.
+
     Ritorna (ok, reason, suggested_dt_local)
       reason ∈ {"closed", "outside_hours", "bad_step", "party_out_of_range", "ok"}
     """
     rules = rules_from_db(restaurant_id)
     tz = ZoneInfo(rules.tz)
 
-    # Normalizza timezone: se naive, attacca tz; se aware, converte.
+    # Normalizza timezone
     if dt_local.tzinfo is None:
         dt_local = dt_local.replace(tzinfo=tz)
     else:
@@ -205,9 +228,11 @@ def validate_reservation_basic(
     if not slots_today:
         return False, "closed", None
 
-    ok_time, _ = _in_any_slot(dt_local.time(), slots_today, rules.last_order_min, dt_local.date())
+    ok_time, _ = _in_any_slot(
+        dt_local.time(), slots_today, rules.last_order_min, dt_local.date()
+    )
     if not ok_time:
-        # Se siamo prima della prima finestra utile, suggerisci il prossimo start
+        # Se siamo prima della prima finestra utile, suggerisci prossimo start
         for s in slots_today:
             start_dt = datetime.combine(dt_local.date(), s.start, tzinfo=tz)
             if dt_local < start_dt:

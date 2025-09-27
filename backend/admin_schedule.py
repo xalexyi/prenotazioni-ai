@@ -1,7 +1,10 @@
+# -*- coding: utf-8 -*-
 # backend/admin_schedule.py
+
 import os
 import re
 from typing import List, Tuple, Dict, Any
+
 from flask import Blueprint, request, jsonify, abort, render_template
 
 from backend.models import db
@@ -12,13 +15,20 @@ from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
 # =======================
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
-# Un unico blueprint per API + pagina admin (nessun url_prefix così puoi linkarlo direttamente)
-api_admin = Blueprint("api_admin", __name__)
+api_admin = Blueprint("api_admin", __name__)  # nessun url_prefix: /admin/* e /api/admin/*
 
-def _auth():
+# -----------------------
+# Auth helper
+# -----------------------
+def _auth() -> None:
+    """
+    Autorizzazione semplice via X-Admin-Token o ?token=.
+    401 se mancante o errato.
+    """
     tok = request.headers.get("X-Admin-Token") or request.args.get("token")
     if not tok or tok != ADMIN_TOKEN:
         abort(401)
+
 
 # =======================
 # Pagina admin (UI)
@@ -26,9 +36,7 @@ def _auth():
 @api_admin.get("/admin/schedule")
 def admin_schedule_page():
     """
-    Pagina admin minimale: espone una UI per mandare comandi alle API admin
-    usando l'header X-Admin-Token. Il token lo inserisci dalla pagina (UI),
-    e se vuoi lo puoi salvare in sessione via /api/public/sessions/:sid.
+    Pagina admin minimale per inviare comandi alle API admin.
     """
     restaurant_id = request.args.get("rid", default=1, type=int)
     restaurant_name = request.args.get("name", default="Ristorante", type=str)
@@ -37,6 +45,7 @@ def admin_schedule_page():
         restaurant_id=restaurant_id,
         restaurant_name=restaurant_name,
     )
+
 
 # =======================
 # Utils
@@ -54,8 +63,10 @@ WEEKMAP: Dict[str, int] = {
 TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")   # HH:MM 24h
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")           # YYYY-MM-DD
 
+
 def _is_hhmm(s: str) -> bool:
     return bool(TIME_RE.match((s or "").strip()))
+
 
 def parse_range_list(s: str) -> List[Tuple[str, str]]:
     """
@@ -76,10 +87,11 @@ def parse_range_list(s: str) -> List[Tuple[str, str]]:
         out.append((a, b))
     return out
 
+
 def _coerce_ranges(value) -> List[Tuple[str, str]]:
     """
-    Accetta stringa "12:00-15:00,19:00-23:30" o lista ["12:00-15:00", ...]
-    e ritorna lista di tuple (start, end) validate HH:MM.
+    Accetta "12:00-15:00,19:00-23:30" o ["12:00-15:00", ...]
+    Ritorna lista di tuple (start, end) validate HH:MM.
     """
     if value is None:
         return []
@@ -95,15 +107,15 @@ def _coerce_ranges(value) -> List[Tuple[str, str]]:
             a, b = s.split("-", 1)
             a, b = a.strip(), b.strip()
         else:
-            # supporto eventuale ["12:00","15:00"] (non documentato ma tollerante)
             try:
-                a, b = s
+                a, b = s  # tollera ["12:00","15:00"]
             except Exception:
                 raise ValueError(f"bad range: {s}")
         if not (_is_hhmm(a) and _is_hhmm(b)):
             raise ValueError(f"invalid time (use HH:MM): {a}-{b}")
         ranges.append((a, b))
     return ranges
+
 
 # =======================
 # JSON Admin endpoints
@@ -148,9 +160,15 @@ def opening_hours_bulk():
 
     try:
         with db.session.begin():
-            db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=weekday).delete()
+            db.session.query(OpeningHour).filter_by(
+                restaurant_id=rid, weekday=weekday
+            ).delete()
             for a, b in ranges:
-                db.session.add(OpeningHour(restaurant_id=rid, weekday=weekday, start_time=a, end_time=b))
+                db.session.add(
+                    OpeningHour(
+                        restaurant_id=rid, weekday=weekday, start_time=a, end_time=b
+                    )
+                )
         return jsonify({"ok": True, "weekday": weekday, "count": len(ranges)}), 200
     except Exception as e:
         db.session.rollback()
@@ -188,15 +206,24 @@ def special_days_upsert():
 
     try:
         with db.session.begin():
-            db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+            db.session.query(SpecialDay).filter_by(
+                restaurant_id=rid, date=date_s
+            ).delete()
             if closed:
-                db.session.add(SpecialDay(restaurant_id=rid, date=date_s, is_closed=True))
+                db.session.add(
+                    SpecialDay(restaurant_id=rid, date=date_s, is_closed=True)
+                )
             else:
                 for a, b in ranges:
-                    db.session.add(SpecialDay(
-                        restaurant_id=rid, date=date_s, is_closed=False,
-                        start_time=a, end_time=b
-                    ))
+                    db.session.add(
+                        SpecialDay(
+                            restaurant_id=rid,
+                            date=date_s,
+                            is_closed=False,
+                            start_time=a,
+                            end_time=b,
+                        )
+                    )
         return jsonify({"ok": True}), 200
     except Exception as e:
         db.session.rollback()
@@ -223,7 +250,9 @@ def special_days_delete():
 
     try:
         with db.session.begin():
-            db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+            db.session.query(SpecialDay).filter_by(
+                restaurant_id=rid, date=date_s
+            ).delete()
         return jsonify({"ok": True}), 200
     except Exception as e:
         db.session.rollback()
@@ -287,6 +316,7 @@ def schedule_commands():
     Esegue in transazione unica.
     """
     _auth()
+
     if request.is_json:
         data = request.get_json() or {}
         text = (data.get("commands") or "").strip()
@@ -361,29 +391,53 @@ def schedule_commands():
             for op in ops:
                 if op[0] == "WEEK_REPLACE":
                     weekday, rngs = op[1], op[2]
-                    db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=weekday).delete()
+                    db.session.query(OpeningHour).filter_by(
+                        restaurant_id=rid, weekday=weekday
+                    ).delete()
                     for a, b in rngs:
-                        db.session.add(OpeningHour(restaurant_id=rid, weekday=weekday, start_time=a, end_time=b))
+                        db.session.add(
+                            OpeningHour(
+                                restaurant_id=rid,
+                                weekday=weekday,
+                                start_time=a,
+                                end_time=b,
+                            )
+                        )
 
                 elif op[0] == "SPECIAL_REPLACE":
                     date_s, mode, rngs = op[1], op[2], op[3]
-                    db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+                    db.session.query(SpecialDay).filter_by(
+                        restaurant_id=rid, date=date_s
+                    ).delete()
                     if mode == "closed":
-                        db.session.add(SpecialDay(restaurant_id=rid, date=date_s, is_closed=True))
+                        db.session.add(
+                            SpecialDay(restaurant_id=rid, date=date_s, is_closed=True)
+                        )
                     else:
                         for a, b in rngs:
-                            db.session.add(SpecialDay(
-                                restaurant_id=rid, date=date_s, is_closed=False,
-                                start_time=a, end_time=b
-                            ))
+                            db.session.add(
+                                SpecialDay(
+                                    restaurant_id=rid,
+                                    date=date_s,
+                                    is_closed=False,
+                                    start_time=a,
+                                    end_time=b,
+                                )
+                            )
 
                 elif op[0] == "SETTINGS":
                     args = op[1]
-                    s = RestaurantSetting.query.get(rid) or RestaurantSetting(restaurant_id=rid)
-                    if "step" in args: s.slot_step_min = int(args["step"])
-                    if "last" in args: s.last_order_min = int(args["last"])
-                    if "capacity" in args: s.capacity_per_slot = int(args["capacity"])
-                    if "tz" in args: s.tz = args["tz"]
+                    s = RestaurantSetting.query.get(rid) or RestaurantSetting(
+                        restaurant_id=rid
+                    )
+                    if "step" in args:
+                        s.slot_step_min = int(args["step"])
+                    if "last" in args:
+                        s.last_order_min = int(args["last"])
+                    if "capacity" in args:
+                        s.capacity_per_slot = int(args["capacity"])
+                    if "tz" in args:
+                        s.tz = args["tz"]
                     if "party" in args:
                         m2 = re.match(r"^(\d+)-(\d+)$", args["party"])
                         if m2:

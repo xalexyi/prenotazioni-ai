@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # backend/twilio_voice.py
 from __future__ import annotations
 
@@ -5,7 +6,7 @@ from flask import Blueprint, request, Response, url_for
 from twilio.twiml.voice_response import VoiceResponse, Gather
 
 from backend.models import db, InboundNumber, Restaurant, CallSession
-from .ai import parse_with_ai, create_reservation_db
+from backend.ai import parse_with_ai, create_reservation_db
 
 twilio_bp = Blueprint("twilio", __name__, url_prefix="/twilio")
 
@@ -17,7 +18,7 @@ def _norm_e164(num: str | None) -> str:
     return num.replace(" ", "").replace("-", "")
 
 
-def _find_restaurant_by_to_number(to_number: str | None):
+def _find_restaurant_by_to_number(to_number: str | None) -> Restaurant | None:
     """
     Trova il ristorante in base al numero 'To' (numero reale del ristorante).
     """
@@ -35,11 +36,12 @@ def voice():
     - Identifica il ristorante dal numero 'To'/'Called'
     - Apre un Gather (speech) e inoltra a /twilio/handle
     """
+    # Twilio normalmente usa POST; se arriva GET, gestiamo uguale.
     to_number = request.values.get("To") or request.values.get("Called")
     call_sid = request.values.get("CallSid")
 
-    restaurant = _find_restaurant_by_to_number(to_number)
     vr = VoiceResponse()
+    restaurant = _find_restaurant_by_to_number(to_number)
 
     if not restaurant:
         vr.say(language="it-IT", message="Spiacente. Numero non riconosciuto. Arrivederci.")
@@ -56,18 +58,18 @@ def voice():
     # Messaggio di benvenuto dinamico
     benv = (
         f"Ciao! Hai chiamato {restaurant.name}. "
-        "Dimmi come posso aiutarti: per esempio, "
-        "voglio prenotare domani alle 20 per 3 persone, "
+        "Dimmi come posso aiutarti: ad esempio, "
+        "vorrei prenotare domani alle 20 per tre persone, "
         "oppure vorrei ordinare due Margherite e una Diavola."
     )
 
-    # Costruisci URL assoluto per l'action (Twilio consiglia URL pubblici/assoluti)
+    # URL assoluto (Twilio richiede endpoint pubblici)
     action_url = url_for("twilio.handle", _external=True)
 
     gather = Gather(
         input="speech",
         language="it-IT",
-        hints="prenotare, ordinare, domani, oggi, dopodomani, margherita, diavola, quattro formaggi, persone",
+        hints="prenotare, ordinare, oggi, domani, dopodomani, margherita, diavola, quattro formaggi, persone",
         speech_timeout="auto",
         action=action_url,
         method="POST",
@@ -75,8 +77,8 @@ def voice():
     gather.say(language="it-IT", message=benv)
     vr.append(gather)
 
-    # Se non arriva nulla al Gather
-    vr.say(language="it-IT", message="Non ti ho sentito. Riprova più tardi. Ciao!")
+    # Fallback: nessun input ricevuto
+    vr.say(language="it-IT", message="Non ti ho sentito. Riprova più tardi. Arrivederci.")
     vr.hangup()
     return Response(str(vr), mimetype="text/xml")
 
@@ -84,8 +86,8 @@ def voice():
 @twilio_bp.route("/handle", methods=["POST"])
 def handle():
     """
-    Secondo hook: riceve lo SpeechResult, usa il parser per estrarre i dati,
-    salva la prenotazione su DB e conferma a voce.
+    Secondo hook: riceve lo SpeechResult, fa il parse, salva la prenotazione
+    e fornisce una conferma vocale.
     """
     call_sid = request.values.get("CallSid")
     speech = (request.values.get("SpeechResult") or "").strip()
@@ -105,15 +107,14 @@ def handle():
         return Response(str(vr), mimetype="text/xml")
 
     if not speech:
-        # Nessun testo rilevato dal riconoscimento vocale
         vr.say(language="it-IT", message="Mi dispiace, non ho capito. Riprova più tardi.")
         vr.hangup()
-        # Sessione chiusa per evitare conti aperti
+        # Chiudi la sessione per non lasciarla appesa
         sess.step = "done"
         db.session.commit()
         return Response(str(vr), mimetype="text/xml")
 
-    # Parsing (AI-first con fallback)
+    # Parsing (AI-first con fallback locale)
     parsed = parse_with_ai(speech)
 
     try:
@@ -121,7 +122,7 @@ def handle():
     except Exception:
         vr.say(language="it-IT", message="Non sono riuscito a registrare la prenotazione. Riprova più tardi.")
         vr.hangup()
-        # Sessione in 'done' anche in caso d'errore per non tenerla appesa
+        # Chiudi sessione anche in caso d'errore
         sess.step = "done"
         sess.collected_text = speech
         db.session.commit()
@@ -132,7 +133,7 @@ def handle():
     when = f"{parsed.get('date')} alle {parsed.get('time')}"
     people = parsed.get("people") or 2
     vr.say(language="it-IT", message=f"{nome}, ho registrato la tua richiesta per {people} persone il {when}.")
-    vr.say(language="it-IT", message="Riceverai conferma appena possibile. Grazie, a presto!")
+    vr.say(language="it-IT", message="Riceverai una conferma appena possibile. Grazie e a presto!")
     vr.hangup()
 
     # Aggiorna sessione

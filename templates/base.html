@@ -28,7 +28,7 @@
 
       <div class="header-right">
         {% block header_right %}
-          <button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte">
+          <button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte" aria-pressed="false">
             <span class="toggle-icon sun">☀️</span>
             <span class="toggle-icon moon">🌙</span>
           </button>
@@ -42,26 +42,8 @@
     </main>
 
     {% block scripts_head %}{% endblock %}
-    <script>
-      (function(){
-        const root = document.documentElement;
-        const btn  = document.getElementById('themeToggle');
-        function setTheme(t){
-          root.setAttribute('data-theme', t);
-          try { localStorage.setItem('theme', t); } catch(e){}
-        }
-        try {
-          const saved = localStorage.getItem('theme');
-          if (saved) root.setAttribute('data-theme', saved);
-        } catch(e){}
-        if (btn){
-          btn.addEventListener('click', () => {
-            const cur = root.getAttribute('data-theme') || 'light';
-            setTheme(cur === 'dark' ? 'light' : 'dark');
-          });
-        }
-      })();
-    </script>
+    <!-- Usa lo script unico per il tema (evita doppia gestione inline) -->
+    <script src="{{ url_for('static', filename='js/theme.js') }}?v={{ config['BUILD_VERSION'] }}"></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

@@ -1,29 +1,46 @@
+# -*- coding: utf-8 -*-
 # backend/auth.py
 from __future__ import annotations
 
 from urllib.parse import urlparse
-from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify
-from werkzeug.security import check_password_hash
-from flask_login import login_user, logout_user, login_required, current_user
+from typing import Optional
 
-from .models import Restaurant
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    jsonify,
+)
+from werkzeug.security import check_password_hash
+from flask_login import (
+    login_user,
+    logout_user,
+    login_required,
+    current_user,
+)
+
+from backend.models import Restaurant
 
 auth_bp = Blueprint("auth", __name__)
 
 # ------------------------
-# util
+# Utils
 # ------------------------
-def _is_safe_next(target: str) -> bool:
+def _is_safe_next(target: Optional[str]) -> bool:
     """
-    Consenti redirect solo all'interno del sito (no schema/netloc esterni).
+    Consente redirect solo all'interno del sito (no host esterni).
     """
     if not target:
         return False
     u = urlparse(target)
-    # relative path o stesso host senza schema per sicurezza di base
+    # Deve essere path relativo o stesso host senza netloc
     return (not u.netloc) and (u.scheme in ("", "http", "https"))
 
-def _login_and_redirect(user: Restaurant, next_url: str | None, remember: bool = False):
+
+def _login_and_redirect(user: Restaurant, next_url: Optional[str], remember: bool = False):
     login_user(user, remember=remember)
     session["restaurant_id"] = user.id
     # redirect sicuro
@@ -31,8 +48,9 @@ def _login_and_redirect(user: Restaurant, next_url: str | None, remember: bool =
         return redirect(next_url)
     return redirect(url_for("dashboard.index"))
 
+
 # ------------------------
-# routes
+# Routes
 # ------------------------
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
@@ -43,7 +61,7 @@ def login():
             return redirect(nxt)
         return redirect(url_for("dashboard.index"))
 
-    error = None
+    error: Optional[str] = None
     next_url = request.args.get("next", "")
 
     # Supporto login JSON
@@ -63,7 +81,7 @@ def login():
         if user and check_password_hash(user.password_hash, password):
             resp = _login_and_redirect(user, request.args.get("next"), remember=remember)
             if is_json:
-                # Se la richiesta è JSON, rispondi JSON (non redirect)
+                # Se richiesta JSON: rispondi JSON invece di redirect
                 return jsonify({"ok": True, "restaurant_id": user.id}), 200
             return resp
         else:
@@ -73,6 +91,7 @@ def login():
 
     return render_template("login.html", error=error, next=next_url)
 
+
 @auth_bp.route("/logout")
 @login_required
 def logout():
@@ -80,5 +99,6 @@ def logout():
     session.pop("restaurant_id", None)
     return redirect(url_for("auth.login"))
 
-# Alias per import legacy: from backend.auth import auth
+
+# Alias legacy
 auth = auth_bp

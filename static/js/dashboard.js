@@ -358,12 +358,14 @@
     w.appendChild(ul);
     wrap.appendChild(w);
 
-    if (Array.isArray(st.specials) && st.specials.length) {
+    // FIX: usa st.special_days (backend) con fallback a st.specials
+    const specials = st.special_days || st.specials || [];
+    if (Array.isArray(specials) && specials.length) {
       const s = document.createElement("div");
       s.style.marginTop = "8px";
       s.innerHTML = "<strong>Giorni speciali</strong>";
       const ul2 = document.createElement("ul");
-      st.specials.forEach(it=>{
+      specials.forEach(it=>{
         const li = document.createElement("li");
         const ranges = (it.ranges||[]).map(r=>`${r.start}-${r.end}`).join(", ");
         li.textContent = `${it.date}: ${it.closed ? "CHIUSO" : (ranges||"aperto")}`;
