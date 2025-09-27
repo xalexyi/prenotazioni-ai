@@ -8,7 +8,11 @@
   const SESSION_KEY = 'admin_token';
   let SESSION_ID = window.SESSION_ID || window.localStorage.getItem('session_id');
   if (!SESSION_ID) {
-    SESSION_ID = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+    try {
+      SESSION_ID = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+    } catch {
+      SESSION_ID = String(Date.now());
+    }
     window.localStorage.setItem('session_id', SESSION_ID);
   }
 
@@ -36,7 +40,11 @@
   async function adminFetch(url, opts={}) {
     const token = await getAdminToken();
     if (!token) throw new Error('Token admin mancante: clicca “Imposta token”.');
-    const headers = Object.assign({}, opts.headers || {}, {'X-Admin-Token': token});
+    const baseHeaders = {
+      'X-Admin-Token': token,
+      'Accept': 'application/json'
+    };
+    const headers = Object.assign({}, baseHeaders, opts.headers || {});
     const r = await fetch(url, { ...opts, headers });
     return r;
   }
@@ -99,7 +107,6 @@
     const token = (el('#adminTokenInput')?.value || '').trim();
     await setAdminToken(token);
     toast('Token salvato');
-    // chiudi modale (dialog) se c'è
     try { el('#modalToken')?.close?.(); } catch(_){}
   }
 
@@ -184,7 +191,10 @@
       if (!closed) {
         const rows = collectDayRows(el('#sp-rows'));
         if (!rows.length) { toast('Aggiungi almeno una fascia','warn'); return; }
-        payload['ranges'] = rows.map(r => `${r.start}-${r.end}`).join(',');
+        // invia come array strutturato [{start,end}]
+        payload.ranges = rows.map(r => ({ start: r.start, end: r.end }));
+      } else {
+        payload.ranges = [];
       }
 
       const r = await adminFetch(`/api/admin/special-days/upsert`, {
@@ -192,7 +202,11 @@
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
       });
-      if (!r.ok) { throw new Error(await r.text()); }
+      if (!r.ok) {
+        let msg = 'Errore salvataggio';
+        try { const j = await r.json(); msg = j.error || msg; } catch { msg = await r.text() || msg; }
+        throw new Error(msg);
+      }
       toast('Giorno speciale salvato');
       try { el('#modalSpecial')?.close?.(); } catch(_){}
     }catch(e){
@@ -214,7 +228,11 @@
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ restaurant_id: rid, date })
       });
-      if (!r.ok) { throw new Error(await r.text()); }
+      if (!r.ok) {
+        let msg = 'Errore eliminazione';
+        try { const j = await r.json(); msg = j.error || msg; } catch { msg = await r.text() || msg; }
+        throw new Error(msg);
+      }
       toast('Giorno speciale eliminato');
       try { el('#modalSpecial')?.close?.(); } catch(_){}
     }catch(e){
@@ -226,10 +244,8 @@
 
   // -------------------- bind --------------------
   function bind() {
-    // prefill token all'apertura (se presente in sessione)
     prefillToken().catch(()=>{});
 
-    // pulsanti pagina
     el('#btn-save-token')?.addEventListener('click', ()=>saveToken().catch(e=>toast(e.message,'err')));
     el('#adminTokenInput')?.addEventListener('keydown', (ev)=>{
       if (ev.key === 'Enter') { ev.preventDefault(); saveToken().catch(e=>toast(e.message,'err')); }
