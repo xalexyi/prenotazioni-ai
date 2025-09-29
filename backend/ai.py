@@ -113,9 +113,9 @@ def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
 
 
 # =======================
-# JSON Admin endpoints
+# JSON Admin endpoints (token)
 # =======================
-@api_admin.post("/api/admin/opening-hours/bulk")
+@api_admin.post("/api/admin-token/opening-hours/bulk")
 def opening_hours_bulk():
     """
     JSON:
@@ -171,7 +171,7 @@ def opening_hours_bulk():
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
 
 
-@api_admin.post("/api/admin/special-days/upsert")
+@api_admin.post("/api/admin-token/special-days/upsert")
 def special_days_upsert():
     """
     JSON:
@@ -222,7 +222,7 @@ def special_days_upsert():
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
 
 
-@api_admin.post("/api/admin/special-days/delete")
+@api_admin.post("/api/admin-token/special-days/delete")
 def special_days_delete():
     """
     JSON:
@@ -249,7 +249,7 @@ def special_days_delete():
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
 
 
-@api_admin.post("/api/admin/settings/update")
+@api_admin.post("/api/admin-token/settings/update")
 def settings_update():
     """
     JSON:
@@ -272,7 +272,6 @@ def settings_update():
         return jsonify({"ok": False, "error": "missing restaurant_id"}), 400
 
     try:
-        # Evito .get(rid) perché la PK potrebbe non essere restaurant_id
         s = RestaurantSetting.query.filter_by(restaurant_id=rid).first() or RestaurantSetting(restaurant_id=rid)
         if "tz" in data and data["tz"] is not None:
             s.tz = str(data["tz"])
@@ -288,9 +287,9 @@ def settings_update():
 
 
 # =======================
-# Endpoint COMANDI testuali
+# Endpoint COMANDI testuali (token)
 # =======================
-@api_admin.post("/api/admin/schedule/commands")
+@api_admin.post("/api/admin-token/schedule/commands")
 def schedule_commands():
     """
     Content-Type: text/plain oppure JSON {"commands":"..."}.

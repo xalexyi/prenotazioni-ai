@@ -142,7 +142,7 @@
       cmds.push(`SETTINGS step=${step} last=${last} capacity=${capacity} party=${pmin}-${pmax} tz=${tz}`);
 
       const body = cmds.join('\n');
-      const r = await adminFetch(`/api/admin/schedule/commands`, {
+      const r = await adminFetch(`/api/admin-token/schedule/commands`, {
         method:'POST',
         headers:{'Content-Type':'text/plain'},
         body
@@ -191,13 +191,13 @@
       if (!closed) {
         const rows = collectDayRows(el('#sp-rows'));
         if (!rows.length) { toast('Aggiungi almeno una fascia','warn'); return; }
-        // ✅ ranges come array di stringhe "HH:MM-HH:MM" in sync con backend
+        // ranges come array di stringhe "HH:MM-HH:MM"
         payload.ranges = rows.map(r => `${r.start}-${r.end}`);
       } else {
         payload.ranges = [];
       }
 
-      const r = await adminFetch(`/api/admin/special-days/upsert`, {
+      const r = await adminFetch(`/api/admin-token/special-days/upsert`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
@@ -223,7 +223,7 @@
       const rid = Number(document.body.dataset.restaurantId || '1');
       const date = el('#sp-date').value;
       if (!date) { toast('Scegli una data','warn'); return; }
-      const r = await adminFetch(`/api/admin/special-days/delete`, {
+      const r = await adminFetch(`/api/admin-token/special-days/delete`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ restaurant_id: rid, date })
