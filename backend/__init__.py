@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 
 from flask import Flask
 from flask_login import LoginManager
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from backend.models import db, Restaurant
 
@@ -46,6 +47,9 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
         template_folder=str((BASE_DIR / "templates").resolve()),
     )
 
+    # On Render siamo dietro proxy: abilita uso corretto di X-Forwarded-*
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
     # ===== Secret =====
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
@@ -64,6 +68,9 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["BUILD_VERSION"] = os.environ.get("BUILD_VERSION", "dev")
     app.config.setdefault("JSON_SORT_KEYS", False)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
+    # In produzione su HTTPS, consigliare:
+    if os.environ.get("FLASK_ENV") == "production":
+        app.config.setdefault("SESSION_COOKIE_SECURE", True)
 
     if test_config:
         app.config.update(test_config)
@@ -88,10 +95,10 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     from backend.auth import auth_bp
     from backend.dashboard import bp as dashboard_bp
     from backend.api import api as api_bp
-    from backend.voice_slots import voice_bp              # /api/public/voice/*
-    from backend.admin_schedule import api_admin          # /api/admin-token/* (token)
-    from backend.twilio_voice import twilio_bp            # /twilio/*
-    # assicurati che esista backend/ai.py con parse_with_ai / create_reservation_db
+    from backend.voice_slots import voice_bp                  # /api/public/voice/*
+    from backend.admin_schedule import api_admin              # /api/admin-token/* (token)
+    from backend.twilio_voice import twilio_bp                # /twilio/*
+    from backend.public_sessions import public_sessions_bp    # /api/public/sessions/*
 
     app.register_blueprint(root_bp)
     app.register_blueprint(auth_bp)
@@ -100,6 +107,7 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(voice_bp)
     app.register_blueprint(api_admin)
     app.register_blueprint(twilio_bp)
+    app.register_blueprint(public_sessions_bp)
 
     # ===== Context processor =====
     @app.context_processor

@@ -3,11 +3,13 @@
 
 import os
 import re
+from datetime import date, datetime, timedelta
 from typing import List, Tuple, Dict, Any
 
 from flask import Blueprint, request, jsonify, abort, render_template
+from sqlalchemy import or_, and_
 
-from backend.models import db
+from backend.models import db, Reservation
 from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
 
 # =======================
@@ -26,7 +28,7 @@ def _auth() -> None:
 
 
 # =======================
-# Pagina admin (UI)
+# Pagina admin (UI - opzionale)
 # =======================
 @api_admin.get("/admin/schedule")
 def admin_schedule_page():
@@ -104,7 +106,6 @@ def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
             a, b = s.split("-", 1)
             a, b = a.strip(), b.strip()
         else:
-            # tolleranza: ["12:00", "15:00"]
             try:
                 a, b = s
             except Exception:
@@ -116,7 +117,127 @@ def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
 
 
 # =======================
-# JSON Admin endpoints (token)
+# RESERVATIONS (filtri lista)
+# =======================
+@api_admin.get("/api/admin-token/reservations")
+def admin_reservations_list():
+    """
+    Filtra le prenotazioni dell'admin.
+
+    Query:
+      - restaurant_id (obbligatorio)
+      - date=YYYY-MM-DD   (filtra esattamente quel giorno)
+      - today=1           (ignora 'date' e forza oggi)
+      - last_days=30      (prenotazioni con date >= oggi-30)
+      - q=string          (ricerca su name/phone/notes)
+    """
+    _auth()
+    rid = request.args.get("restaurant_id", type=int)
+    if not rid:
+        return jsonify({"ok": False, "error": "restaurant_id obbligatorio"}), 400
+
+    q = (request.args.get("q") or "").strip()
+    day_str = (request.args.get("date") or "").strip()
+    last_days = request.args.get("last_days", type=int)
+    today_flag = str(request.args.get("today") or "").lower() in ("1", "true", "yes", "y")
+
+    qry = Reservation.query.filter(Reservation.restaurant_id == rid)
+
+    if q:
+        like = f"%{q}%"
+        qry = qry.filter(or_(
+            (Reservation.customer_name.ilike(like)),
+            (Reservation.customer_phone.ilike(like)),
+            (Reservation.notes.ilike(like))
+        ))
+
+    if today_flag:
+        d = date.today()
+        qry = qry.filter(Reservation.date == d)
+    elif day_str:
+        if not DATE_RE.match(day_str):
+            return jsonify({"ok": False, "error": "Formato data non valido (YYYY-MM-DD)"}), 400
+        d = datetime.strptime(day_str, "%Y-%m-%d").date()
+        qry = qry.filter(Reservation.date == d)
+    elif last_days:
+        since = date.today() - timedelta(days=last_days)
+        qry = qry.filter(Reservation.date >= since)
+
+    # Ordine: più recenti in alto, poi orario crescente
+    qry = qry.order_by(Reservation.date.desc(), Reservation.time.asc(), Reservation.created_at.desc())
+    rows = qry.limit(500).all()
+
+    items = []
+    for r in rows:
+        items.append({
+            "id": r.id,
+            "restaurant_id": r.restaurant_id,
+            "date": r.date.isoformat() if r.date else None,
+            "time": r.time.strftime("%H:%M") if r.time else None,
+            "name": r.customer_name,
+            "phone": r.customer_phone,
+            "party_size": r.party_size,
+            "notes": r.notes,
+            "status": r.status,
+            "source": r.source,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "date_time": f"{r.date.isoformat()} {r.time.strftime('%H:%M')}" if (r.date and r.time) else None,
+        })
+
+    return jsonify({"ok": True, "items": items}), 200
+
+
+# =======================
+# STATE (weekly + settings + special days)
+# =======================
+@api_admin.get("/api/admin-token/schedule/state")
+def schedule_state():
+    """
+    Ritorna lo stato completo del ristorante:
+      - weekly: per ciascun weekday lista di intervalli {start,end}
+      - settings: {tz, slot_step_min, last_order_min, min_party, max_party, capacity_per_slot}
+      - special_days: array [{date, closed, ranges:[{start,end}]}]
+    """
+    _auth()
+    rid = request.args.get("restaurant_id", type=int)
+    if not rid:
+        return jsonify({"ok": False, "error": "restaurant_id obbligatorio"}), 400
+
+    # Weekly
+    weekly = [[] for _ in range(7)]
+    for oh in OpeningHour.query.filter_by(restaurant_id=rid).all():
+        weekly[int(oh.weekday)].append({"start": str(oh.start_time)[:5], "end": str(oh.end_time)[:5]})
+
+    # Settings
+    s = RestaurantSetting.query.filter_by(restaurant_id=rid).first()
+    settings = {
+        "tz": s.tz if s else "Europe/Rome",
+        "slot_step_min": s.slot_step_min if s else 15,
+        "last_order_min": s.last_order_min if s else 15,
+        "min_party": s.min_party if s else 1,
+        "max_party": s.max_party if s else 12,
+        "capacity_per_slot": s.capacity_per_slot if s else 6,
+    }
+
+    # Special days
+    specials = []
+    q = SpecialDay.query.filter_by(restaurant_id=rid).order_by(SpecialDay.date.asc(), SpecialDay.start_time.asc())
+    by_date: Dict[str, Dict[str, Any]] = {}
+    for sd in q.all():
+        d = sd.date.isoformat() if hasattr(sd.date, "isoformat") else str(sd.date)
+        ent = by_date.setdefault(d, {"date": d, "closed": False, "ranges": []})
+        if sd.is_closed:
+            ent["closed"] = True
+            ent["ranges"] = []
+        else:
+            ent["ranges"].append({"start": str(sd.start_time)[:5], "end": str(sd.end_time)[:5]})
+    specials = list(by_date.values())
+
+    return jsonify({"ok": True, "weekly": weekly, "settings": settings, "special_days": specials}), 200
+
+
+# =======================
+# OPENING HOURS (bulk replace per weekday)
 # =======================
 @api_admin.post("/api/admin-token/opening-hours/bulk")
 def opening_hours_bulk():
@@ -125,7 +246,7 @@ def opening_hours_bulk():
     {
       "restaurant_id": 1,
       "weekday": "mon" | 0..6,
-      "ranges": "12:00-15:00,19:00-23:30" | ["12:00-15:00", ...]
+      "ranges": "12:00-15:00,19:00-23:30" | ["12:00-15:00", ...] | [["12:00","15:00"], ...]
     }
     Sostituisce completamente le fasce per quel weekday.
     """
@@ -172,6 +293,30 @@ def opening_hours_bulk():
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+
+
+# =======================
+# SPECIAL DAYS
+# =======================
+@api_admin.get("/api/admin-token/special-days/list")
+def special_days_list():
+    """Lista normalizzata dei giorni speciali (aggregati per data)."""
+    _auth()
+    rid = request.args.get("restaurant_id", type=int)
+    if not rid:
+        return jsonify({"ok": False, "error": "restaurant_id obbligatorio"}), 400
+
+    q = SpecialDay.query.filter_by(restaurant_id=rid).order_by(SpecialDay.date.asc(), SpecialDay.start_time.asc())
+    by_date: Dict[str, Dict[str, Any]] = {}
+    for sd in q.all():
+        d = sd.date.isoformat() if hasattr(sd.date, "isoformat") else str(sd.date)
+        ent = by_date.setdefault(d, {"restaurant_id": rid, "date": d, "closed": False, "ranges": []})
+        if sd.is_closed:
+            ent["closed"] = True
+            ent["ranges"] = []
+        else:
+            ent["ranges"].append({"start": str(sd.start_time)[:5], "end": str(sd.end_time)[:5]})
+    return jsonify({"ok": True, "items": list(by_date.values())}), 200
 
 
 @api_admin.post("/api/admin-token/special-days/upsert")
@@ -252,6 +397,9 @@ def special_days_delete():
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
 
 
+# =======================
+# SETTINGS
+# =======================
 @api_admin.post("/api/admin-token/settings/update")
 def settings_update():
     """
@@ -277,7 +425,7 @@ def settings_update():
     try:
         s = RestaurantSetting.query.filter_by(restaurant_id=rid).first() or RestaurantSetting(restaurant_id=rid)
         if "tz" in data and data["tz"] is not None:
-            s.tz = str(data["tz"])
+            s.tz = str(data["tz"]).strip() or "Europe/Rome"
         for k in ["slot_step_min", "last_order_min", "min_party", "max_party", "capacity_per_slot"]:
             if k in data and data[k] is not None:
                 setattr(s, k, int(data[k]))
@@ -290,7 +438,7 @@ def settings_update():
 
 
 # =======================
-# Endpoint COMANDI testuali (token)
+# COMANDI testuali
 # =======================
 @api_admin.post("/api/admin-token/schedule/commands")
 def schedule_commands():
@@ -310,10 +458,10 @@ def schedule_commands():
     """
     _auth()
     if request.is_json:
-      data = request.get_json() or {}
-      text = (data.get("commands") or "").strip()
+        data = request.get_json() or {}
+        text = (data.get("commands") or "").strip()
     else:
-      text = (request.get_data(as_text=True) or "").strip()
+        text = (request.get_data(as_text=True) or "").strip()
 
     rid: int | None = None
     ops: List[Tuple] = []
