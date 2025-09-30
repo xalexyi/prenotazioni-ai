@@ -131,65 +131,60 @@
     return out;
   }
 
+  // ---------- Admin token via public session ----------
+  const SID_KEY = 'session_id';
+  function sid(){
+    let s = localStorage.getItem(SID_KEY) || window.SESSION_ID;
+    if (!s){ s = Math.random().toString(36).slice(2); localStorage.setItem(SID_KEY, s); }
+    return s;
+  }
+  function getRid(){ return window.RESTAURANT_ID || window.restaurant_id || 1; }
+  async function loadAdminToken(){
+    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j = await r.json();
+    const t = j.admin_token || j.token || j.session?.admin_token;
+    if (!t) throw new Error('admin_token mancante');
+    return t;
+  }
+  async function adminFetch(path, init={}){
+    const token = await loadAdminToken();
+    const headers = new Headers(init.headers || {});
+    headers.set('X-Admin-Token', token);
+    if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
+    const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
+    if(!r.ok){
+      const j = await r.json().catch(()=>({}));
+      throw new Error(j.error || ('HTTP '+r.status));
+    }
+    return r.json();
+  }
+
   // ---------- API ----------
-  async function getState() {
-    const r = await fetch("/api/admin/schedule/state", { credentials: "same-origin", headers: { "Accept": "application/json" }});
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
+  async function getState(){
+    return adminFetch(`/schedule/state?restaurant_id=${getRid()}`);
   }
-  async function saveWeekly(weeklyList) {
-    const r = await fetch("/api/admin/schedule/weekly", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weekly: weeklyList }),   // <— LISTA [{weekday, ranges:[{start,end}]}]
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(()=> ({}));
-      throw new Error(j.error || ("HTTP " + r.status));
+  async function saveWeekly(weeklyList){
+    const rid = getRid();
+    // invia una chiamata per ogni giorno (0..6)
+    for (const item of weeklyList){
+      const wd = Number(item.weekday);
+      const ranges = (item.ranges||[]).map(r=>`${r.start}-${r.end}`);
+      await adminFetch("/opening-hours/bulk", { method:"POST", body: JSON.stringify({ restaurant_id: rid, weekday: wd, ranges }) });
     }
-    return r.json();
+    return { ok:true };
   }
-  async function saveSettings(payload) {
-    const r = await fetch("/api/admin/schedule/settings", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
+  async function saveSettings(payload){
+    return adminFetch("/settings/update", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
   }
-  async function listSpecials() {
-    const r = await fetch("/api/admin/special-days/list", { credentials: "same-origin" });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
+  async function listSpecials(){
+    return adminFetch(`/special-days/list?restaurant_id=${getRid()}`);
   }
-  async function upsertSpecial(payload) {
-    const r = await fetch("/api/admin/special-days/upsert", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(()=> ({}));
-      throw new Error(j.error || ("HTTP " + r.status));
-    }
-    return r.json();
+  async function upsertSpecial(payload){
+    return adminFetch("/special-days/upsert", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
   }
-  async function deleteSpecial(date) {
-    const r = await fetch("/api/admin/special-days/delete", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date }),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(()=> ({}));
-      throw new Error(j.error || ("HTTP " + r.status));
-    }
-    return r.json();
+  async function deleteSpecial(date){
+    return adminFetch("/special-days/delete", { method:"POST", body: JSON.stringify({ restaurant_id: getRid(), date }) });
   }
 
   // ---------- WEEKLY UI ----------
@@ -358,7 +353,6 @@
     w.appendChild(ul);
     wrap.appendChild(w);
 
-    // FIX: usa st.special_days (backend) con fallback a st.specials
     const specials = st.special_days || st.specials || [];
     if (Array.isArray(specials) && specials.length) {
       const s = document.createElement("div");
@@ -406,7 +400,7 @@
     if (act === "special")  return actionSpecial();
     if (act === "settings") return actionSettings();
     if (act === "state")    return actionState();
-    if (act === "help")     return actionHelp();
+    if (act == "help")      return actionHelp();
   });
 
   // ---------- Ponte con il pannello prenotazioni: “Oggi” ----------

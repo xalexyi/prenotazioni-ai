@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
-from typing import Any, Dict, List
+from datetime import datetime, date as _date, timedelta
+from typing import Any, Dict, List, Tuple
 
-from flask import Blueprint, request, jsonify, session, current_app
+from flask import Blueprint, request, jsonify, session
 from flask_login import current_user, login_required
 from sqlalchemy import or_
 
@@ -40,17 +40,14 @@ def current_restaurant() -> Restaurant | None:
     """
     try:
         if getattr(current_user, "is_authenticated", False):
-            # caso: Restaurant è il modello autenticato
             if isinstance(current_user, Restaurant):
                 return current_user
-            # caso: altro utente che referenzia il restaurant_id
             rid = getattr(current_user, "restaurant_id", None) or getattr(current_user, "id", None)
             if rid:
                 return Restaurant.query.get(int(rid))
     except Exception:
         pass
 
-    # fallback: id in sessione
     rid = session.get("restaurant_id")
     return Restaurant.query.get(int(rid)) if rid else None
 
@@ -63,7 +60,7 @@ def _ensure_restaurant_id():
 
 
 # -------------------------------------------------------------------
-# MENU PIZZERIA
+# MENU
 # -------------------------------------------------------------------
 @api.get("/menu")
 @login_required
@@ -81,58 +78,73 @@ def get_menu():
 
 
 # -------------------------------------------------------------------
-# LISTA PRENOTAZIONI
+# LISTA PRENOTAZIONI (DASHBOARD LOGGATA)
 # -------------------------------------------------------------------
 @api.get("/reservations")
 @login_required
 def list_reservations():
+    """
+    Parametri supportati:
+      - date=YYYY-MM-DD         (filtra quel giorno)
+      - range=today|30days      (se presente ha priorità su 'date' per today; 30days = date >= oggi-30)
+      - q=string                (match su nome/telefono/note)
+    """
     r = current_restaurant()
     if not r:
         return jsonify([])
 
     q = Reservation.query.filter_by(restaurant_id=r.id)
 
-    rng = request.args.get("range")
-    date_s = request.args.get("date")
-    text = request.args.get("q")
+    rng = (request.args.get("range") or "").strip().lower()
+    date_s = (request.args.get("date") or "").strip()
+    text = (request.args.get("q") or "").strip()
 
-    if date_s:
-        q = q.filter(Reservation.date == date_s)
     if text:
         like = f"%{text}%"
         q = q.filter(
             or_(
                 Reservation.customer_name.ilike(like),
-                Reservation.phone.ilike(like),
-                Reservation.time.ilike(like),
+                Reservation.customer_phone.ilike(like),
+                Reservation.notes.ilike(like),
             )
         )
+
     if rng == "today":
-        from datetime import date as _d
+        q = q.filter(Reservation.date == _date.today())
+    elif rng == "30days":
+        since = _date.today() - timedelta(days=30)
+        q = q.filter(Reservation.date >= since)
+    elif date_s:
+        # accetta "YYYY-MM-DD"
+        try:
+            d = datetime.strptime(date_s, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"ok": False, "error": "bad_date_format", "hint": "YYYY-MM-DD"}), 400
+        q = q.filter(Reservation.date == d)
 
-        q = q.filter(Reservation.date == _d.today().isoformat())
-    if rng == "30days":
-        q = q.order_by(Reservation.created_at.desc()).limit(30)
-
-    q = q.order_by(Reservation.date.asc(), Reservation.time.asc(), Reservation.id.asc())
-    reservations = q.all()
+    q = q.order_by(Reservation.date.desc(), Reservation.time.asc(), Reservation.created_at.desc())
+    reservations = q.limit(500).all()
 
     out: List[Dict[str, Any]] = []
     for res in reservations:
         pizzas = [
-            {"id": rp.pizza_id, "name": rp.pizza.name, "qty": rp.quantity}
-            for rp in res.pizzas
+            {"id": rp.pizza_id, "name": getattr(rp.pizza, "name", None), "qty": rp.quantity}
+            for rp in getattr(res, "pizzas", [])
         ]
         out.append(
             {
                 "id": res.id,
+                "restaurant_id": res.restaurant_id,
                 "customer_name": res.customer_name,
-                "phone": res.phone,
-                "date": res.date,
-                "time": res.time,
-                "people": res.people,
+                "customer_phone": res.customer_phone,
+                "date": res.date.isoformat() if hasattr(res.date, "isoformat") else str(res.date),
+                "time": res.time.strftime("%H:%M") if hasattr(res.time, "strftime") and res.time else str(res.time),
+                "party_size": res.party_size,
+                "notes": res.notes,
                 "status": res.status,
+                "source": res.source,
                 "pizzas": pizzas,
+                "created_at": res.created_at.isoformat() if getattr(res, "created_at", None) else None,
             }
         )
     return jsonify(out)
@@ -153,11 +165,13 @@ def create_reservation():
         res = Reservation(
             restaurant_id=r.id,
             customer_name=data["customer_name"],
-            phone=data["phone"],
+            customer_phone=data["customer_phone"],
             date=data["date"],
             time=data["time"],
-            people=int(data.get("people", 2)),
+            party_size=int(data.get("party_size", 2)),
             status="pending",
+            notes=data.get("notes"),
+            source=data.get("source", "dashboard"),
         )
     except KeyError as e:
         return jsonify({"ok": False, "error": "missing_field", "field": str(e)}), 400
@@ -184,7 +198,7 @@ def create_reservation():
 @api.post("/public/reservations")
 def public_create_reservation():
     data = request.get_json(force=True, silent=True) or {}
-    required = ["customer_name", "phone", "date", "time", "people", "restaurant_id"]
+    required = ["customer_name", "customer_phone", "date", "time", "party_size", "restaurant_id"]
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
@@ -193,11 +207,13 @@ def public_create_reservation():
         res = Reservation(
             restaurant_id=int(data["restaurant_id"]),
             customer_name=str(data["customer_name"]),
-            phone=str(data["phone"]),
+            customer_phone=str(data["customer_phone"]),
             date=str(data["date"]),
             time=str(data["time"]),
-            people=int(data["people"]),
-            status="pending",
+            party_size=int(data["party_size"]),
+            status=data.get("status", "pending"),
+            notes=str(data.get("notes", "")),
+            source=str(data.get("source", "voice")),
         )
     except Exception as e:
         return jsonify({"ok": False, "error": "invalid_payload", "detail": str(e)}), 400
@@ -293,71 +309,6 @@ def api_calls():
 
 
 # -------------------------------------------------------------------
-# SESSIONS (per n8n) + alias pubblici
-# -------------------------------------------------------------------
-@api.get("/sessions/<sid>")
-def get_session(sid: str):
-    store = current_app.config.setdefault("_sessions", {})
-    return jsonify(store.get(sid, {}))
-
-
-@api.patch("/sessions/<sid>")
-def patch_session(sid: str):
-    store = current_app.config.setdefault("_sessions", {})
-    data = request.get_json(force=True, silent=True) or {}
-
-    update = data.get("update")
-    if update is None and "session" in data:
-        update = {"session": data.get("session")}
-    if update is None:
-        update = {}
-
-    restaurant_id = data.get("restaurant_id")
-    if restaurant_id is not None:
-        update["restaurant_id"] = restaurant_id
-
-    if "active" in data:
-        update["active"] = bool(data["active"])
-
-    store[sid] = {**store.get(sid, {}), **update}
-    return jsonify({"ok": True, "session": store[sid]})
-
-
-@api.post("/sessions/<sid>")
-def post_session(sid: str):
-    return patch_session(sid)
-
-
-@api.delete("/sessions/<sid>")
-def delete_session(sid: str):
-    store = current_app.config.setdefault("_sessions", {})
-    if sid in store:
-        del store[sid]
-        return jsonify({"ok": True, "deleted": sid})
-    return jsonify({"ok": False, "error": "not_found"}), 404
-
-
-@api.get("/public/sessions/<sid>")
-def public_get_session(sid: str):
-    return get_session(sid)
-
-
-@api.patch("/public/sessions/<sid>")
-def public_patch_session(sid: str):
-    return patch_session(sid)
-
-
-@api.post("/public/sessions/<sid>")
-def public_post_session(sid: str):
-    return post_session(sid)
-
-
-@api.delete("/public/sessions/<sid>")
-def public_delete_session(sid: str):
-    return delete_session(sid)
-
-
-# -------------------------------------------------------------------
 # RESTAURANT LOOKUP PER NUMERO (pubblico)
 # -------------------------------------------------------------------
 @api.get("/public/restaurants/byNumber")
@@ -388,7 +339,12 @@ def _load_weekly(rid: int) -> Dict[str, List[Dict[str, str]]]:
     )
     weekly: Dict[str, List[Dict[str, str]]] = {str(i): [] for i in range(7)}
     for h in rows:
-        weekly[str(h.weekday)].append({"start": h.start_time, "end": h.end_time})
+        weekly[str(h.weekday)].append(
+            {
+                "start": (h.start_time if isinstance(h.start_time, str) else str(h.start_time))[:5],
+                "end": (h.end_time if isinstance(h.end_time, str) else str(h.end_time))[:5],
+            }
+        )
     return weekly
 
 
@@ -429,11 +385,18 @@ def admin_schedule_state():
     )
     sp: Dict[str, Dict[str, Any]] = {}
     for s in specials:
-        day = sp.setdefault(s.date, {"date": s.date, "closed": False, "ranges": []})
+        dkey = s.date.isoformat() if hasattr(s.date, "isoformat") else str(s.date)
+        day = sp.setdefault(dkey, {"date": dkey, "closed": False, "ranges": []})
         if s.is_closed:
             day["closed"] = True
-        elif s.start_time and s.end_time:
-            day["ranges"].append({"start": s.start_time, "end": s.end_time})
+            day["ranges"] = []
+        elif s.start_time and s.end_time and not day.get("closed"):
+            day["ranges"].append(
+                {
+                    "start": (s.start_time if isinstance(s.start_time, str) else str(s.start_time))[:5],
+                    "end": (s.end_time if isinstance(s.end_time, str) else str(s.end_time))[:5],
+                }
+            )
 
     settings = _load_settings(rid)
     return jsonify(
@@ -528,11 +491,18 @@ def admin_special_days_list():
     rows = q.order_by(SpecialDay.date.asc(), SpecialDay.start_time.asc()).all()
     out: Dict[str, Dict[str, Any]] = {}
     for s in rows:
-        day = out.setdefault(s.date, {"date": s.date, "closed": False, "ranges": []})
+        dkey = s.date.isoformat() if hasattr(s.date, "isoformat") else str(s.date)
+        day = out.setdefault(dkey, {"date": dkey, "closed": False, "ranges": []})
         if s.is_closed:
             day["closed"] = True
-        elif s.start_time and s.end_time:
-            day["ranges"].append({"start": s.start_time, "end": s.end_time})
+            day["ranges"] = []
+        elif s.start_time and s.end_time and not day.get("closed"):
+            day["ranges"].append(
+                {
+                    "start": (s.start_time if isinstance(s.start_time, str) else str(s.start_time))[:5],
+                    "end": (s.end_time if isinstance(s.end_time, str) else str(s.end_time))[:5],
+                }
+            )
     return jsonify({"ok": True, "items": list(out.values())})
 
 
