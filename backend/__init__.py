@@ -10,11 +10,10 @@ from flask_login import LoginManager
 
 from backend.models import db, Restaurant
 
-
 # -----------------------------
 # Helpers
 # -----------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent  # cartella progetto (che contiene /backend, /templates, /static)
+BASE_DIR = Path(__file__).resolve().parent.parent  # cartella progetto
 
 
 def _maybe_create_instance_dir(db_uri: str) -> None:
@@ -25,14 +24,13 @@ def _maybe_create_instance_dir(db_uri: str) -> None:
 
 def _normalize_db_url(raw: str) -> str:
     """
-    Normalizza DATABASE_URL per compat vecchi Heroku e Render:
+    Normalizza DATABASE_URL per compatibilità Heroku/Render:
     - postgres://  -> postgresql://
     - aggiunge sslmode=require se Postgres e manca
     """
     if raw.startswith("postgres://"):
         raw = raw.replace("postgres://", "postgresql://", 1)
     if raw.startswith("postgresql://") and "sslmode=" not in raw:
-        # Render in genere richiede SSL; se già presente, non toccare
         sep = "&" if "?" in raw else "?"
         raw = f"{raw}{sep}sslmode=require"
     return raw
@@ -57,7 +55,7 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,   # evita connessioni zombie (es. Render)
+        "pool_pre_ping": True,  # evita connessioni zombie (es. Render)
     }
     _maybe_create_instance_dir(db_url)
 
@@ -73,7 +71,7 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     # ===== Estensioni =====
     db.init_app(app)
 
-    # ===== Login (il "tenant" è il Restaurant) =====
+    # ===== Login (il "tenant" è Restaurant) =====
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
     login_manager.init_app(app)
@@ -90,9 +88,10 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     from backend.auth import auth_bp
     from backend.dashboard import bp as dashboard_bp
     from backend.api import api as api_bp
-    from backend.voice_slots import voice_bp           # /api/public/voice/*
-    from backend.admin_schedule import api_admin        # /api/admin/* (token)
-    from backend.twilio_voice import twilio_bp          # /twilio/*
+    from backend.voice_slots import voice_bp              # /api/public/voice/*
+    from backend.admin_schedule import api_admin          # /api/admin-token/* (token)
+    from backend.twilio_voice import twilio_bp            # /twilio/*
+    # assicurati che esista backend/ai.py con parse_with_ai / create_reservation_db
 
     app.register_blueprint(root_bp)
     app.register_blueprint(auth_bp)

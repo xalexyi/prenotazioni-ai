@@ -63,8 +63,8 @@ def voice():
         "oppure vorrei ordinare due Margherite e una Diavola."
     )
 
-    # URL assoluto (Twilio richiede endpoint pubblici)
-    action_url = url_for("twilio.handle", _external=True)
+    # URL assoluto (Twilio richiede endpoint pubblici) - forziamo HTTPS
+    action_url = url_for("twilio.handle", _external=True, _scheme="https")
 
     gather = Gather(
         input="speech",
