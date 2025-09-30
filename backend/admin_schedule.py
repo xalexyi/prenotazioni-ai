@@ -3,11 +3,11 @@
 
 import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time as _time
 from typing import List, Tuple, Dict, Any
 
 from flask import Blueprint, request, jsonify, abort, render_template
-from sqlalchemy import or_, and_
+from sqlalchemy import or_
 
 from backend.models import db, Reservation
 from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
@@ -64,6 +64,10 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")           # YYYY-MM-DD
 def _is_hhmm(s: str) -> bool:
     return bool(TIME_RE.match((s or "").strip()))
 
+def _to_time(hhmm: str) -> _time:
+    """Converte 'HH:MM' in datetime.time (tipo adatto alla colonna TIME)."""
+    return datetime.strptime(hhmm, "%H:%M").time()
+
 def parse_range_list(s: str) -> List[Tuple[str, str]]:
     """
     "12:00-15:00,19:00-23:30" -> [("12:00","15:00"), ("19:00","23:30")]
@@ -89,10 +93,21 @@ def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
       - stringa "12:00-15:00,19:00-23:30"
       - lista di stringhe ["12:00-15:00", "19:00-23:30"]
       - lista di tuple/array ["12:00","15:00"]
+      - lista di oggetti {"start":"12:00","end":"15:00"}
     e ritorna lista di tuple (start, end) validate HH:MM.
     """
     if value is None:
         return []
+    # oggetti {start,end}
+    if isinstance(value, list) and value and isinstance(value[0], dict):
+        rngs: List[Tuple[str, str]] = []
+        for r in value:
+            a = (r.get("start") or "").strip()
+            b = (r.get("end") or "").strip()
+            if not (_is_hhmm(a) and _is_hhmm(b)):
+                raise ValueError(f"invalid time (use HH:MM): {a}-{b}")
+            rngs.append((a, b))
+        return rngs
     if isinstance(value, str):
         return parse_range_list(value)
 
@@ -246,7 +261,7 @@ def opening_hours_bulk():
     {
       "restaurant_id": 1,
       "weekday": "mon" | 0..6,
-      "ranges": "12:00-15:00,19:00-23:30" | ["12:00-15:00", ...] | [["12:00","15:00"], ...]
+      "ranges": "12:00-15:00,19:00-23:30" | ["12:00-15:00", ...] | [["12:00","15:00"], ...] | [{"start":"12:00","end":"15:00"}, ...]
     }
     Sostituisce completamente le fasce per quel weekday.
     """
@@ -285,8 +300,8 @@ def opening_hours_bulk():
                     OpeningHour(
                         restaurant_id=rid,
                         weekday=weekday,
-                        start_time=a,
-                        end_time=b,
+                        start_time=_to_time(a),
+                        end_time=_to_time(b),
                     )
                 )
         return jsonify({"ok": True, "weekday": weekday, "count": len(ranges)}), 200
@@ -360,8 +375,8 @@ def special_days_upsert():
                             restaurant_id=rid,
                             date=date_s,
                             is_closed=False,
-                            start_time=a,
-                            end_time=b,
+                            start_time=_to_time(a),
+                            end_time=_to_time(b),
                         )
                     )
         return jsonify({"ok": True}), 200
@@ -537,8 +552,8 @@ def schedule_commands():
                             OpeningHour(
                                 restaurant_id=rid,
                                 weekday=weekday,
-                                start_time=a,
-                                end_time=b,
+                                start_time=_to_time(a),
+                                end_time=_to_time(b),
                             )
                         )
 
@@ -554,8 +569,8 @@ def schedule_commands():
                                     restaurant_id=rid,
                                     date=date_s,
                                     is_closed=False,
-                                    start_time=a,
-                                    end_time=b,
+                                    start_time=_to_time(a),
+                                    end_time=_to_time(b),
                                 )
                             )
 

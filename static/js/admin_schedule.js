@@ -17,7 +17,7 @@
   }
 
   async function loadSession() {
-    const r = await fetch(`${BASE}/api/public/sessions/${SESSION_ID}`, { cache:'no-store' });
+    const r = await fetch(`${BASE}/api/public/sessions/${SESSION_ID}`, { cache:'no-store', credentials: 'same-origin' });
     if (!r.ok) return {};
     return await r.json();
   }
@@ -25,12 +25,14 @@
     await fetch(`${BASE}/api/public/sessions/${SESSION_ID}`, {
       method: 'PATCH',
       headers: {'Content-Type':'application/json'},
+      credentials: 'same-origin',
       body: JSON.stringify({ update: partial }),
     });
   }
   async function getAdminToken() {
     const s = await loadSession();
-    return (s.session && s.session[SESSION_KEY]) || '';
+    // compat: { session: { admin_token } } oppure direttamente { admin_token }
+    return (s.session && s.session[SESSION_KEY]) || s[SESSION_KEY] || '';
   }
   async function setAdminToken(token) {
     await saveSession({ session: { [SESSION_KEY]: token } });
@@ -45,7 +47,7 @@
       'Accept': 'application/json'
     };
     const headers = Object.assign({}, baseHeaders, opts.headers || {});
-    const r = await fetch(url, { ...opts, headers });
+    const r = await fetch(url, { ...opts, headers, credentials: 'same-origin' });
     return r;
   }
 
@@ -56,7 +58,7 @@
     t.style.position='fixed'; t.style.right='16px'; t.style.bottom='16px';
     t.style.padding='10px 14px'; t.style.borderRadius='10px'; t.style.zIndex='99999';
     t.style.color='#fff'; t.style.fontWeight='700';
-    t.style.background = type==='ok'? '#0ea5e9' : (type==='warn'? '#f59e0b' : '#ef4444');
+    t.style.background = type==='ok'? '#10b981' : (type==='warn'? '#f59e0b' : '#ef4444');
     t.style.boxShadow='0 6px 24px rgba(0,0,0,.25)';
     document.body.appendChild(t);
     setTimeout(()=>t.remove(), 2200);
@@ -95,6 +97,14 @@
     }).filter(Boolean);
   }
 
+  function hhmm(s) {
+    const m = String(s || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = String(m[1]).padStart(2,'0');
+    const n = m[2];
+    return `${h}:${n}`;
+  }
+
   // -------------------- token modal --------------------
   async function prefillToken() {
     try{
@@ -113,6 +123,7 @@
   // -------------------- weekly --------------------
   const DAYS = ['mon','tue','wed','thu','fri','sat','sun'];
   function openWeekly() {
+    // Prefill “tipo” — se vuoi puoi popolare da /api/admin-token/schedule/state
     DAYS.forEach(d => {
       const c = el(`#w-${d}`); if (!c) return;
       c.innerHTML = '';
@@ -128,17 +139,30 @@
       const rid = Number(document.body.dataset.restaurantId || '1');
       const cmds = [];
       cmds.push(`RID=${rid}`);
+
       DAYS.forEach(d => {
-        const rows = collectDayRows(el(`#w-${d}`));
-        const segments = rows.map(r => `${r.start}-${r.end}`).join(',');
-        cmds.push(`WEEK ${d} ${segments}`);
+        const box = el(`#w-${d}`);
+        const rows = collectDayRows(box);
+
+        // se non c'è alcuna fascia, inviamo CLOSED, altrimenti elenco "HH:MM-HH:MM"
+        if (!rows.length) {
+          cmds.push(`WEEK ${d} CLOSED`);
+        } else {
+          const segments = rows.map(r => {
+            const a = hhmm(r.start); const b = hhmm(r.end);
+            if (!a || !b) throw new Error(`Orario non valido in ${d.toUpperCase()}`);
+            return `${a}-${b}`;
+          }).join(',');
+          cmds.push(`WEEK ${d} ${segments}`);
+        }
       });
-      const step = Number(el('#set-step').value || '15');
-      const last = Number(el('#set-last').value || '15');
-      const capacity = Number(el('#set-capacity').value || '6');
-      const pmin = Number(el('#set-party-min').value || '1');
-      const pmax = Number(el('#set-party-max').value || '12');
-      const tz   = (el('#set-tz').value || 'Europe/Rome').trim();
+
+      const step = Number(el('#set-step')?.value || '15');
+      const last = Number(el('#set-last')?.value || '15');
+      const capacity = Number(el('#set-capacity')?.value || '6');
+      const pmin = Number(el('#set-party-min')?.value || '1');
+      const pmax = Number(el('#set-party-max')?.value || '12');
+      const tz   = (el('#set-tz')?.value || 'Europe/Rome').trim();
       cmds.push(`SETTINGS step=${step} last=${last} capacity=${capacity} party=${pmin}-${pmax} tz=${tz}`);
 
       const body = cmds.join('\n');
@@ -151,7 +175,7 @@
         const txt = await r.text().catch(()=>String(r.status));
         throw new Error(txt || ('HTTP '+r.status));
       }
-      toast('Orari settimanali salvati');
+      toast('Orari settimanali salvati', 'ok');
       try { el('#modalWeekly')?.close?.(); } catch(_){}
     }catch(e){
       toast((e && e.message) ? e.message : 'Errore salvataggio', 'err');
@@ -162,8 +186,8 @@
 
   // -------------------- special days --------------------
   function openSpecial() {
-    el('#sp-date').value = '';
-    el('#sp-closed').checked = true;
+    const dateEl = el('#sp-date'); if (dateEl) dateEl.value = '';
+    const chk = el('#sp-closed'); if (chk) chk.checked = true;
     const rowsBox = el('#sp-rows');
     if (rowsBox) {
       rowsBox.innerHTML = '';
@@ -183,16 +207,19 @@
     setBusy(btn, true);
     try{
       const rid = Number(document.body.dataset.restaurantId || '1');
-      const date = el('#sp-date').value;
-      const closed = el('#sp-closed').checked;
+      const date = el('#sp-date')?.value;
+      const closed = !!(el('#sp-closed')?.checked);
       if (!date) { toast('Scegli una data','warn'); return; }
 
       const payload = { restaurant_id: rid, date, closed };
       if (!closed) {
         const rows = collectDayRows(el('#sp-rows'));
         if (!rows.length) { toast('Aggiungi almeno una fascia','warn'); return; }
-        // ranges come array di stringhe "HH:MM-HH:MM"
-        payload.ranges = rows.map(r => `${r.start}-${r.end}`);
+        payload.ranges = rows.map(r => {
+          const a = hhmm(r.start), b = hhmm(r.end);
+          if (!a || !b) throw new Error('Orario non valido');
+          return `${a}-${b}`;
+        });
       } else {
         payload.ranges = [];
       }
@@ -207,7 +234,7 @@
         try { const j = await r.json(); msg = j.error || msg; } catch { msg = await r.text() || msg; }
         throw new Error(msg);
       }
-      toast('Giorno speciale salvato');
+      toast('Giorno speciale salvato', 'ok');
       try { el('#modalSpecial')?.close?.(); } catch(_){}
     }catch(e){
       toast((e && e.message) ? e.message : 'Errore salvataggio', 'err');
@@ -221,7 +248,7 @@
     setBusy(btn, true);
     try{
       const rid = Number(document.body.dataset.restaurantId || '1');
-      const date = el('#sp-date').value;
+      const date = el('#sp-date')?.value;
       if (!date) { toast('Scegli una data','warn'); return; }
       const r = await adminFetch(`/api/admin-token/special-days/delete`, {
         method:'POST',
@@ -233,7 +260,7 @@
         try { const j = await r.json(); msg = j.error || msg; } catch { msg = await r.text() || msg; }
         throw new Error(msg);
       }
-      toast('Giorno speciale eliminato');
+      toast('Giorno speciale eliminato', 'ok');
       try { el('#modalSpecial')?.close?.(); } catch(_){}
     }catch(e){
       toast((e && e.message) ? e.message : 'Errore eliminazione', 'err');
