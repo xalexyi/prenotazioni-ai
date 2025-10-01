@@ -143,7 +143,8 @@
     const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin' });
     if(!r.ok) throw new Error('HTTP '+r.status);
     const j = await r.json();
-    const t = j.admin_token || j.token || j.session?.admin_token;
+    // più tollerante: prova varie chiavi comuni
+    const t = j.admin_token || j.token || j.session?.admin_token || j.session?.token;
     if (!t) throw new Error('admin_token mancante');
     return t;
   }
@@ -151,7 +152,12 @@
     const token = await loadAdminToken();
     const headers = new Headers(init.headers || {});
     headers.set('X-Admin-Token', token);
-    if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
+    // evita di impostare Content-Type su GET senza body
+    if (init.method && init.method.toUpperCase() !== 'GET') {
+      if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
+        headers.set('Content-Type','application/json');
+      }
+    }
     const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
     if(!r.ok){
       const j = await r.json().catch(()=>({}));
@@ -166,7 +172,6 @@
   }
   async function saveWeekly(weeklyList){
     const rid = getRid();
-    // invia una chiamata per ogni giorno (0..6)
     for (const item of weeklyList){
       const wd = Number(item.weekday);
       const ranges = (item.ranges||[]).map(r=>`${r.start}-${r.end}`);
