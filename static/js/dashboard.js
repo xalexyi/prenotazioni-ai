@@ -143,8 +143,7 @@
     const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin' });
     if(!r.ok) throw new Error('HTTP '+r.status);
     const j = await r.json();
-    // più tollerante: prova varie chiavi comuni
-    const t = j.admin_token || j.token || j.session?.admin_token || j.session?.token;
+    const t = j.admin_token || j.token || j.session?.admin_token;
     if (!t) throw new Error('admin_token mancante');
     return t;
   }
@@ -152,12 +151,7 @@
     const token = await loadAdminToken();
     const headers = new Headers(init.headers || {});
     headers.set('X-Admin-Token', token);
-    // evita di impostare Content-Type su GET senza body
-    if (init.method && init.method.toUpperCase() !== 'GET') {
-      if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
-        headers.set('Content-Type','application/json');
-      }
-    }
+    if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
     const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
     if(!r.ok){
       const j = await r.json().catch(()=>({}));
@@ -190,6 +184,14 @@
   }
   async function deleteSpecial(date){
     return adminFetch("/special-days/delete", { method:"POST", body: JSON.stringify({ restaurant_id: getRid(), date }) });
+  }
+
+  // >>>>>>>>>>>> CREATE RESERVATION (NEW)
+  async function createReservation(payload){
+    return adminFetch("/reservations/create", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, restaurant_id: getRid() })
+    });
   }
 
   // ---------- WEEKLY UI ----------
@@ -240,8 +242,8 @@
   // ---------- SPECIAL DAYS UI ----------
   function isoFromInput(val) {
     if (!val) return "";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;           // 2026-01-01
-    const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);    // 01/01/2026
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
     return val;
   }
@@ -396,11 +398,12 @@
   function actionHelp() { openModal("#modal-help"); }
 
   // ---------- Wire menu ----------
+  const kebabMenu = $("#kebab-menu"); // (ribind locale in caso non definito sopra)
   kebabMenu?.addEventListener("click", (e) => {
     const btn = e.target.closest(".k-item");
     if (!btn) return;
     const act = btn.dataset.act;
-    kebabClose();
+    if (typeof kebabClose === "function") kebabClose();
     if (act === "weekly")   return actionWeekly();
     if (act === "special")  return actionSpecial();
     if (act === "settings") return actionSettings();
@@ -412,5 +415,47 @@
   $("#btn-today")?.addEventListener("click", () => {
     const fDate = $("#f-date") || $("#resv-date");
     if (fDate) fDate.value = todayISO();
+  });
+
+  // ============ CREA PRENOTAZIONE (UI) ============
+  function openCreateModal() {
+    const fDate = $("#f-date") || $("#resv-date");
+    const today = todayISO();
+    $("#cr-date").value   = (fDate && fDate.value) || today;
+    $("#cr-time").value   = "20:00";
+    $("#cr-name").value   = "";
+    $("#cr-phone").value  = "";
+    $("#cr-party").value  = "2";
+    $("#cr-status").value = "confirmed";
+    $("#cr-notes").value  = "";
+    openModal("#modal-create");
+  }
+  $("#btn-open-create")?.addEventListener("click", openCreateModal);
+
+  $("#btn-create-save")?.addEventListener("click", async () => {
+    try{
+      const payload = {
+        date:  $("#cr-date").value,
+        time:  $("#cr-time").value,
+        name:  ($("#cr-name").value || "").trim(),
+        phone: ($("#cr-phone").value || "").trim(),
+        party_size: Number($("#cr-party").value || 0),
+        status: $("#cr-status").value || "confirmed",
+        notes:  ($("#cr-notes").value || "").trim(),
+      };
+      if(!payload.date) throw new Error("Data mancante");
+      if(!/^\d{2}:\d{2}$/.test(payload.time)) throw new Error("Ora non valida (HH:MM)");
+      if(!payload.name) throw new Error("Nome obbligatorio");
+      if(payload.party_size <= 0) throw new Error("Persone > 0");
+
+      await createReservation(payload);
+      showToast("Prenotazione creata ✅", "ok");
+      closeModal("#modal-create");
+      // prova a ricaricare la lista se esiste un bottone refresh
+      $("#resv-refresh")?.click();
+    }catch(e){
+      console.error(e);
+      showToast(e.message || "Errore creazione", "err");
+    }
   });
 })();

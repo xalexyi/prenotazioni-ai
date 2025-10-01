@@ -73,6 +73,10 @@
         <button class="btn btn-outline" id="resv-last30">Storico 30gg</button>
         <button class="btn btn-outline" id="resv-today">Oggi</button>
         <button class="btn" id="resv-refresh">Aggiorna</button>
+
+        <!-- >>> NUOVO: CREA PRENOTAZIONE -->
+        <span style="flex:1"></span>
+        <button class="btn btn-primary" id="btn-open-create">Crea prenotazione</button>
       </div>
     </div>
     <!-- Contenitore usato da reservations.js -->
@@ -220,6 +224,36 @@
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== MODAL: Crea prenotazione (NUOVO) ====== -->
+<div id="modal-create" class="modal-backdrop" aria-hidden="true">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="create-title">
+    <div class="modal-head">
+      <h3 class="card-title" id="create-title">Crea prenotazione</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
+    </div>
+    <div class="modal-body grid-2">
+      <div><label>Data</label><input id="cr-date" type="date" class="input" data-autofocus></div>
+      <div><label>Ora</label><input id="cr-time" type="time" class="input" value="20:00"></div>
+      <div class="col-span-2"><label>Nome</label><input id="cr-name" type="text" class="input" placeholder="Mario Rossi"></div>
+      <div><label>Telefono</label><input id="cr-phone" type="tel" class="input" placeholder="+39…"></div>
+      <div><label>Persone</label><input id="cr-party" type="number" min="1" value="2" class="input"></div>
+      <div>
+        <label>Stato</label>
+        <select id="cr-status" class="input">
+          <option value="confirmed">Confermata</option>
+          <option value="pending">In attesa</option>
+          <option value="cancelled">Cancellata</option>
+        </select>
+      </div>
+      <div class="col-span-2"><label>Note</label><textarea id="cr-notes" class="input" rows="3" placeholder="Allergie, tavolo, ecc."></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light js-close">Chiudi</button>
+      <button class="btn" id="btn-create-save">Salva prenotazione</button>
     </div>
   </div>
 </div>
