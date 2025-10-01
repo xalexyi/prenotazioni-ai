@@ -1,82 +1,55 @@
 # -*- coding: utf-8 -*-
 # backend/public_sessions.py
 
-from flask import Blueprint, request, jsonify, session, current_app
-import secrets
-import os
+from __future__ import annotations
+from typing import Any, Dict
+from flask import Blueprint, current_app, jsonify, request
 
 public_sessions_bp = Blueprint("public_sessions", __name__, url_prefix="/api/public/sessions")
 
-# ================================================
-# Utility
-# ================================================
-
-def _sid_from_path(sid: str) -> str:
-    """Ritorna l'ID di sessione richiesto (sanitizzato)."""
-    sid = (sid or "").strip()
-    if not sid or len(sid) > 64:
-        raise ValueError("Session ID non valido")
-    return sid
-
-def _get_admin_token() -> str:
-    """Restituisce l'admin token dal config/env."""
-    return os.environ.get("ADMIN_TOKEN") or current_app.config.get("ADMIN_TOKEN")
-
-# ================================================
-# Routes
-# ================================================
+def _store() -> Dict[str, Any]:
+    return current_app.config.setdefault("_sessions", {})
 
 @public_sessions_bp.get("/<sid>")
-def get_session(sid):
-    """
-    Restituisce la sessione pubblica.
-    Se non esiste, la crea al volo.
-    Ritorna sempre admin_token (necessario al frontend).
-    """
-    try:
-        sid = _sid_from_path(sid)
-    except ValueError:
-        return jsonify({"ok": False, "error": "Invalid session id"}), 400
-
-    token = _get_admin_token()
-    if not token:
-        return jsonify({"ok": False, "error": "ADMIN_TOKEN non configurato"}), 500
-
-    # In futuro potresti persistere info utente/tenant se serve.
-    data = {
-        "sid": sid,
-        "admin_token": token,
-    }
-    return jsonify(data)
-
+def get_session(sid: str):
+    return jsonify(_store().get(sid, {}))
 
 @public_sessions_bp.patch("/<sid>")
-def patch_session(sid):
-    """
-    Permette di aggiornare valori nella sessione (ad es. memorizzare admin_token locale).
-    Non usato molto, ma utile per debug/manuale.
-    """
-    try:
-        sid = _sid_from_path(sid)
-    except ValueError:
-        return jsonify({"ok": False, "error": "Invalid session id"}), 400
+def patch_session(sid: str):
+    data = request.get_json(force=True, silent=True) or {}
+    store = _store()
 
-    payload = request.get_json(silent=True) or {}
-    # al momento gestiamo solo admin_token
-    token = payload.get("admin_token")
-    if token:
-        session["admin_token"] = token
+    update = data.get("update")
+    if update is None and "session" in data:
+        update = {"session": data.get("session")}
+    if update is None:
+        update = {}
 
-    return jsonify({"ok": True, "sid": sid, "session": dict(session)})
+    # compat: consenti sia root fields che session: {...}
+    root_updates = {}
+    sess_updates = {}
+    if "session" in update and isinstance(update["session"], dict):
+        sess_updates = update["session"]
+    else:
+        # se passano direttamente { admin_token: "..." }
+        root_updates = update
 
+    current = store.get(sid, {})
+    merged = {**current, **root_updates}
+    if sess_updates:
+        merged["session"] = {**current.get("session", {}), **sess_updates}
 
-@public_sessions_bp.get("/@me")
-def session_me():
-    """
-    Restituisce la sessione corrente del browser (cookie-based).
-    Utile se non vuoi gestire sid manualmente.
-    """
-    token = session.get("admin_token") or _get_admin_token()
-    if not token:
-        return jsonify({"ok": False, "error": "Nessun admin_token"}), 404
-    return jsonify({"sid": session.get("sid") or "anon", "admin_token": token})
+    store[sid] = merged
+    return jsonify({"ok": True, "session": store[sid]})
+
+@public_sessions_bp.post("/<sid>")
+def post_session(sid: str):
+    return patch_session(sid)
+
+@public_sessions_bp.delete("/<sid>")
+def delete_session(sid: str):
+    store = _store()
+    if sid in store:
+        del store[sid]
+        return jsonify({"ok": True, "deleted": sid})
+    return jsonify({"ok": False, "error": "not_found"}), 404

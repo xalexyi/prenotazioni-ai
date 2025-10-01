@@ -47,7 +47,7 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
         template_folder=str((BASE_DIR / "templates").resolve()),
     )
 
-    # On Render siamo dietro proxy: abilita uso corretto di X-Forwarded-*
+    # Siamo dietro proxy (es. Render): usa correttamente gli header X-Forwarded-*
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     # ===== Secret =====
@@ -59,7 +59,7 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,  # evita connessioni zombie (es. Render)
+        "pool_pre_ping": True,  # evita connessioni zombie (Render/Heroku)
     }
     _maybe_create_instance_dir(db_url)
 
@@ -68,7 +68,7 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["BUILD_VERSION"] = os.environ.get("BUILD_VERSION", "dev")
     app.config.setdefault("JSON_SORT_KEYS", False)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
-    # In produzione su HTTPS, consigliare:
+    # In produzione su HTTPS è consigliato impostare cookie secure
     if os.environ.get("FLASK_ENV") == "production":
         app.config.setdefault("SESSION_COOKIE_SECURE", True)
 
@@ -78,7 +78,7 @@ def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
     # ===== Estensioni =====
     db.init_app(app)
 
-    # ===== Login (il "tenant" è Restaurant) =====
+    # ===== Login (tenant = Restaurant) =====
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
     login_manager.init_app(app)
