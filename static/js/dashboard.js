@@ -1,4 +1,4 @@
-/* static/js/dashboard.js — aggiornato e verificato */
+/* static/js/dashboard.js — completo */
 (() => {
   const $  = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -140,78 +140,47 @@
   }
   function getRid(){ return window.RESTAURANT_ID || window.restaurant_id || 1; }
 
-  async function sessGet(){
+  async function loadPublicSession(){
     const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin', cache:'no-store' });
-    if(!r.ok) return {};
+    if(!r.ok) throw new Error('HTTP '+r.status);
     return r.json();
   }
-  async function sessPatch(partial){
-    await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, {
-      method:'PATCH',
-      headers:{'Content-Type':'application/json'},
-      credentials:'same-origin',
-      body: JSON.stringify({ update: partial })
-    });
-  }
-
   async function loadAdminToken(){
-    const j = await sessGet();
-    const t = j.admin_token || j.token || j.session?.admin_token || window.ADMIN_TOKEN;
+    const j = await loadPublicSession();
+    const t = j.admin_token || j.token || j.session?.admin_token;
     if (!t) throw new Error('admin_token mancante');
     return t;
   }
   async function saveAdminToken(token){
-    await sessPatch({ admin_token: token, session: { admin_token: token } });
+    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, {
+      method:'PATCH',
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ update: { session: { admin_token: token } } })
+    });
+    if(!r.ok){
+      const txt = await r.text().catch(()=>String(r.status));
+      throw new Error(txt || ('HTTP '+r.status));
+    }
+    return r.json().catch(()=>({ok:true}));
   }
 
   async function adminFetch(path, init={}){
     const headers = new Headers(init.headers || {});
-    try{
-      const token = await loadAdminToken();
-      headers.set('X-Admin-Token', token);
-    }catch(e){
-      // se manca, apri il modale token e rilancia
-      openModal('#modal-token');
-      throw e;
-    }
-    if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
-      headers.set('Content-Type','application/json');
-    }
+    const token = await loadAdminToken().catch((e)=>{ throw e; });
+    headers.set('X-Admin-Token', token);
+    if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
     const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
     if(!r.ok){
-      const j = await r.json().catch(()=>({}));
-      throw new Error(j.error || ('HTTP '+r.status));
+      let msg = 'HTTP '+r.status;
+      try { const j = await r.json(); msg = j.error || msg; } catch {}
+      throw new Error(msg);
     }
     return r.json();
   }
 
-  // Token modal handlers
-  async function prefillToken() {
-    try{
-      const j = await sessGet();
-      const tk = j.admin_token || j.session?.admin_token || '';
-      const input = $('#adminTokenInput');
-      if (input && !input.value) input.value = tk;
-    }catch(_){}
-  }
-  async function saveTokenAndClose() {
-    const v = ($('#adminTokenInput')?.value || '').trim();
-    if (!v) { showToast('Inserisci un token', 'warn'); return; }
-    await saveAdminToken(v);
-    showToast('Token salvato ✅', 'ok');
-    closeModal('#modal-token');
-  }
-  $('#btn-save-token')?.addEventListener('click', ()=> {
-    saveTokenAndClose().catch(e=>showToast(e.message||'Errore salvataggio token','err'));
-  });
-  $('#adminTokenInput')?.addEventListener('keydown', (ev)=>{
-    if (ev.key === 'Enter'){ ev.preventDefault(); saveTokenAndClose().catch(e=>showToast(e.message,'err')); }
-  });
-
   // ---------- API ----------
-  async function getState(){
-    return adminFetch(`/schedule/state?restaurant_id=${getRid()}`);
-  }
+  async function getState(){ return adminFetch(`/schedule/state?restaurant_id=${getRid()}`); }
   async function saveWeekly(weeklyList){
     const rid = getRid();
     for (const item of weeklyList){
@@ -224,9 +193,7 @@
   async function saveSettings(payload){
     return adminFetch("/settings/update", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
   }
-  async function listSpecials(){
-    return adminFetch(`/special-days/list?restaurant_id=${getRid()}`);
-  }
+  async function listSpecials(){ return adminFetch(`/special-days/list?restaurant_id=${getRid()}`); }
   async function upsertSpecial(payload){
     return adminFetch("/special-days/upsert", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
   }
@@ -234,10 +201,7 @@
     return adminFetch("/special-days/delete", { method:"POST", body: JSON.stringify({ restaurant_id: getRid(), date }) });
   }
   async function createReservation(payload){
-    return adminFetch("/reservations/create", {
-      method: "POST",
-      body: JSON.stringify({ ...payload, restaurant_id: getRid() })
-    });
+    return adminFetch("/reservations/create", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
   }
 
   // ---------- WEEKLY UI ----------
@@ -454,7 +418,7 @@
     if (act === "settings") return actionSettings();
     if (act === "state")    return actionState();
     if (act === "help")     return actionHelp();
-    if (act === "token")    { prefillToken(); return openModal("#modal-token"); }
+    if (act === "token")    return openTokenModal();
   });
 
   // ---------- Ponte con il pannello prenotazioni: “Oggi” ----------
@@ -463,9 +427,9 @@
     if (fDate) fDate.value = todayISO();
   });
 
-  // ---------- CREA PRENOTAZIONE ----------
+  // ============ CREA PRENOTAZIONE (UI) ============
   function openCreateModal() {
-    const fDate = $("#f-date") || $("#resv-date");
+    const fDate = $("#resv-date") || $("#resv-date");
     const today = todayISO();
     $("#cr-date").value   = (fDate && fDate.value) || today;
     $("#cr-time").value   = "20:00";
@@ -504,6 +468,35 @@
     }
   });
 
-  // Prefill del token alla prima apertura della pagina (se già presente in sessione)
-  prefillToken().catch(()=>{});
+  // ============ TOKEN ADMIN (UI) ============
+  async function prefillToken(){
+    const input = $("#tok-input");
+    if(!input) return;
+    try{
+      const sess = await loadPublicSession();
+      const tk = sess.admin_token || sess.token || sess.session?.admin_token || "";
+      input.value = tk || "";
+    }catch(_){}
+  }
+  function openTokenModal(){
+    prefillToken();
+    openModal("#modal-token");
+  }
+  $("#tok-save")?.addEventListener("click", async ()=>{
+    try{
+      const token = ($("#tok-input").value || "").trim();
+      await saveAdminToken(token);
+      showToast("Token salvato ✅","ok");
+      closeModal("#modal-token");
+    }catch(e){
+      console.error(e);
+      showToast(e.message || "Errore salvataggio token","err");
+    }
+  });
+
+  // Se all'avvio non c'è token, fai un piccolo promemoria
+  (async () => {
+    try{ await loadAdminToken(); }
+    catch(_){ showToast("admin_token mancante", "err"); }
+  })();
 })();
