@@ -24,6 +24,9 @@
       <hr>
       <button class="k-item" data-act="state"   role="menuitem">Stato & riepilogo…</button>
       <button class="k-item" data-act="help"    role="menuitem">Guida codici rapidi</button>
+      <hr>
+      <!-- NUOVO -->
+      <button class="k-item" data-act="token"   role="menuitem">Imposta token…</button>
     </div>
   </div>
 </div>
@@ -74,12 +77,10 @@
         <button class="btn btn-outline" id="resv-today">Oggi</button>
         <button class="btn" id="resv-refresh">Aggiorna</button>
 
-        <!-- >>> NUOVO: CREA PRENOTAZIONE -->
         <span style="flex:1"></span>
         <button class="btn btn-primary" id="btn-open-create">Crea prenotazione</button>
       </div>
     </div>
-    <!-- Contenitore usato da reservations.js -->
     <div id="list" class="table"></div>
   </section>
 </div>
@@ -179,56 +180,7 @@
   </div>
 </div>
 
-<!-- ====== MODAL: Guida codici rapidi ====== -->
-<div id="modal-help" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="help-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="help-title">Guida codici rapidi</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
-    </div>
-    <div class="modal-body help-body">
-      <div class="help-row">
-        <div class="help-k">Cos’è</div>
-        <div class="help-v">Comandi testuali equivalenti ai modali. Incolli una riga, aggiorni orari o regole in un colpo.</div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">Come usare</div>
-        <div class="help-v">
-          <ol style="margin:0; padding-left:18px">
-            <li>Apri il menu ⋮ e scegli il pannello (Orari, Speciali, Impostazioni).</li>
-            <li>Prendi un esempio sotto, modifica i valori e salva.</li>
-            <li>Controlla in “Stato & riepilogo”.</li>
-          </ol>
-        </div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">WEEK</div>
-        <div class="help-v">Orari settimanali (mon…sun):
-          <div class="chip">mon 12:00-15:00,19:00-23:30</div>
-          <div class="muted small">Lascia vuoto un giorno per chiuderlo.</div>
-        </div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">SPECIAL</div>
-        <div class="help-v">Giorno speciale:
-          <div class="chip">2025-12-25 CLOSED</div>
-          <div class="chip">2025-08-15 18:00-23:00</div>
-        </div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">SETTINGS</div>
-        <div class="help-v">Impostazioni:
-          <div class="chip">step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-    </div>
-  </div>
-</div>
-
-<!-- ====== MODAL: Crea prenotazione (NUOVO) ====== -->
+<!-- ====== MODAL: Crea prenotazione ====== -->
 <div id="modal-create" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="create-title">
     <div class="modal-head">
@@ -258,25 +210,42 @@
   </div>
 </div>
 
+<!-- ====== MODAL: Imposta token (NUOVO) ====== -->
+<div id="modal-token" class="modal-backdrop" aria-hidden="true">
+  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="token-title">
+    <div class="modal-head">
+      <h3 class="card-title" id="token-title">Imposta token amministratore</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted small" style="margin-top:0">
+        Inserisci il valore di <code>ADMIN_TOKEN</code> configurato su Render. Verrà salvato nella sessione del browser.
+      </p>
+      <input id="adminTokenInput" type="text" class="input" placeholder="incolla qui il token" data-autofocus>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light js-close">Chiudi</button>
+      <button class="btn" id="btn-save-token">Salva token</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="_toast" role="status" aria-live="polite"></div>
 {% endblock %}
 
 {% block scripts %}
-<!-- Shim di compatibilità per vecchi ID usati da alcune versioni di reservations.js -->
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const rd = document.getElementById('resv-date');
   const rq = document.getElementById('resv-q');
 
-  // alias nascosti per #f-date e #f-text
   const fd = document.createElement('input'); fd.type='hidden'; fd.id='f-date'; fd.value = rd?.value || '';
   const ft = document.createElement('input'); ft.type='hidden'; ft.id='f-text'; ft.value = rq?.value || '';
   document.body.appendChild(fd); document.body.appendChild(ft);
   rd?.addEventListener('input', ()=> fd.value = rd.value);
   rq?.addEventListener('input', ()=> ft.value = rq.value);
 
-  // alias bottoni
   function alias(oldId, targetId){
     let b = document.getElementById(oldId);
     if(!b){ b = document.createElement('button'); b.id = oldId; b.type='button'; b.style.display='none'; document.body.appendChild(b); }
