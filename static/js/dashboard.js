@@ -1,4 +1,4 @@
-/* static/js/dashboard.js — complete, verified */
+/* static/js/dashboard.js — complete */
 (() => {
   const $  = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -185,8 +185,6 @@
   async function deleteSpecial(date){
     return adminFetch("/special-days/delete", { method:"POST", body: JSON.stringify({ restaurant_id: getRid(), date }) });
   }
-
-  // >>>>>>>>>>>> CREATE RESERVATION (NEW)
   async function createReservation(payload){
     return adminFetch("/reservations/create", {
       method: "POST",
@@ -354,7 +352,7 @@
     const ul = document.createElement("ul");
     wk.forEach((ranges, idx) => {
       const li = document.createElement("li");
-      li.textContent = `${dayNames[idx]}: ${ranges.length ? ranges.map(r=>`${r.start}-${r.end}`).join(", ") : "CHIUSO"}`;
+      li.textContent = `${["Lun","Mar","Mer","Gio","Ven","Sab","Dom"][idx]}: ${ranges.length ? ranges.map(r=>`${r.start}-${r.end}`).join(", ") : "CHIUSO"}`;
       ul.appendChild(li);
     });
     w.appendChild(ul);
@@ -394,21 +392,17 @@
     }
   }
 
-  // ---------- HELP ----------
-  function actionHelp() { openModal("#modal-help"); }
-
   // ---------- Wire menu ----------
-  const kebabMenu = $("#kebab-menu"); // (ribind locale in caso non definito sopra)
   kebabMenu?.addEventListener("click", (e) => {
     const btn = e.target.closest(".k-item");
     if (!btn) return;
     const act = btn.dataset.act;
-    if (typeof kebabClose === "function") kebabClose();
+    kebabClose();
     if (act === "weekly")   return actionWeekly();
     if (act === "special")  return actionSpecial();
     if (act === "settings") return actionSettings();
     if (act === "state")    return actionState();
-    if (act == "help")      return actionHelp();
+    if (act == "help")      return openModal("#modal-help");
   });
 
   // ---------- Ponte con il pannello prenotazioni: “Oggi” ----------
@@ -419,7 +413,7 @@
 
   // ============ CREA PRENOTAZIONE (UI) ============
   function openCreateModal() {
-    const fDate = $("#f-date") || $("#resv-date");
+    const fDate = $("#resv-date") || $("#f-date");
     const today = todayISO();
     $("#cr-date").value   = (fDate && fDate.value) || today;
     $("#cr-time").value   = "20:00";
@@ -444,14 +438,13 @@
         notes:  ($("#cr-notes").value || "").trim(),
       };
       if(!payload.date) throw new Error("Data mancante");
-      if(!/^\d{2}:\d{2}$/.test(payload.time)) throw new Error("Ora non valida (HH:MM)");
+      if(!/^\d{1,2}:\d{2}$/.test(payload.time)) throw new Error("Ora non valida (HH:MM)");
       if(!payload.name) throw new Error("Nome obbligatorio");
       if(payload.party_size <= 0) throw new Error("Persone > 0");
 
       await createReservation(payload);
       showToast("Prenotazione creata ✅", "ok");
       closeModal("#modal-create");
-      // prova a ricaricare la lista se esiste un bottone refresh
       $("#resv-refresh")?.click();
     }catch(e){
       console.error(e);
