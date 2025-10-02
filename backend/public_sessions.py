@@ -16,29 +16,10 @@ def get_session(sid: str):
 
 @public_sessions_bp.patch("/<sid>")
 def patch_session(sid: str):
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(silent=True) or {}
     store = _store()
-
-    update = data.get("update")
-    if update is None and "session" in data:
-        update = {"session": data.get("session")}
-    if update is None:
-        update = {}
-
-    # compat: consenti sia root fields che session: {...}
-    root_updates = {}
-    sess_updates = {}
-    if "session" in update and isinstance(update["session"], dict):
-        sess_updates = update["session"]
-    else:
-        # se passano direttamente { admin_token: "..." }
-        root_updates = update
-
-    current = store.get(sid, {})
-    merged = {**current, **root_updates}
-    if sess_updates:
-        merged["session"] = {**current.get("session", {}), **sess_updates}
-
+    cur = store.get(sid, {})
+    merged = {**cur, **data}
     store[sid] = merged
     return jsonify({"ok": True, "session": store[sid]})
 

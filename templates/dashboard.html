@@ -1,225 +1,109 @@
 {% extends "base.html" %}
+{% block title %}Dashboard — Ristorante{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex,nofollow"/>
+{% endblock %}
 
 {% block header_left %}
 <div class="brand-row">
-  <img class="logo-robot"
-       src="{{ url_for('static', filename='img/' + (restaurant.logo or 'logo_robot.svg')) }}"
-       alt="logo">
+  <img class="logo-robot restaurant-logo" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo">
   <div class="brand-title">
-    <span class="brand-strong">{{ restaurant.name or 'Ristorante' }}</span> —
-    <span class="brand-sub">Dashboard ristorante</span>
-  </div>
-
-  <!-- MENU ⋮ -->
-  <div class="kebab-wrap">
-    <button id="btn-kebab"
-            class="btn btn-icon"
-            aria-haspopup="menu"
-            aria-expanded="false"
-            aria-label="Menu impostazioni">⋮</button>
-    <div id="kebab-menu" class="kebab-menu" hidden role="menu" aria-labelledby="btn-kebab">
-      <button class="k-item" data-act="weekly"  role="menuitem">Orari settimanali…</button>
-      <button class="k-item" data-act="special" role="menuitem">Giorni speciali…</button>
-      <button class="k-item" data-act="settings" role="menuitem">Impostazioni…</button>
-      <hr>
-      <button class="k-item" data-act="state"   role="menuitem">Stato & riepilogo…</button>
-      <button class="k-item" data-act="help"    role="menuitem">Guida codici rapidi</button>
-    </div>
+    <span class="brand-strong">{{ (restaurant.name if restaurant else 'Ristorante') }}</span>
+    <span class="brand-sub">— Dashboard</span>
   </div>
 </div>
 {% endblock %}
 
 {% block content %}
-<div class="dash-grid">
-  <!-- Badge chiamate attive -->
-  <section class="card soft-card" id="voice-badge" data-rid="{{ restaurant.id }}">
-    <div class="soft-title">
-      Chiamate attive:
-      <span class="strong"><span id="vb-active">0</span>/<span id="vb-max">3</span></span>
+<section class="card">
+  <div class="card-head">
+    <h3 class="card-title">Prenotazioni</h3>
+    <div class="row" style="flex-wrap:wrap; gap:8px 10px">
+      <input type="date" id="resv-date" class="input" value="{{ (request.args.get('date') or '') }}">
+      <input type="text" id="resv-q" class="input" placeholder="Cerca nome / telefono / orario">
+      <button class="btn btn-outline" id="resv-filter">Filtra</button>
+      <button class="btn btn-outline" id="resv-clear">Elimina filtri</button>
+      <button class="btn btn-outline" id="resv-last30">Ultimi 30 gg</button>
+      <button class="btn btn" id="resv-today">Oggi</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="resv-refresh">Aggiorna</button>
     </div>
-    <div class="soft-right">
-      <span class="dot dot-green" id="vb-dot"></span>
-      <span class="soft-label" id="vb-label">Disponibile</span>
-    </div>
-  </section>
+  </div>
+  <div class="card-body">
+    <div id="list" class="list"></div>
+  </div>
+</section>
 
-  <!-- KPI -->
-  <section class="kpi-grid">
-    <div class="card kpi-card">
-      <div class="kpi-title">Prenotazioni oggi</div>
-      <div class="kpi-value" id="kpi-today">0</div>
-    </div>
-    {% if pizza_mode %}
-    <div class="card kpi-card">
-      <div class="kpi-title">Pizze ordinate</div>
-      <div class="kpi-value" id="kpi-pizzas">0</div>
-    </div>
-    {% endif %}
-    <div class="card kpi-card">
-      <div class="kpi-title">Incasso stimato</div>
-      <div class="kpi-value" id="kpi-revenue">€ 0</div>
-    </div>
-  </section>
-
-  <!-- Prenotazioni -->
-  <section class="card">
-    <div class="card-head">
-      <h3 class="card-title">Prenotazioni</h3>
-      <div class="row" style="flex-wrap:wrap; gap:8px 10px">
-        <input type="date" id="resv-date" class="input" value="{{ today }}">
-        <input type="text" id="resv-q" class="input" placeholder="Cerca nome / telefono / orario">
-        <button class="btn btn-outline" id="resv-filter">Filtra</button>
-        <button class="btn btn-outline" id="resv-clear">Elimina filtri</button>
-        <button class="btn btn-outline" id="resv-last30">Storico 30gg</button>
-        <button class="btn btn-outline" id="resv-today">Oggi</button>
-        <button class="btn" id="resv-refresh">Aggiorna</button>
-
-        <span style="flex:1"></span>
-        <button class="btn btn-primary" id="btn-open-create">Crea prenotazione</button>
+<section class="card">
+  <div class="card-head">
+    <h3 class="card-title">Gestione orari, giorni speciali, impostazioni</h3>
+    <div class="kebab-wrap">
+      <button id="btn-kebab" class="btn btn-icon" aria-haspopup="menu" aria-expanded="false" aria-label="Menu">⋮</button>
+      <div id="kebab-menu" class="kebab-menu" hidden role="menu" aria-labelledby="btn-kebab">
+        <button class="k-item" data-act="weekly">Orari settimanali…</button>
+        <button class="k-item" data-act="special">Giorni speciali…</button>
+        <button class="k-item" data-act="settings">Impostazioni…</button>
+        <hr>
+        <button class="k-item" data-act="state">Stato & riepilogo…</button>
       </div>
     </div>
-
-    <div class="card-body" id="list" aria-live="polite"></div>
-  </section>
-</div>
-
-<!-- ====== MODAL: Orari settimanali ====== -->
-<div id="modal-weekly" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="weekly-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="weekly-title">Orari settimanali</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
-    </div>
-    <div class="modal-body">
-      <div id="weekly-form" class="weekly-form"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-      <button class="btn" id="btn-save-weekly">Salva orari</button>
-    </div>
   </div>
-</div>
 
-<!-- ====== MODAL: Giorni speciali ====== -->
-<div id="modal-special" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="special-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="special-title">Giorni speciali</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
+  <div class="card-body grid-2">
+    <div>
+      <h4>Orari settimanali</h4>
+      <div id="weekly" class="stack gap"></div>
+      <button id="weekly-save" class="btn">Salva orari</button>
     </div>
-    <div class="modal-body">
-      <div class="grid-2">
-        <div>
-          <label>Data</label>
-          <input id="sp-date" type="date" class="input" data-autofocus>
-        </div>
-        <div class="v-end">
-          <label class="checkbox"><input type="checkbox" id="sp-closed"> Chiudi tutto il giorno</label>
-        </div>
-        <div class="col-span-2">
-          <label>Finestre (se aperto)</label>
-          <input id="sp-ranges" type="text" class="input" placeholder="18:00-23:00, 12:00-15:00">
-        </div>
+
+    <div>
+      <h4>Giorni speciali</h4>
+      <div class="row gap">
+        <input id="sp-date" type="date" class="input">
+        <label><input id="sp-closed" type="checkbox"> chiuso</label>
+        <input id="sp-ranges" type="text" class="input" placeholder="es: 12:00-15:00, 19:00-23:00">
+        <button id="special-add" class="btn">Aggiungi/Salva</button>
       </div>
-      <hr>
-      <div id="sp-list" class="sp-list"></div>
+      <div id="special-list" class="stack gap"></div>
     </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-      <button id="sp-del" class="btn btn-danger-outline">Elimina</button>
-      <button id="sp-add" class="btn">Aggiungi / Aggiorna</button>
-    </div>
-  </div>
-</div>
 
-<!-- ====== MODAL: Impostazioni ====== -->
-<div id="modal-settings" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="settings-title">Impostazioni</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
-    </div>
-    <div class="modal-body grid-3">
-      <div><label>Step slot (min)</label><input id="st-step" type="number" class="input" min="5" step="5" value="15"></div>
-      <div><label>Ultimo ordine (min)</label><input id="st-last" type="number" class="input" min="0" step="5" value="15"></div>
-      <div><label>Capienza/slot</label><input id="st-cap" type="number" class="input" min="1" step="1" value="6"></div>
-      <div><label>Min persone</label><input id="st-minp" type="number" class="input" min="1" step="1" value="1"></div>
-      <div><label>Max persone</label><input id="st-maxp" type="number" class="input" min="1" step="1" value="12"></div>
-      <div><label>Timezone</label><input id="st-tz" type="text" class="input" value="Europe/Rome"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-      <button class="btn" id="settings-save">Salva</button>
-    </div>
-  </div>
-</div>
-
-<!-- ====== MODAL: Stato & riepilogo ====== -->
-<div id="modal-state" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="state-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="state-title">Stato & riepilogo</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
-    </div>
-    <div class="modal-body state-wrap">
-      <div id="state-human"></div>
-      <details class="state-json">
-        <summary>Vedi JSON</summary>
-        <pre id="state-json" class="codebox"></pre>
-      </details>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-    </div>
-  </div>
-</div>
-
-<!-- ====== MODAL: Crea prenotazione ====== -->
-<div id="modal-create" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="create-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="create-title">Crea prenotazione</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
-    </div>
-    <div class="modal-body grid-2">
-      <div><label>Data</label><input id="cr-date" type="date" class="input" data-autofocus></div>
-      <div><label>Ora</label><input id="cr-time" type="time" class="input" value="20:00"></div>
-      <div class="col-span-2"><label>Nome</label><input id="cr-name" type="text" class="input" placeholder="Mario Rossi"></div>
-      <div><label>Telefono</label><input id="cr-phone" type="tel" class="input" placeholder="+39…"></div>
-      <div><label>Persone</label><input id="cr-party" type="number" min="1" value="2" class="input"></div>
-      <div>
-        <label>Stato</label>
-        <select id="cr-status" class="input">
-          <option value="confirmed">Confermata</option>
-          <option value="pending">In attesa</option>
-          <option value="cancelled">Annullata</option>
-        </select>
+    <div>
+      <h4>Impostazioni</h4>
+      <div class="grid">
+        <label>Timezone <input id="set-tz" class="input" placeholder="Europe/Rome" value="Europe/Rome"></label>
+        <label>Step (min) <input id="set-step" type="number" class="input" value="15"></label>
+        <label>Ultimo ordine (min) <input id="set-last" type="number" class="input" value="15"></label>
+        <label>Min persone <input id="set-min" type="number" class="input" value="1"></label>
+        <label>Max persone <input id="set-max" type="number" class="input" value="12"></label>
+        <label>Capacità/slot <input id="set-cap" type="number" class="input" value="6"></label>
       </div>
-      <div class="col-span-2"><label>Note</label><textarea id="cr-notes" class="input" rows="3"></textarea></div>
+      <button id="settings-save" class="btn" onclick="void(0)">Salva impostazioni</button>
     </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-      <button class="btn" id="create-save">Salva</button>
+
+    <div>
+      <h4>Nuova prenotazione</h4>
+      <div class="grid">
+        <input id="cr-date" type="date" class="input">
+        <input id="cr-time" type="time" class="input" step="60">
+        <input id="cr-name" type="text" class="input" placeholder="Nome e cognome">
+        <input id="cr-phone" type="text" class="input" placeholder="Telefono">
+        <input id="cr-party" type="number" class="input" value="2" min="1">
+        <input id="cr-notes" type="text" class="input" placeholder="Note">
+      </div>
+      <button id="cr-save" class="btn">Crea</button>
     </div>
   </div>
-</div>
+</section>
 
+<div id="toast-bar" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='js/reservations.js') }}?v={{ BUILD_VERSION }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ BUILD_VERSION }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', ()=>{
-  // alias pulsanti vecchi → nuovi id (se nel tuo CSS/HTML avevi altri id)
-  function alias(oldId, targetId){
-    const b = document.getElementById(oldId);
-    if(!b){ return; }
-    b.addEventListener('click', ()=> document.getElementById(targetId)?.click());
-  }
-  alias('btn-filter',  'resv-filter');
-  alias('btn-clear',   'resv-clear');
-  alias('btn-30',      'resv-last30');
-  alias('btn-today',   'resv-today');
-  alias('btn-refresh', 'resv-refresh');
-});
+  document.getElementById('settings-save')?.addEventListener('click', ()=> window.dispatchEvent(new CustomEvent('save-settings')));
+  document.getElementById('cr-save')?.addEventListener('click', ()=> window.dispatchEvent(new CustomEvent('create-reservation')));
+  window.addEventListener('save-settings', ()=>{}); // noop: handler in dashboard.js
+  window.addEventListener('create-reservation', ()=>{}); // idem
 </script>
-
-<script defer src="{{ url_for('static', filename='js/reservations.js') }}"></script>
-<script defer src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ config['BUILD_VERSION'] }}"></script>
 {% endblock %}
