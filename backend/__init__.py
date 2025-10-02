@@ -1,121 +1,181 @@
 # -*- coding: utf-8 -*-
-# backend/__init__.py
+# backend/__init__.py — factory Flask, DB, login, blueprint, context
+
+from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import Optional, Dict, Any
+from datetime import datetime
+from typing import Optional
 
-from flask import Flask
-from flask_login import LoginManager
-from werkzeug.middleware.proxy_fix import ProxyFix
+from flask import Flask, jsonify, request, g
+from flask_login import LoginManager, current_user, login_required
 
-from backend.models import db, Restaurant
+from .models import db, Restaurant, Reservation, OpeningHour, SpecialDay, RestaurantSetting
 
-# -----------------------------
-# Helpers
-# -----------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent  # cartella progetto
-
-
-def _maybe_create_instance_dir(db_uri: str) -> None:
-    """Se usiamo SQLite in instance/, assicuriamoci che la cartella esista."""
-    if db_uri.startswith("sqlite:///instance/"):
-        (BASE_DIR / "instance").mkdir(parents=True, exist_ok=True)
-
-
-def _normalize_db_url(raw: str) -> str:
-    """
-    Normalizza DATABASE_URL per compatibilità Heroku/Render:
-    - postgres://  -> postgresql://
-    - aggiunge sslmode=require se Postgres e manca
-    """
-    if raw.startswith("postgres://"):
-        raw = raw.replace("postgres://", "postgresql://", 1)
-    if raw.startswith("postgresql://") and "sslmode=" not in raw:
-        sep = "&" if "?" in raw else "?"
-        raw = f"{raw}{sep}sslmode=require"
-    return raw
-
-
-# -----------------------------
-# App factory
-# -----------------------------
-def create_app(test_config: Optional[Dict[str, Any]] = None) -> Flask:
-    app = Flask(
-        __name__,
-        static_folder=str((BASE_DIR / "static").resolve()),
-        template_folder=str((BASE_DIR / "templates").resolve()),
-    )
-
-    # Siamo dietro proxy (es. Render): usa correttamente gli header X-Forwarded-*
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
-
-    # ===== Secret =====
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
-
-    # ===== Database =====
-    db_url = os.environ.get("DATABASE_URL", "sqlite:///instance/database.db")
-    db_url = _normalize_db_url(db_url)
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,  # evita connessioni zombie (Render/Heroku)
-    }
-    _maybe_create_instance_dir(db_url)
-
-    # ===== Config extra utili =====
-    app.config.setdefault("VOICE_MAX", int(os.environ.get("VOICE_MAX_ACTIVE", "3")))
-    app.config["BUILD_VERSION"] = os.environ.get("BUILD_VERSION", "dev")
+# =========================================================
+# Config di base
+# =========================================================
+def _config_app(app: Flask) -> None:
+    app.config.setdefault("SECRET_KEY", os.environ.get("SECRET_KEY", "dev-secret"))
+    app.config.setdefault("SQLALCHEMY_DATABASE_URI", os.environ.get("DATABASE_URL", "sqlite:///app.db"))
+    app.config.setdefault("SQLALCHEMY_TRACK_MODIFICATIONS", False)
     app.config.setdefault("JSON_SORT_KEYS", False)
-    app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
-    # In produzione su HTTPS è consigliato impostare cookie secure
-    if os.environ.get("FLASK_ENV") == "production":
-        app.config.setdefault("SESSION_COOKIE_SECURE", True)
+    # Build/version per cache-busting statici
+    app.config.setdefault("BUILD_VERSION", os.environ.get("BUILD_VERSION", datetime.utcnow().strftime("%Y%m%d%H%M%S")))
 
-    if test_config:
-        app.config.update(test_config)
 
-    # ===== Estensioni =====
+# =========================================================
+# Login manager
+# =========================================================
+login_manager = LoginManager()
+login_manager.login_view = "auth.login"  # se in futuro aggiungi blueprint auth
+
+
+@login_manager.user_loader
+def load_user(user_id: str) -> Optional[Restaurant]:
+    if not user_id:
+        return None
+    try:
+        return Restaurant.query.get(int(user_id))
+    except Exception:
+        return None
+
+
+# =========================================================
+# Context helpers
+# =========================================================
+def _active_restaurant() -> Restaurant:
+    """
+    Prova a determinare il ristorante 'attivo' per il rendering template:
+    - se utente loggato: usa current_user
+    - altrimenti ?restaurant_id= o header X-Restaurant-Id
+    - fallback: primo ristorante in DB o un placeholder
+    """
+    if getattr(current_user, "is_authenticated", False):
+        return current_user  # type: ignore[return-value]
+
+    rid = request.args.get("restaurant_id", type=int)
+    if not rid:
+        hdr = request.headers.get("X-Restaurant-Id")
+        if hdr and hdr.isdigit():
+            rid = int(hdr)
+
+    if rid:
+        r = Restaurant.query.get(rid)
+        if r:
+            return r
+
+    r = Restaurant.query.first()
+    if r:
+        return r
+
+    # placeholder (non persistito): evita crash nei template
+    dummy = Restaurant(id=0, name="Ristorante")
+    return dummy
+
+
+# =========================================================
+# Factory
+# =========================================================
+def create_app() -> Flask:
+    app = Flask(__name__, static_folder="../static", template_folder="../templates")
+    _config_app(app)
+
+    # Init estensioni
     db.init_app(app)
-
-    # ===== Login (tenant = Restaurant) =====
-    login_manager = LoginManager()
-    login_manager.login_view = "auth.login"
     login_manager.init_app(app)
 
-    @login_manager.user_loader
-    def load_user(user_id: str):
+    # Creazione tabelle in dev se mancano (safe)
+    with app.app_context():
         try:
-            return Restaurant.query.get(int(user_id))
+            db.create_all()
         except Exception:
-            return None
+            # In produzione potresti usare Alembic/migrazioni
+            pass
 
-    # ===== Blueprint =====
-    from backend.root import bp as root_bp
-    from backend.auth import auth_bp
-    from backend.dashboard import bp as dashboard_bp
-    from backend.api import api as api_bp
-    from backend.voice_slots import voice_bp                  # /api/public/voice/*
-    from backend.admin_schedule import api_admin              # /api/admin-token/* (token)
-    from backend.twilio_voice import twilio_bp                # /twilio/*
-    from backend.public_sessions import public_sessions_bp    # /api/public/sessions/*
+    # ------------------ Blueprint amministrativo (API) ------------------
+    # Import qui per evitare cicli
+    from .admin_schedule import api_admin as api_admin_token
+    app.register_blueprint(api_admin_token)
 
-    app.register_blueprint(root_bp)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(api_bp)
-    app.register_blueprint(voice_bp)
-    app.register_blueprint(api_admin)
-    app.register_blueprint(twilio_bp)
-    app.register_blueprint(public_sessions_bp)
+    # ------------------ Blueprint pubblico minimal ---------------------
+    from flask import Blueprint
 
-    # ===== Context processor =====
+    api_public = Blueprint("api_public", __name__, url_prefix="/api/public")
+
+    @api_public.get("/sessions/<sid>")
+    def get_public_session(sid: str):
+        """
+        Endpoint usato dal frontend per recuperare l'admin token.
+        Ritorna anche (se disponibile) un restaurant_id dedotto.
+        """
+        admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
+        rid = None
+        if getattr(current_user, "is_authenticated", False):
+            rid = int(current_user.id)  # type: ignore[attr-defined]
+        else:
+            qrid = request.args.get("restaurant_id", type=int)
+            if qrid:
+                rid = qrid
+            else:
+                # fallback: primo ristorante se esiste (non sensibile)
+                first = Restaurant.query.first()
+                rid = int(first.id) if first else 1
+
+        return jsonify({
+            "ok": True,
+            "session_id": sid,
+            "admin_token": admin_token,
+            "restaurant_id": rid,
+        })
+
+    @api_public.get("/health")
+    def health_public():
+        return jsonify({"ok": True, "time": datetime.utcnow().isoformat() + "Z"})
+
+    app.register_blueprint(api_public)
+
+    # Alias /health root-level (utile per Render uptime checks)
+    @app.get("/health")
+    def health_root():
+        return jsonify({"ok": True, "time": datetime.utcnow().isoformat() + "Z"})
+
+    # ------------------ Context processor (variabili template) ----------
     @app.context_processor
-    def inject_build_version():
-        return {"BUILD_VERSION": app.config.get("BUILD_VERSION", "dev")}
+    def inject_globals():
+        r = _active_restaurant()
+        today = datetime.now().date().isoformat()
+        # Se nel template servono altre costanti, aggiungile qui
+        return {
+            "restaurant": r,
+            "today": today,
+            "config": app.config,  # per BUILD_VERSION
+        }
+
+    # ------------------ Error handlers puliti ---------------------------
+    @app.errorhandler(400)
+    def _bad_request(e):
+        # Se la richiesta è JSON aspettati risposta JSON
+        if request.accept_mimetypes.best == "application/json" or request.is_json:
+            return jsonify({"ok": False, "error": "bad_request", "detail": getattr(e, "description", str(e))}), 400
+        return (getattr(e, "description", "Bad request"), 400)
+
+    @app.errorhandler(401)
+    def _unauth(e):
+        if request.accept_mimetypes.best == "application/json" or request.is_json:
+            return jsonify({"ok": False, "error": "unauthorized", "detail": getattr(e, "description", str(e))}), 401
+        return ("Unauthorized", 401)
+
+    @app.errorhandler(404)
+    def _not_found(e):
+        if request.accept_mimetypes.best == "application/json" or request.is_json:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        return ("Not found", 404)
+
+    @app.errorhandler(500)
+    def _server_error(e):
+        if request.accept_mimetypes.best == "application/json" or request.is_json:
+            return jsonify({"ok": False, "error": "server_error"}), 500
+        return ("Server error", 500)
 
     return app
-
-
-# Entry-point WSGI (es. gunicorn "backend:app")
-app = create_app()

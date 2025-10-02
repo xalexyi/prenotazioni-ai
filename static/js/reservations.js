@@ -1,9 +1,8 @@
-/* static/js/reservations.js — completo, in sync con dashboard.js */
+/* static/js/reservations.js — completo */
 (() => {
   const $  = (s, r=document) => r.querySelector(s);
-  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
-  // ---------- Toast piccolo (riusa barra di dashboard se c'è) ----------
+  // ------- Toast -------
   function toast(msg, type='ok'){
     let bar = document.getElementById('toast-bar');
     if(!bar){
@@ -32,15 +31,15 @@
     setTimeout(()=>pill.remove(),2600);
   }
 
-  // ---------- Helpers ----------
+  // ------- Helpers -------
   const pad2 = (n)=>String(n).padStart(2,'0');
-  function todayISO(){
-    const d=new Date();
+  const todayISO = ()=>{
+    const d = new Date();
     return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-  }
-  function getRid(){ return window.RESTAURANT_ID || window.restaurant_id || 1; }
+  };
+  const getRid = ()=> window.RESTAURANT_ID || window.restaurant_id || 1;
 
-  // ---------- Admin token via public session (stesso di dashboard.js) ----------
+  // ------- Admin token -------
   const SID_KEY='session_id';
   function sid(){
     let s = localStorage.getItem(SID_KEY) || window.SESSION_ID;
@@ -65,46 +64,41 @@
     if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
     const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
     if(!r.ok){
-      let msg = 'HTTP '+r.status;
-      try { const j = await r.json(); msg = j.error || msg; } catch {}
-      throw new Error(msg);
+      let err = { message: `HTTP ${r.status}` };
+      try { const j = await r.json(); err = j || err; } catch(_){}
+      throw err;
     }
     return r.json();
   }
 
-  // ---------- API ----------
+  // ------- API -------
   async function listReservations(params={}){
     const q = new URLSearchParams();
     q.set('restaurant_id', String(getRid()));
-    if (params.today) q.set('today','1');
-    if (params.date)  q.set('date', params.date);
+    if (params.date)      q.set('date', params.date);
     if (params.last_days) q.set('last_days', String(params.last_days));
-    if (params.q) q.set('q', params.q);
+    if (params.q)         q.set('q', params.q);
     return adminFetch(`/reservations?${q.toString()}`);
   }
 
-  // ---------- Render ----------
+  // ------- Render -------
+  function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
   function renderList(items){
     const box = $('#list');
     if(!box) return;
     if(!items || !items.length){
       box.innerHTML = `<div class="muted">Nessuna prenotazione</div>`;
-      // KPI oggi
-      const k = $('#kpi-today'); if(k) k.textContent = '0';
-      const rev = $('#kpi-revenue'); if(rev) rev.textContent = '€ 0';
+      const k = document.getElementById('kpi-today'); if(k) k.textContent = '0';
+      const rev = document.getElementById('kpi-revenue'); if(rev) rev.textContent = '€ 0';
       return;
     }
-    // ordina per ora asc
-    items.sort((a,b)=>{
-      const da=(a.date||'')+(a.time||''); const db=(b.date||'')+(b.time||'');
-      return da.localeCompare(db);
-    });
-
+    items.sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
     const rows = items.map(it=>{
       const time = it.time || '—';
       const name = it.name || '—';
       const phone= it.phone || '—';
-      const party= it.party_size != null ? it.party_size : '—';
+      const party= it.party_size ?? '—';
       const status = it.status || '—';
       const notes = it.notes ? `<span class="muted">${escapeHtml(it.notes)}</span>` : '';
       return `
@@ -117,37 +111,30 @@
           <div class="td">${notes}</div>
         </div>`;
     }).join('');
-
     box.innerHTML = `
-      <div class="thead tr">
-        <div class="th">Ora</div>
-        <div class="th">Nome</div>
-        <div class="th">Telefono</div>
-        <div class="th">Persone</div>
-        <div class="th">Stato</div>
-        <div class="th">Note</div>
-      </div>
-      <div class="tbody">
-        ${rows}
-      </div>
-    `;
-
-    // KPI semplici
+      <div class="table">
+        <div class="thead">
+          <div class="th">Ora</div>
+          <div class="th">Nome</div>
+          <div class="th">Telefono</div>
+          <div class="th">Persone</div>
+          <div class="th">Stato</div>
+          <div class="th">Note</div>
+        </div>
+        <div class="tbody">${rows}</div>
+      </div>`;
+    // KPI oggi simple: count items matching today
     const today = todayISO();
-    const todayCount = items.filter(x=>x.date===today).length;
-    const k = $('#kpi-today'); if(k) k.textContent = String(todayCount);
+    const k = document.getElementById('kpi-today');
+    if(k) k.textContent = String(items.filter(x=>x.date===today).length);
   }
 
-  function escapeHtml(s){
-    return String(s||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-  }
-
-  // ---------- Filtri / Bind ----------
+  // ------- Filtri / Bind -------
   async function refreshFromUI(){
-    const d = $('#resv-date')?.value;
-    const q = $('#resv-q')?.value?.trim();
+    const d = $('#resv-date')?.value || '';
+    const q = $('#resv-q')?.value?.trim() || '';
     try{
-      const res = await listReservations({ date: d, q });
+      const res = await listReservations({ date: d || undefined, q: q || undefined });
       renderList(res.items || []);
     }catch(e){
       console.error(e);
@@ -156,14 +143,12 @@
     }
   }
 
-  $('#resv-filter')?.addEventListener('click', refreshFromUI);
-
-  $('#resv-clear')?.addEventListener('click', async ()=>{
-    if($('#resv-q')) $('#resv-q').value='';
+  document.getElementById('resv-filter')?.addEventListener('click', refreshFromUI);
+  document.getElementById('resv-clear')?.addEventListener('click', async ()=>{
+    const q = document.getElementById('resv-q'); if(q) q.value='';
     await refreshFromUI();
   });
-
-  $('#resv-last30')?.addEventListener('click', async ()=>{
+  document.getElementById('resv-last30')?.addEventListener('click', async ()=>{
     try{
       const res = await listReservations({ last_days:30 });
       renderList(res.items || []);
@@ -171,9 +156,8 @@
       console.error(e); toast(e.message || 'Errore caricamento','err');
     }
   });
-
-  $('#resv-today')?.addEventListener('click', async ()=>{
-    if($('#resv-date')) $('#resv-date').value = todayISO();
+  document.getElementById('resv-today')?.addEventListener('click', async ()=>{
+    if(document.getElementById('resv-date')) document.getElementById('resv-date').value = todayISO();
     try{
       const res = await listReservations({ date: todayISO() });
       renderList(res.items || []);
@@ -181,18 +165,16 @@
       console.error(e); toast(e.message || 'Errore caricamento','err');
     }
   });
+  document.getElementById('resv-refresh')?.addEventListener('click', refreshFromUI);
 
-  $('#resv-refresh')?.addEventListener('click', refreshFromUI);
-
-  // auto-carica all’avvio
   (async ()=>{
     try{
-      // prova anche a mostrare un hint se manca il token
       await loadAdminToken();
       await refreshFromUI();
     }catch(e){
       console.warn(e);
-      $('#list').innerHTML = `<div class="err">Errore nel caricamento.</div>`;
+      const list = document.getElementById('list');
+      if(list) list.innerHTML = `<div class="err">Errore nel caricamento.</div>`;
       toast('admin_token mancante','err');
     }
   })();
