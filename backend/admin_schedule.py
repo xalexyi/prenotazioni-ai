@@ -7,7 +7,8 @@ from datetime import date as _date, datetime, time as _time, timedelta
 from typing import List, Tuple, Dict, Any, Optional
 
 from flask import Blueprint, request, jsonify, abort, render_template
-from sqlalchemy import or_, cast, String  # <— cast e String usati nei filtri
+from flask_login import current_user, login_required
+from sqlalchemy import or_
 
 from backend.models import db, Reservation
 from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
@@ -20,10 +21,34 @@ ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 api_admin = Blueprint("api_admin", __name__)
 
 def _auth() -> None:
-    """Autenticazione tramite X-Admin-Token (o ?token=...)."""
+    """
+    Autenticazione:
+      1) se presente X-Admin-Token / ?token= deve combaciare con ADMIN_TOKEN
+      2) IN ALTERNATIVA, se l'utente è loggato (flask-login) ed il restaurant_id
+         (in query o nel json) coincide con current_user.id -> OK.
+    """
     tok = request.headers.get("X-Admin-Token") or request.args.get("token")
-    if not tok or tok != ADMIN_TOKEN:
-        abort(401, description="unauthorized")
+    if tok and tok == ADMIN_TOKEN:
+        return
+
+    rid_arg = request.args.get("restaurant_id", type=int)
+    body = {}
+    try:
+        if request.is_json:
+            body = request.get_json(silent=True) or {}
+    except Exception:
+        body = {}
+    rid_body = body.get("restaurant_id")
+
+    rid = rid_arg or rid_body
+
+    if getattr(current_user, "is_authenticated", False):
+        # Se non viene passato restaurant_id, lasciamo comunque passare:
+        # la dashboard usa sempre il ristorante loggato.
+        if not rid or int(rid) == int(getattr(current_user, "id", 0)):
+            return
+
+    abort(401, description="unauthorized")
 
 
 # =======================
@@ -57,7 +82,6 @@ _TIME_RE = re.compile(r"^(?:[01]?\d|2[0-3]):[0-5]\d$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def _hhmm(s: str) -> str:
-    """Normalizza 'H:MM' -> 'HH:MM' e valida."""
     s = (s or "").strip()
     if not s:
         raise ValueError("empty time")
@@ -67,17 +91,14 @@ def _hhmm(s: str) -> str:
     return f"{int(h):02d}:{m}"
 
 def _to_time_or_str(s: str):
-    """Ritorna datetime.time('HH:MM') se possibile, altrimenti stringa HH:MM."""
     try:
         hhmm = _hhmm(s)
         h, m = map(int, hhmm.split(":"))
         return _time(hour=h, minute=m)
     except Exception:
-        # in caso di dubbi, meglio stringa valida
         return _hhmm(s)
 
 def _to_date_or_str(s: str):
-    """Ritorna datetime.date se possibile, altrimenti stringa YYYY-MM-DD."""
     s = (s or "").strip()
     if not _DATE_RE.match(s):
         raise ValueError("bad_date")
@@ -87,9 +108,6 @@ def _to_date_or_str(s: str):
         return s
 
 def parse_range_list(s: str) -> List[Tuple[str, str]]:
-    """
-    "12:00-15:00,19:00-23:30" -> [("12:00","15:00"), ("19:00","23:30")]
-    """
     out: List[Tuple[str, str]] = []
     if s is None:
         return out
@@ -107,13 +125,6 @@ def parse_range_list(s: str) -> List[Tuple[str, str]]:
     return out
 
 def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
-    """
-    Accetta:
-      - stringa "12:00-15:00,19:00-23:30" (o "CLOSED")
-      - lista di stringhe ["12:00-15:00", "19:00-23:30"]
-      - lista di tuple/array ["12:00","15:00"]
-    e ritorna lista di tuple (start, end) validate HH:MM.
-    """
     if value is None:
         return []
     if isinstance(value, str):
@@ -141,20 +152,23 @@ def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
 
 
 # =======================
+# Bootstrap automatico del token (solo se loggato)
+# =======================
+@api_admin.get("/api/admin-token/bootstrap")
+@login_required
+def admin_bootstrap():
+    """
+    Restituisce il token admin (solo utente loggato).
+    La dashboard lo userà per popolare la sessione pubblica.
+    """
+    return jsonify({"ok": True, "admin_token": ADMIN_TOKEN or ""}), 200
+
+
+# =======================
 # RESERVATIONS (filtri lista)
 # =======================
 @api_admin.get("/api/admin-token/reservations")
 def admin_reservations_list():
-    """
-    Filtra le prenotazioni dell'admin.
-
-    Query:
-      - restaurant_id (obbligatorio)
-      - date=YYYY-MM-DD   (filtra esattamente quel giorno)
-      - today=1           (ignora 'date' e forza oggi)
-      - last_days=30      (prenotazioni con date >= oggi-30)
-      - q=string          (ricerca su name/phone/notes/time)
-    """
     _auth()
     rid = request.args.get("restaurant_id", type=int)
     if not rid:
@@ -176,9 +190,8 @@ def admin_reservations_list():
             filters.append(Reservation.phone.ilike(like))
         if hasattr(Reservation, "notes"):
             filters.append(Reservation.notes.ilike(like))
-        # ricerca anche sull'orario come stringa HH:MM
         if hasattr(Reservation, "time"):
-            filters.append(cast(Reservation.time, String).ilike(like))
+            filters.append(Reservation.time.cast(db.String).ilike(like))
         qry = qry.filter(or_(*filters))
 
     if today_flag:
@@ -229,15 +242,9 @@ def admin_reservations_list():
     return jsonify({"ok": True, "items": items}), 200
 
 
-# ============ CREA PRENOTAZIONE (NEW) ============
+# ============ CREA PRENOTAZIONE ============
 @api_admin.post("/api/admin-token/reservations/create")
 def reservations_create():
-    """
-    Crea una prenotazione manuale dalla dashboard.
-    Body JSON:
-      { restaurant_id, date:"YYYY-MM-DD", time:"HH:MM",
-        name, phone, party_size, status?, notes? }
-    """
     _auth()
     data = request.get_json(force=True, silent=True) or {}
     rid = int(data.get("restaurant_id") or 0)
@@ -264,30 +271,33 @@ def reservations_create():
     if party <= 0:
         return jsonify({"ok": False, "error": "bad_party"}), 400
 
-    # compat con schema variabile
-    r = Reservation(
-        restaurant_id=rid,
-        customer_name=name,
-        date=_to_date_or_str(date_s),
-        time=_to_time_or_str(time_s),
-        source="manual",
-    )
-    if hasattr(Reservation, "customer_phone"):
-        r.customer_phone = phone
-    if hasattr(Reservation, "phone"):
-        r.phone = phone
-    if hasattr(Reservation, "party_size"):
-        r.party_size = party
-    if hasattr(Reservation, "people"):
-        r.people = party
-    if hasattr(Reservation, "status"):
-        r.status = status or "confirmed"
-    if hasattr(Reservation, "notes"):
-        r.notes = notes
+    try:
+        r = Reservation(
+            restaurant_id=rid,
+            customer_name=name,
+            date=_to_date_or_str(date_s),
+            time=_to_time_or_str(time_s),
+            source="manual",
+        )
+        if hasattr(Reservation, "customer_phone"):
+            r.customer_phone = phone
+        if hasattr(Reservation, "phone"):
+            r.phone = phone
+        if hasattr(Reservation, "party_size"):
+            r.party_size = party
+        if hasattr(Reservation, "people"):
+            r.people = party
+        if hasattr(Reservation, "status"):
+            r.status = status or "confirmed"
+        if hasattr(Reservation, "notes"):
+            r.notes = notes
 
-    db.session.add(r)
-    db.session.commit()
-    return jsonify({"ok": True, "id": r.id}), 201
+        db.session.add(r)
+        db.session.commit()
+        return jsonify({"ok": True, "id": r.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
 
 
 # =======================
@@ -295,18 +305,11 @@ def reservations_create():
 # =======================
 @api_admin.get("/api/admin-token/schedule/state")
 def schedule_state():
-    """
-    Ritorna lo stato completo del ristorante:
-      - weekly: per ciascun weekday lista di intervalli {start,end}
-      - settings: {tz, slot_step_min, last_order_min, min_party, max_party, capacity_per_slot}
-      - special_days: array [{date, closed, ranges:[{start,end}]}]
-    """
     _auth()
     rid = request.args.get("restaurant_id", type=int)
     if not rid:
         return jsonify({"ok": False, "error": "restaurant_id obbligatorio"}), 400
 
-    # Weekly
     weekly: List[List[Dict[str, str]]] = [[] for _ in range(7)]
     for oh in OpeningHour.query.filter_by(restaurant_id=rid).order_by(OpeningHour.weekday.asc(), OpeningHour.start_time.asc()).all():
         s = oh.start_time
@@ -315,7 +318,6 @@ def schedule_state():
         e_str = e.strftime("%H:%M") if hasattr(e, "strftime") else str(e)[:5]
         weekly[int(oh.weekday)].append({"start": s_str, "end": e_str})
 
-    # Settings
     s = RestaurantSetting.query.filter_by(restaurant_id=rid).first()
     settings = {
         "tz": s.tz if s else "Europe/Rome",
@@ -326,7 +328,6 @@ def schedule_state():
         "capacity_per_slot": s.capacity_per_slot if s else 6,
     }
 
-    # Special days
     q = SpecialDay.query.filter_by(restaurant_id=rid).order_by(SpecialDay.date.asc(), SpecialDay.start_time.asc())
     by_date: Dict[str, Dict[str, Any]] = {}
     for sd in q.all():
@@ -350,16 +351,6 @@ def schedule_state():
 # =======================
 @api_admin.post("/api/admin-token/opening-hours/bulk")
 def opening_hours_bulk():
-    """
-    JSON:
-    {
-      "restaurant_id": 1,
-      "weekday": "mon" | 0..6,
-      "ranges": "12:00-15:00,19:00-23:30" | ["12:00-15:00", ...] | [["12:00","15:00"], ...] | "CLOSED"
-    }
-    Sostituisce completamente le fasce per quel weekday.
-    Giorno vuoto o 'CLOSED' -> nessuna fascia (quindi chiuso).
-    """
     _auth()
     data = request.get_json(force=True, silent=True) or {}
 
@@ -382,17 +373,15 @@ def opening_hours_bulk():
     if weekday < 0 or weekday > 6:
         return jsonify({"ok": False, "error": "bad_weekday"}), 400
 
-    # ranges
     try:
-        raw = data.get("ranges")
-        rngs = _coerce_ranges(raw)
+        ranges = _coerce_ranges(data.get("ranges"))
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
     try:
         with db.session.begin():
             db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=weekday).delete()
-            for a, b in rngs:
+            for a, b in ranges:
                 db.session.add(
                     OpeningHour(
                         restaurant_id=rid,
@@ -401,7 +390,7 @@ def opening_hours_bulk():
                         end_time=_to_time_or_str(b),
                     )
                 )
-        return jsonify({"ok": True, "weekday": weekday, "count": len(rngs)}), 200
+        return jsonify({"ok": True, "weekday": weekday, "count": len(ranges)}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
@@ -436,12 +425,6 @@ def special_days_list():
 
 @api_admin.post("/api/admin-token/special-days/upsert")
 def special_days_upsert():
-    """
-    JSON:
-    { "restaurant_id":1, "date":"2025-12-25", "closed":true }
-    oppure
-    { "restaurant_id":1, "date":"2025-08-15", "ranges":"18:00-23:00" }
-    """
     _auth()
     data = request.get_json(force=True, silent=True) or {}
 
@@ -511,19 +494,6 @@ def special_days_delete():
 # =======================
 @api_admin.post("/api/admin-token/settings/update")
 def settings_update():
-    """
-    JSON:
-    {
-      "restaurant_id":1,
-      "tz":"Europe/Rome",
-      "slot_step_min":15,
-      "last_order_min":15,
-      "min_party":1,
-      "max_party":12,
-      "capacity_per_slot":6
-    }
-    Qualsiasi campo assente non viene toccato.
-    """
     _auth()
     data = request.get_json(force=True, silent=True) or {}
 
@@ -551,17 +521,6 @@ def settings_update():
 # =======================
 @api_admin.post("/api/admin-token/schedule/commands")
 def schedule_commands():
-    """
-    Content-Type: text/plain oppure JSON {"commands":"..."}.
-    Sintassi (case-insensitive, spazi liberi):
-
-      RID=1
-      WEEK mon 12:00-15:00,19:00-23:30
-      WEEK tue CLOSED
-      SPECIAL 2025-12-25 CLOSED
-      SPECIAL 2025-08-15 18:00-23:00
-      SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome
-    """
     _auth()
     if request.is_json:
         data = request.get_json() or {}

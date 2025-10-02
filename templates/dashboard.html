@@ -24,9 +24,6 @@
       <hr>
       <button class="k-item" data-act="state"   role="menuitem">Stato & riepilogo…</button>
       <button class="k-item" data-act="help"    role="menuitem">Guida codici rapidi</button>
-      <hr>
-      <!-- NUOVO: gestione token admin -->
-      <button class="k-item" data-act="token"   role="menuitem">Token admin…</button>
     </div>
   </div>
 </div>
@@ -77,11 +74,12 @@
         <button class="btn btn-outline" id="resv-today">Oggi</button>
         <button class="btn" id="resv-refresh">Aggiorna</button>
 
-        <!-- >>> NUOVO: CREA PRENOTAZIONE -->
+        <!-- >>> CREA PRENOTAZIONE -->
         <span style="flex:1"></span>
         <button class="btn btn-primary" id="btn-open-create">Crea prenotazione</button>
       </div>
     </div>
+    <!-- Contenitore usato da reservations.js -->
     <div id="list" class="table"></div>
   </section>
 </div>
@@ -144,7 +142,7 @@
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-head">
       <h3 class="card-title" id="settings-title">Impostazioni prenotazioni</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
+    <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body grid-2">
       <div><label>Step (min)</label><input id="st-step" type="number" class="input" min="1" value="15" data-autofocus></div>
@@ -230,7 +228,7 @@
   </div>
 </div>
 
-<!-- ====== MODAL: Crea prenotazione (NUOVO) ====== -->
+<!-- ====== MODAL: Crea prenotazione ====== -->
 <div id="modal-create" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="create-title">
     <div class="modal-head">
@@ -260,43 +258,30 @@
   </div>
 </div>
 
-<!-- ====== MODAL: Token admin (NUOVO) ====== -->
-<div id="modal-token" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="token-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="token-title">Imposta token admin</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
-    </div>
-    <div class="modal-body">
-      <label>Token</label>
-      <input id="tok-input" type="password" class="input" placeholder="incolla qui il token">
-      <div class="muted small" style="margin-top:6px">
-        Il token deve corrispondere alla variabile d’ambiente <code>ADMIN_TOKEN</code> configurata sul server.
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-      <button class="btn" id="tok-save">Salva</button>
-    </div>
-  </div>
-</div>
-
 <!-- Toast -->
 <div id="_toast" role="status" aria-live="polite"></div>
 {% endblock %}
 
 {% block scripts %}
+<!-- Espone l'ID ristorante al JS (per le chiamate API) -->
+<script>
+  window.RESTAURANT_ID = {{ restaurant.id }};
+</script>
+
+<!-- Shim di compatibilità per vecchi ID usati da alcune versioni di reservations.js -->
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const rd = document.getElementById('resv-date');
   const rq = document.getElementById('resv-q');
 
+  // alias nascosti per #f-date e #f-text
   const fd = document.createElement('input'); fd.type='hidden'; fd.id='f-date'; fd.value = rd?.value || '';
   const ft = document.createElement('input'); ft.type='hidden'; ft.id='f-text'; ft.value = rq?.value || '';
   document.body.appendChild(fd); document.body.appendChild(ft);
   rd?.addEventListener('input', ()=> fd.value = rd.value);
   rq?.addEventListener('input', ()=> ft.value = rq.value);
 
+  // alias bottoni
   function alias(oldId, targetId){
     let b = document.getElementById(oldId);
     if(!b){ b = document.createElement('button'); b.id = oldId; b.type='button'; b.style.display='none'; document.body.appendChild(b); }
