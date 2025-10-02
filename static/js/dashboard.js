@@ -63,7 +63,7 @@
   });
 
   // ---------- Kebab menu ----------
-  const kebabBtn = $("#btn-kebab");
+  const kebabBtn  = $("#btn-kebab");
   const kebabMenu = $("#kebab-menu");
   function kebabOpen() {
     if (!kebabMenu) return;
@@ -131,7 +131,7 @@
     return out;
   }
 
-  // ---------- Admin token via public session ----------
+  // ---------- Session + Admin token (AUTO) ----------
   const SID_KEY = 'session_id';
   function sid(){
     let s = localStorage.getItem(SID_KEY) || window.SESSION_ID;
@@ -141,46 +141,58 @@
   function getRid(){ return window.RESTAURANT_ID || window.restaurant_id || 1; }
 
   async function loadPublicSession(){
-    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin', cache:'no-store' });
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin' });
+    if (!r.ok) return {};
     return r.json();
   }
-  async function loadAdminToken(){
-    const j = await loadPublicSession();
-    const t = j.admin_token || j.token || j.session?.admin_token;
-    if (!t) throw new Error('admin_token mancante');
-    return t;
-  }
-  async function saveAdminToken(token){
-    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, {
+  async function savePublicSession(update){
+    await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, {
       method:'PATCH',
-      credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ update: { session: { admin_token: token } } })
+      credentials:'same-origin',
+      body: JSON.stringify({ update })
     });
-    if(!r.ok){
-      const txt = await r.text().catch(()=>String(r.status));
-      throw new Error(txt || ('HTTP '+r.status));
+  }
+
+  async function getAdminToken(){
+    // 1) tenta dalla public session
+    const s = await loadPublicSession();
+    const t1 = s.admin_token || s.session?.admin_token || s.token;
+    if (t1) return t1;
+    // 2) bootstrap dal backend (solo se loggato)
+    const r = await fetch('/api/admin-token/bootstrap', { credentials:'same-origin' });
+    if (r.ok) {
+      const j = await r.json().catch(()=>({}));
+      const token = j.admin_token || j.token;
+      if (token) {
+        await savePublicSession({ admin_token: token });
+        return token;
+      }
     }
-    return r.json().catch(()=>({ok:true}));
+    return "";
   }
 
   async function adminFetch(path, init={}){
+    const token = await getAdminToken();
     const headers = new Headers(init.headers || {});
-    const token = await loadAdminToken().catch((e)=>{ throw e; });
-    headers.set('X-Admin-Token', token);
+    if (token) headers.set('X-Admin-Token', token);
     if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
     const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
     if(!r.ok){
-      let msg = 'HTTP '+r.status;
-      try { const j = await r.json(); msg = j.error || msg; } catch {}
+      let msg = 'HTTP ' + r.status;
+      try {
+        const j = await r.json();
+        msg = j.error ? (j.detail ? `${j.error}: ${j.detail}` : j.error) : msg;
+      } catch(_){}
       throw new Error(msg);
     }
     return r.json();
   }
 
   // ---------- API ----------
-  async function getState(){ return adminFetch(`/schedule/state?restaurant_id=${getRid()}`); }
+  async function getState(){
+    return adminFetch(`/schedule/state?restaurant_id=${getRid()}`);
+  }
   async function saveWeekly(weeklyList){
     const rid = getRid();
     for (const item of weeklyList){
@@ -193,7 +205,9 @@
   async function saveSettings(payload){
     return adminFetch("/settings/update", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
   }
-  async function listSpecials(){ return adminFetch(`/special-days/list?restaurant_id=${getRid()}`); }
+  async function listSpecials(){
+    return adminFetch(`/special-days/list?restaurant_id=${getRid()}`);
+  }
   async function upsertSpecial(payload){
     return adminFetch("/special-days/upsert", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
   }
@@ -201,7 +215,10 @@
     return adminFetch("/special-days/delete", { method:"POST", body: JSON.stringify({ restaurant_id: getRid(), date }) });
   }
   async function createReservation(payload){
-    return adminFetch("/reservations/create", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
+    return adminFetch("/reservations/create", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, restaurant_id: getRid() })
+    });
   }
 
   // ---------- WEEKLY UI ----------
@@ -417,11 +434,10 @@
     if (act === "special")  return actionSpecial();
     if (act === "settings") return actionSettings();
     if (act === "state")    return actionState();
-    if (act === "help")     return actionHelp();
-    if (act === "token")    return openTokenModal();
+    if (act == "help")      return actionHelp();
   });
 
-  // ---------- Ponte con il pannello prenotazioni: “Oggi” ----------
+  // ---------- Ponte con prenotazioni: “Oggi” ----------
   $("#btn-today")?.addEventListener("click", () => {
     const fDate = $("#f-date") || $("#resv-date");
     if (fDate) fDate.value = todayISO();
@@ -429,7 +445,7 @@
 
   // ============ CREA PRENOTAZIONE (UI) ============
   function openCreateModal() {
-    const fDate = $("#resv-date") || $("#resv-date");
+    const fDate = $("#f-date") || $("#resv-date");
     const today = todayISO();
     $("#cr-date").value   = (fDate && fDate.value) || today;
     $("#cr-time").value   = "20:00";
@@ -468,35 +484,9 @@
     }
   });
 
-  // ============ TOKEN ADMIN (UI) ============
-  async function prefillToken(){
-    const input = $("#tok-input");
-    if(!input) return;
-    try{
-      const sess = await loadPublicSession();
-      const tk = sess.admin_token || sess.token || sess.session?.admin_token || "";
-      input.value = tk || "";
-    }catch(_){}
-  }
-  function openTokenModal(){
-    prefillToken();
-    openModal("#modal-token");
-  }
-  $("#tok-save")?.addEventListener("click", async ()=>{
-    try{
-      const token = ($("#tok-input").value || "").trim();
-      await saveAdminToken(token);
-      showToast("Token salvato ✅","ok");
-      closeModal("#modal-token");
-    }catch(e){
-      console.error(e);
-      showToast(e.message || "Errore salvataggio token","err");
-    }
-  });
-
-  // Se all'avvio non c'è token, fai un piccolo promemoria
+  // --------- bootstrap token all’avvio (silenzioso) ---------
   (async () => {
-    try{ await loadAdminToken(); }
-    catch(_){ showToast("admin_token mancante", "err"); }
+    try { await getAdminToken(); } catch(_){}
   })();
+
 })();
