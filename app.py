@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-# app.py — entrypoint dell’app Flask
-
+# app.py — entrypoint
 from backend import create_app
+import os
 
 app = create_app()
 
 if __name__ == "__main__":
-    # Avvio locale (in produzione usa il WSGI del provider)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
+    app.run(host="0.0.0.0", port=port, debug=debug)
