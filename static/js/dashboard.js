@@ -1,4 +1,4 @@
-/* static/js/dashboard.js — complete */
+/* static/js/dashboard.js — aggiornato e verificato */
 (() => {
   const $  = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -139,19 +139,44 @@
     return s;
   }
   function getRid(){ return window.RESTAURANT_ID || window.restaurant_id || 1; }
+
+  async function sessGet(){
+    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin', cache:'no-store' });
+    if(!r.ok) return {};
+    return r.json();
+  }
+  async function sessPatch(partial){
+    await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify({ update: partial })
+    });
+  }
+
   async function loadAdminToken(){
-    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin' });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const j = await r.json();
-    const t = j.admin_token || j.token || j.session?.admin_token;
+    const j = await sessGet();
+    const t = j.admin_token || j.token || j.session?.admin_token || window.ADMIN_TOKEN;
     if (!t) throw new Error('admin_token mancante');
     return t;
   }
+  async function saveAdminToken(token){
+    await sessPatch({ admin_token: token, session: { admin_token: token } });
+  }
+
   async function adminFetch(path, init={}){
-    const token = await loadAdminToken();
     const headers = new Headers(init.headers || {});
-    headers.set('X-Admin-Token', token);
-    if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
+    try{
+      const token = await loadAdminToken();
+      headers.set('X-Admin-Token', token);
+    }catch(e){
+      // se manca, apri il modale token e rilancia
+      openModal('#modal-token');
+      throw e;
+    }
+    if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
+      headers.set('Content-Type','application/json');
+    }
     const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
     if(!r.ok){
       const j = await r.json().catch(()=>({}));
@@ -159,6 +184,29 @@
     }
     return r.json();
   }
+
+  // Token modal handlers
+  async function prefillToken() {
+    try{
+      const j = await sessGet();
+      const tk = j.admin_token || j.session?.admin_token || '';
+      const input = $('#adminTokenInput');
+      if (input && !input.value) input.value = tk;
+    }catch(_){}
+  }
+  async function saveTokenAndClose() {
+    const v = ($('#adminTokenInput')?.value || '').trim();
+    if (!v) { showToast('Inserisci un token', 'warn'); return; }
+    await saveAdminToken(v);
+    showToast('Token salvato ✅', 'ok');
+    closeModal('#modal-token');
+  }
+  $('#btn-save-token')?.addEventListener('click', ()=> {
+    saveTokenAndClose().catch(e=>showToast(e.message||'Errore salvataggio token','err'));
+  });
+  $('#adminTokenInput')?.addEventListener('keydown', (ev)=>{
+    if (ev.key === 'Enter'){ ev.preventDefault(); saveTokenAndClose().catch(e=>showToast(e.message,'err')); }
+  });
 
   // ---------- API ----------
   async function getState(){
@@ -352,7 +400,7 @@
     const ul = document.createElement("ul");
     wk.forEach((ranges, idx) => {
       const li = document.createElement("li");
-      li.textContent = `${["Lun","Mar","Mer","Gio","Ven","Sab","Dom"][idx]}: ${ranges.length ? ranges.map(r=>`${r.start}-${r.end}`).join(", ") : "CHIUSO"}`;
+      li.textContent = `${dayNames[idx]}: ${ranges.length ? ranges.map(r=>`${r.start}-${r.end}`).join(", ") : "CHIUSO"}`;
       ul.appendChild(li);
     });
     w.appendChild(ul);
@@ -392,6 +440,9 @@
     }
   }
 
+  // ---------- HELP ----------
+  function actionHelp() { openModal("#modal-help"); }
+
   // ---------- Wire menu ----------
   kebabMenu?.addEventListener("click", (e) => {
     const btn = e.target.closest(".k-item");
@@ -402,7 +453,8 @@
     if (act === "special")  return actionSpecial();
     if (act === "settings") return actionSettings();
     if (act === "state")    return actionState();
-    if (act == "help")      return openModal("#modal-help");
+    if (act === "help")     return actionHelp();
+    if (act === "token")    { prefillToken(); return openModal("#modal-token"); }
   });
 
   // ---------- Ponte con il pannello prenotazioni: “Oggi” ----------
@@ -411,9 +463,9 @@
     if (fDate) fDate.value = todayISO();
   });
 
-  // ============ CREA PRENOTAZIONE (UI) ============
+  // ---------- CREA PRENOTAZIONE ----------
   function openCreateModal() {
-    const fDate = $("#resv-date") || $("#f-date");
+    const fDate = $("#f-date") || $("#resv-date");
     const today = todayISO();
     $("#cr-date").value   = (fDate && fDate.value) || today;
     $("#cr-time").value   = "20:00";
@@ -438,7 +490,7 @@
         notes:  ($("#cr-notes").value || "").trim(),
       };
       if(!payload.date) throw new Error("Data mancante");
-      if(!/^\d{1,2}:\d{2}$/.test(payload.time)) throw new Error("Ora non valida (HH:MM)");
+      if(!/^\d{2}:\d{2}$/.test(payload.time)) throw new Error("Ora non valida (HH:MM)");
       if(!payload.name) throw new Error("Nome obbligatorio");
       if(payload.party_size <= 0) throw new Error("Persone > 0");
 
@@ -451,4 +503,7 @@
       showToast(e.message || "Errore creazione", "err");
     }
   });
+
+  // Prefill del token alla prima apertura della pagina (se già presente in sessione)
+  prefillToken().catch(()=>{});
 })();
