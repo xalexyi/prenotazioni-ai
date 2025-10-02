@@ -7,7 +7,7 @@ from datetime import date as _date, datetime, time as _time, timedelta
 from typing import List, Tuple, Dict, Any, Optional
 
 from flask import Blueprint, request, jsonify, abort, render_template
-from sqlalchemy import or_
+from sqlalchemy import or_, cast, String  # <— cast e String usati nei filtri
 
 from backend.models import db, Reservation
 from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
@@ -73,6 +73,7 @@ def _to_time_or_str(s: str):
         h, m = map(int, hhmm.split(":"))
         return _time(hour=h, minute=m)
     except Exception:
+        # in caso di dubbi, meglio stringa valida
         return _hhmm(s)
 
 def _to_date_or_str(s: str):
@@ -108,7 +109,7 @@ def parse_range_list(s: str) -> List[Tuple[str, str]]:
 def _coerce_ranges(value: Any) -> List[Tuple[str, str]]:
     """
     Accetta:
-      - stringa "12:00-15:00,19:00-23:30"
+      - stringa "12:00-15:00,19:00-23:30" (o "CLOSED")
       - lista di stringhe ["12:00-15:00", "19:00-23:30"]
       - lista di tuple/array ["12:00","15:00"]
     e ritorna lista di tuple (start, end) validate HH:MM.
@@ -152,7 +153,7 @@ def admin_reservations_list():
       - date=YYYY-MM-DD   (filtra esattamente quel giorno)
       - today=1           (ignora 'date' e forza oggi)
       - last_days=30      (prenotazioni con date >= oggi-30)
-      - q=string          (ricerca su name/phone/notes)
+      - q=string          (ricerca su name/phone/notes/time)
     """
     _auth()
     rid = request.args.get("restaurant_id", type=int)
@@ -175,8 +176,9 @@ def admin_reservations_list():
             filters.append(Reservation.phone.ilike(like))
         if hasattr(Reservation, "notes"):
             filters.append(Reservation.notes.ilike(like))
+        # ricerca anche sull'orario come stringa HH:MM
         if hasattr(Reservation, "time"):
-            filters.append(Reservation.time.cast(db.String).ilike(like))
+            filters.append(cast(Reservation.time, String).ilike(like))
         qry = qry.filter(or_(*filters))
 
     if today_flag:
@@ -293,6 +295,12 @@ def reservations_create():
 # =======================
 @api_admin.get("/api/admin-token/schedule/state")
 def schedule_state():
+    """
+    Ritorna lo stato completo del ristorante:
+      - weekly: per ciascun weekday lista di intervalli {start,end}
+      - settings: {tz, slot_step_min, last_order_min, min_party, max_party, capacity_per_slot}
+      - special_days: array [{date, closed, ranges:[{start,end}]}]
+    """
     _auth()
     rid = request.args.get("restaurant_id", type=int)
     if not rid:
@@ -349,6 +357,8 @@ def opening_hours_bulk():
       "weekday": "mon" | 0..6,
       "ranges": "12:00-15:00,19:00-23:30" | ["12:00-15:00", ...] | [["12:00","15:00"], ...] | "CLOSED"
     }
+    Sostituisce completamente le fasce per quel weekday.
+    Giorno vuoto o 'CLOSED' -> nessuna fascia (quindi chiuso).
     """
     _auth()
     data = request.get_json(force=True, silent=True) or {}
@@ -372,15 +382,17 @@ def opening_hours_bulk():
     if weekday < 0 or weekday > 6:
         return jsonify({"ok": False, "error": "bad_weekday"}), 400
 
+    # ranges
     try:
-        ranges = _coerce_ranges(data.get("ranges"))
+        raw = data.get("ranges")
+        rngs = _coerce_ranges(raw)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
     try:
         with db.session.begin():
             db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=weekday).delete()
-            for a, b in ranges:
+            for a, b in rngs:
                 db.session.add(
                     OpeningHour(
                         restaurant_id=rid,
@@ -389,7 +401,7 @@ def opening_hours_bulk():
                         end_time=_to_time_or_str(b),
                     )
                 )
-        return jsonify({"ok": True, "weekday": weekday, "count": len(ranges)}), 200
+        return jsonify({"ok": True, "weekday": weekday, "count": len(rngs)}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
@@ -424,6 +436,12 @@ def special_days_list():
 
 @api_admin.post("/api/admin-token/special-days/upsert")
 def special_days_upsert():
+    """
+    JSON:
+    { "restaurant_id":1, "date":"2025-12-25", "closed":true }
+    oppure
+    { "restaurant_id":1, "date":"2025-08-15", "ranges":"18:00-23:00" }
+    """
     _auth()
     data = request.get_json(force=True, silent=True) or {}
 
@@ -493,6 +511,19 @@ def special_days_delete():
 # =======================
 @api_admin.post("/api/admin-token/settings/update")
 def settings_update():
+    """
+    JSON:
+    {
+      "restaurant_id":1,
+      "tz":"Europe/Rome",
+      "slot_step_min":15,
+      "last_order_min":15,
+      "min_party":1,
+      "max_party":12,
+      "capacity_per_slot":6
+    }
+    Qualsiasi campo assente non viene toccato.
+    """
     _auth()
     data = request.get_json(force=True, silent=True) or {}
 
@@ -520,6 +551,17 @@ def settings_update():
 # =======================
 @api_admin.post("/api/admin-token/schedule/commands")
 def schedule_commands():
+    """
+    Content-Type: text/plain oppure JSON {"commands":"..."}.
+    Sintassi (case-insensitive, spazi liberi):
+
+      RID=1
+      WEEK mon 12:00-15:00,19:00-23:30
+      WEEK tue CLOSED
+      SPECIAL 2025-12-25 CLOSED
+      SPECIAL 2025-08-15 18:00-23:00
+      SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome
+    """
     _auth()
     if request.is_json:
         data = request.get_json() or {}
