@@ -8,172 +8,97 @@ from flask_login import UserMixin
 
 db = SQLAlchemy()
 
+
 # ===========================
-# ACCOUNT (login)
+# Account / autenticazione
 # ===========================
 class Restaurant(UserMixin, db.Model):
     __tablename__ = "restaurants"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
-    slug = db.Column(db.String(80), unique=True, nullable=False, index=True)
-
-    username = db.Column(db.String(80), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=False)
-
+    name = db.Column(db.String(120), nullable=False, default="Ristorante")
+    email = db.Column(db.String(255), unique=True)
+    password_hash = db.Column(db.String(255))
     logo = db.Column(db.String(120), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # relationships
-    reservations = db.relationship(
-        "Reservation", backref="restaurant", lazy=True, cascade="all, delete-orphan"
-    )
-    pizzas = db.relationship(
-        "Pizza", backref="restaurant", lazy=True, cascade="all, delete-orphan"
-    )
-    inbound_numbers = db.relationship(
-        "InboundNumber", backref="restaurant", lazy=True, cascade="all, delete-orphan"
-    )
-    call_logs = db.relationship(
-        "CallLog", backref="restaurant", lazy=True, cascade="all, delete-orphan"
-    )
+    def get_id(self):
+        return str(self.id)
 
     def __repr__(self):
         return f"<Restaurant id={self.id} name={self.name!r}>"
 
 
 # ===========================
-# PRENOTAZIONI
+# Prenotazioni
 # ===========================
 class Reservation(db.Model):
     __tablename__ = "reservations"
 
     id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(
-        db.Integer, db.ForeignKey("restaurants.id"), nullable=False, index=True
-    )
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.id"), nullable=False, index=True)
+
+    # coerente con il tuo frontend
     customer_name = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(60), nullable=True)
+    customer_phone = db.Column(db.String(60), nullable=True)
 
-    date = db.Column(db.String(10), nullable=False)  # YYYY-MM-DD
-    time = db.Column(db.String(5), nullable=False)   # HH:MM
+    # usiamo stringhe, come la tua SQL, non tipi Date/Time per compatibilità
+    date = db.Column(db.String(10), nullable=False)   # "YYYY-MM-DD"
+    time = db.Column(db.String(5), nullable=False)    # "HH:MM"
 
-    people = db.Column(db.Integer, nullable=False, default=2)
-    status = db.Column(
-        db.String(20), nullable=False, default="pending"
-    )  # pending|confirmed|rejected
+    party_size = db.Column(db.Integer, nullable=False, default=2)
+    status = db.Column(db.String(20), nullable=False, default="confirmed")  # confirmed|pending|cancelled
+    notes = db.Column(db.Text, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
-
-    pizzas = db.relationship(
-        "ReservationPizza", backref="reservation", lazy=True, cascade="all, delete-orphan"
-    )
-
-    def __repr__(self):
-        return f"<Reservation id={self.id} date={self.date} time={self.time} status={self.status}>"
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 # ===========================
-# MENU PIZZERIA
+# Orari settimanali ricorrenti
 # ===========================
-class Pizza(db.Model):
-    __tablename__ = "pizzas"
+class OpeningHour(db.Model):
+    __tablename__ = "opening_hours"
 
     id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(
-        db.Integer, db.ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.id"), nullable=False, index=True)
+    weekday = db.Column(db.Integer, nullable=False)            # 0=Mon .. 6=Sun
+    start_time = db.Column(db.String(5), nullable=False)       # "HH:MM"
+    end_time = db.Column(db.String(5), nullable=False)         # "HH:MM"
+
+    __table_args__ = (
+        db.Index("idx_opening_weekday_rest", "restaurant_id", "weekday"),
     )
-    name = db.Column(db.String(120), nullable=False)
-    price = db.Column(db.Integer, nullable=False, default=8)
-
-    def __repr__(self):
-        return f"<Pizza id={self.id} name={self.name!r} price={self.price}>"
 
 
-class ReservationPizza(db.Model):
-    __tablename__ = "reservation_pizzas"
+# ===========================
+# Giorni speciali
+# ===========================
+class SpecialDay(db.Model):
+    __tablename__ = "special_days"
 
     id = db.Column(db.Integer, primary_key=True)
-    reservation_id = db.Column(
-        db.Integer, db.ForeignKey("reservations.id"), nullable=False, index=True
-    )
-    pizza_id = db.Column(
-        db.Integer, db.ForeignKey("pizzas.id"), nullable=False, index=True
-    )
-    quantity = db.Column(db.Integer, nullable=False, default=1)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.id"), nullable=False, index=True)
+    date = db.Column(db.String(10), nullable=False, index=True)  # "YYYY-MM-DD"
+    is_closed = db.Column(db.Boolean, nullable=False, default=False)
+    start_time = db.Column(db.String(5), nullable=True)
+    end_time = db.Column(db.String(5), nullable=True)
 
-    pizza = db.relationship("Pizza")
-
-    def __repr__(self):
-        return f"<ReservationPizza res={self.reservation_id} pizza={self.pizza_id} qty={self.quantity}>"
-
-
-# ===========================
-# NUMERI REALI → RISTORANTE
-# ===========================
-class InboundNumber(db.Model):
-    """
-    Mappa il 'numero chiamato' reale (E.164, es: +390811234567) al restaurant_id.
-    Ogni ristorante può avere 1..n numeri reali che inoltrano verso Twilio.
-    """
-    __tablename__ = "inbound_numbers"
-
-    id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(
-        db.Integer, db.ForeignKey("restaurants.id"), nullable=False, index=True
-    )
-    e164_number = db.Column(db.String(32), unique=True, nullable=False)  # es: +390811234567
-    note = db.Column(db.String(200), nullable=True)
-    active = db.Column(db.Boolean, default=True)
-
-    def __repr__(self):
-        return f"<InboundNumber {self.e164_number} rid={self.restaurant_id} active={self.active}>"
-
-
-# ===========================
-# SESSIONE CHIAMATA
-# ===========================
-class CallSession(db.Model):
-    """
-    Mantiene lo stato per la durata della chiamata (Twilio CallSid).
-    Così possiamo ricordare restaurant_id, eventuale testo raccolto, ecc.
-    """
-    __tablename__ = "call_sessions"
-
-    id = db.Column(db.Integer, primary_key=True)
-    call_sid = db.Column(db.String(64), unique=True, nullable=False, index=True)
-    restaurant_id = db.Column(
-        db.Integer, db.ForeignKey("restaurants.id"), nullable=False, index=True
-    )
-    step = db.Column(db.String(32), default="start")  # start|gathered|done
-    collected_text = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
-
-    def __repr__(self):
-        return f"<CallSession {self.call_sid} rid={self.restaurant_id} step={self.step}>"
-
-
-# ===========================
-# LOG CHIAMATE/TRASCRIZIONI
-# ===========================
-class CallLog(db.Model):
-    __tablename__ = "call_logs"
-
-    id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(
-        db.Integer, db.ForeignKey("restaurants.id"), nullable=True, index=True
+    __table_args__ = (
+        db.Index("idx_special_date_rest", "restaurant_id", "date"),
     )
 
-    call_sid = db.Column(db.String(64), index=True)
-    from_number = db.Column(db.String(32))
-    to_number = db.Column(db.String(32))
 
-    recording_sid = db.Column(db.String(64))
-    recording_url = db.Column(db.String(512))
-    duration_seconds = db.Column(db.Integer)
+# ===========================
+# Impostazioni per ristorante
+# ===========================
+class RestaurantSetting(db.Model):
+    __tablename__ = "restaurant_settings"
 
-    transcript = db.Column(db.Text)
-    received_at = db.Column(db.DateTime)  # timestamp inviato da n8n
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
-
-    def __repr__(self):
-        return f"<CallLog id={self.id} rid={self.restaurant_id} dur={self.duration_seconds}>"
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.id"), primary_key=True)
+    tz = db.Column(db.String(64), nullable=True)                 # es. "Europe/Rome"
+    slot_step_min = db.Column(db.Integer, nullable=True)         # 15/30...
+    last_order_min = db.Column(db.Integer, nullable=True)        # minuti prima della chiusura
+    min_party = db.Column(db.Integer, nullable=True)
+    max_party = db.Column(db.Integer, nullable=True)
+    capacity_per_slot = db.Column(db.Integer, nullable=True)

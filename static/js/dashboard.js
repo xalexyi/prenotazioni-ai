@@ -71,25 +71,32 @@
     kebabMenu.classList.add("open");
     kebabBtn?.classList.add("kebab-active");
     kebabBtn?.setAttribute("aria-expanded", "true");
-    const onDoc = (e) => { if (!kebabMenu.contains(e.target) && e.target !== kebabBtn) kebabClose(); };
-    const onKey = (e) => { if (e.key === "Escape") kebabClose(); };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    kebabMenu._off = () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
   }
   function kebabClose() {
     if (!kebabMenu) return;
     kebabMenu.classList.remove("open");
     kebabBtn?.classList.remove("kebab-active");
     kebabBtn?.setAttribute("aria-expanded", "false");
-    setTimeout(() => { if (kebabMenu) kebabMenu.hidden = true; }, 100);
-    if (kebabMenu._off) kebabMenu._off();
+    setTimeout(() => (kebabMenu.hidden = true), 120);
   }
-  kebabBtn?.addEventListener("click", () => {
-    if (kebabMenu.hidden) kebabOpen(); else kebabClose();
+  kebabBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (kebabMenu.hidden || !kebabMenu.classList.contains("open")) kebabOpen();
+    else kebabClose();
+  });
+  document.addEventListener("click", (e) => {
+    if (!kebabMenu) return;
+    if (!kebabMenu.contains(e.target) && e.target !== kebabBtn) kebabClose();
+  });
+  kebabMenu?.addEventListener("click", (e) => {
+    const b = e.target.closest(".k-item"); if (!b) return;
+    const act = b.dataset.act;
+    kebabClose();
+    if (act === "weekly")   actionWeekly();
+    if (act === "special")  actionSpecial();
+    if (act === "settings") actionSettings();
+    if (act === "state")    actionState();
+    if (act === "help")     openModal("#modal-help");
   });
 
   // ---------- Helpers ----------
@@ -122,85 +129,49 @@
         const w = Number(d.weekday);
         (d.ranges || []).forEach(r => out[w].push({ start: r.start, end: r.end }));
       });
-    } else if (weekly && typeof weekly === "object") {
-      Object.keys(weekly).forEach(k => {
-        const w = Number(k);
-        (weekly[k] || []).forEach(r => out[w].push({ start: r.start, end: r.end }));
-      });
     }
     return out;
   }
 
-  // ---------- Session + Admin token (AUTO) ----------
-  const SID_KEY = 'session_id';
+  // ---------- Admin token / fetch ----------
+  const SID_KEY='session_id';
+  const getRid = ()=> window.RESTAURANT_ID || window.restaurant_id || 1;
   function sid(){
     let s = localStorage.getItem(SID_KEY) || window.SESSION_ID;
-    if (!s){ s = Math.random().toString(36).slice(2); localStorage.setItem(SID_KEY, s); }
+    if(!s){ s = Math.random().toString(36).slice(2); localStorage.setItem(SID_KEY, s); }
     return s;
   }
-  function getRid(){ return window.RESTAURANT_ID || window.restaurant_id || 1; }
-
-  async function loadPublicSession(){
-    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin' });
-    if (!r.ok) return {};
-    return r.json();
-  }
-  async function savePublicSession(update){
-    await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, {
-      method:'PATCH',
-      headers:{'Content-Type':'application/json'},
-      credentials:'same-origin',
-      body: JSON.stringify({ update })
-    });
-  }
-
   async function getAdminToken(){
-    // 1) tenta dalla public session
-    const s = await loadPublicSession();
-    const t1 = s.admin_token || s.session?.admin_token || s.token;
-    if (t1) return t1;
-    // 2) bootstrap dal backend (solo se loggato)
-    const r = await fetch('/api/admin-token/bootstrap', { credentials:'same-origin' });
-    if (r.ok) {
-      const j = await r.json().catch(()=>({}));
-      const token = j.admin_token || j.token;
-      if (token) {
-        await savePublicSession({ admin_token: token });
-        return token;
-      }
-    }
-    return "";
+    const r = await fetch(`/api/public/sessions/${encodeURIComponent(sid())}`, { credentials:'same-origin', cache:'no-store' });
+    const j = await r.json();
+    const t = j.admin_token || j.token || j.session?.admin_token;
+    if(!t) throw new Error('admin_token mancante');
+    return t;
   }
-
   async function adminFetch(path, init={}){
-    const token = await getAdminToken();
     const headers = new Headers(init.headers || {});
-    if (token) headers.set('X-Admin-Token', token);
+    const token = await getAdminToken();
+    headers.set('X-Admin-Token', token);
     if (!headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type','application/json');
     const r = await fetch(`/api/admin-token${path}`, { ...init, headers, credentials:'same-origin' });
     if(!r.ok){
-      let msg = 'HTTP ' + r.status;
-      try {
-        const j = await r.json();
-        msg = j.error ? (j.detail ? `${j.error}: ${j.detail}` : j.error) : msg;
-      } catch(_){}
-      throw new Error(msg);
+      let err = { message: `HTTP ${r.status}` };
+      try { const j = await r.json(); err = j || err; } catch(_){}
+      throw err;
     }
     return r.json();
   }
 
-  // ---------- API ----------
+  // ---------- API wrappers ----------
   async function getState(){
-    return adminFetch(`/schedule/state?restaurant_id=${getRid()}`);
+    const q = new URLSearchParams({ restaurant_id: String(getRid()) });
+    return adminFetch(`/schedule/state?${q.toString()}`);
   }
-  async function saveWeekly(weeklyList){
-    const rid = getRid();
-    for (const item of weeklyList){
-      const wd = Number(item.weekday);
-      const ranges = (item.ranges||[]).map(r=>`${r.start}-${r.end}`);
-      await adminFetch("/opening-hours/bulk", { method:"POST", body: JSON.stringify({ restaurant_id: rid, weekday: wd, ranges }) });
-    }
-    return { ok:true };
+  async function saveWeeklyBulk(weekday, ranges){
+    return adminFetch("/opening-hours/bulk", {
+      method:"POST",
+      body: JSON.stringify({ restaurant_id: getRid(), weekday, ranges })
+    });
   }
   async function saveSettings(payload){
     return adminFetch("/settings/update", { method:"POST", body: JSON.stringify({ ...payload, restaurant_id: getRid() }) });
@@ -229,112 +200,128 @@
     for (let i = 0; i < 7; i++) {
       const row = document.createElement("div");
       row.className = "w-row";
+      const ranges = weeklyArr[i] || [];
       row.innerHTML = `
-        <div><strong>${dayNames[i]}</strong></div>
-        <input class="input" data-wd="${i}" placeholder="12:00-15:00, 19:00-23:30">
+        <div class="w-day">${dayNames[i]}</div>
+        <div class="w-ranges" data-day="${i}"></div>
+        <div><button class="btn btn-xs btn-outline js-add" data-day="${i}">+ Fascia</button></div>
       `;
       box.appendChild(row);
-      box.querySelector(`input[data-wd="${i}"]`).value = rangesToString(weeklyArr[i]);
+      const holder = row.querySelector(".w-ranges");
+      ranges.forEach(r => holder.appendChild(rangeElem(r.start, r.end)));
     }
   }
-  async function actionWeekly() {
-    try {
+  function rangeElem(a="12:00", b="15:00"){
+    const div = document.createElement("div");
+    div.className = "w-range";
+    div.innerHTML = `
+      <input type="time" class="w-start" value="${a}">
+      <span>–</span>
+      <input type="time" class="w-end" value="${b}">
+      <button class="btn btn-xs btn-outline-danger js-del">×</button>
+    `;
+    div.querySelector(".js-del").addEventListener("click", ()=> div.remove());
+    return div;
+  }
+  function collectWeeklyDay(dayIdx){
+    const box = $(`.w-ranges[data-day="${dayIdx}"]`);
+    const arr = [];
+    box?.querySelectorAll(".w-range").forEach(r=>{
+      const a = r.querySelector(".w-start").value;
+      const b = r.querySelector(".w-end").value;
+      if(a && b) arr.push({ start:a, end:b });
+    });
+    return arr;
+  }
+
+  async function actionWeekly(){
+    try{
       const st = await getState();
-      const weeklyArr = normalizeWeeklyToArray(st.weekly);
-      buildWeeklyForm(weeklyArr);
+      const weekly = normalizeWeeklyToArray(st.weekly || []);
+      buildWeeklyForm(weekly);
+      $("#weekly-form")?.addEventListener("click", (e)=>{
+        const b = e.target.closest(".js-add");
+        if(!b) return;
+        const day = Number(b.dataset.day);
+        const holder = $(`.w-ranges[data-day="${day}"]`);
+        holder?.appendChild(rangeElem("19:00","23:00"));
+      }, { once: true });
+
+      $("#btn-save-weekly")?.addEventListener("click", async ()=>{
+        try{
+          for(let wd=0; wd<7; wd++){
+            const ranges = collectWeeklyDay(wd);
+            // validazione veloce
+            ranges.forEach(r=>{
+              if(!isHHMM(r.start) || !isHHMM(r.end)) throw new Error("Formato orario non valido");
+            });
+            await saveWeeklyBulk(wd, ranges);
+          }
+          showToast("Orari settimanali salvati","ok");
+          closeModal("#modal-weekly");
+        }catch(e){
+          console.error(e); showToast(e.detail || e.message || "Errore salvataggio","err");
+        }
+      }, { once: true });
+
       openModal("#modal-weekly");
-    } catch (e) {
-      alert("Errore caricamento orari: " + (e.message || e));
+    }catch(e){
       console.error(e);
+      showToast(e.message || "Errore caricamento orari","err");
     }
   }
-  $("#weekly-save")?.addEventListener("click", async () => {
-    try {
-      const inputs = $$("#weekly-form input[data-wd]");
-      const list = [];
-      for (const inp of inputs) {
-        const wd = Number(inp.dataset.wd);
-        const ranges = parseRanges(inp.value);
-        list.push({ weekday: wd, ranges });
-      }
-      await saveWeekly(list);
-      showToast("Orari settimanali salvati ✅", "ok");
-      closeModal("#modal-weekly");
-    } catch (e) {
-      console.error(e);
-      showToast(e.message || "Errore salvataggio orari", "err");
-    }
-  });
 
   // ---------- SPECIAL DAYS UI ----------
-  function isoFromInput(val) {
-    if (!val) return "";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-    const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
-    return val;
+  function isoFromInput(v){ return (v||"").trim(); }
+  async function refreshSpecialList(){
+    const res = await listSpecials();
+    const items = res.items || [];
+    const box = $("#sp-list");
+    if(!box) return;
+    if(!items.length){ box.innerHTML = `<div class="muted">Nessuna regola</div>`; return; }
+    items.sort((a,b)=> a.date.localeCompare(b.date));
+    box.innerHTML = items.map(it=>{
+      const tag = it.is_closed ? `<span class="chip chip-red">Chiuso</span>` : `<span class="chip">${rangesToString(it.ranges||[])}</span>`;
+      return `<div class="li"><span class="mono">${it.date}</span> ${tag}</div>`;
+    }).join("");
   }
-  async function refreshSpecialList() {
-    const cont = $("#sp-list");
-    if (!cont) return;
-    cont.textContent = "Carico...";
-    const data = await listSpecials();
-    const items = data.items || data || [];
-    if (!items.length) {
-      cont.innerHTML = "<em>Nessuna regola</em>";
-      return;
-    }
-    const ul = document.createElement("div");
-    ul.className = "list";
-    items.forEach(it => {
-      const li = document.createElement("div");
-      li.className = "list-item";
-      const ranges = (it.ranges || []).map(r => `${r.start}-${r.end}`).join(", ");
-      li.textContent = `${it.date} — ${it.closed ? "CHIUSO" : ranges || "aperto (nessuna fascia?)"}`;
-      ul.appendChild(li);
-    });
-    cont.innerHTML = "";
-    cont.appendChild(ul);
-  }
-  async function actionSpecial() {
-    try {
+
+  async function actionSpecial(){
+    try{
       await refreshSpecialList();
+      $("#sp-add")?.addEventListener("click", async ()=>{
+        try{
+          const date = isoFromInput($("#sp-date").value);
+          if(!date) throw new Error("Seleziona una data");
+          const is_closed = $("#sp-closed").checked;
+          const ranges = is_closed ? [] : parseRanges($("#sp-ranges").value);
+          await upsertSpecial({ date, is_closed, ranges });
+          await refreshSpecialList();
+          showToast("Giorno speciale salvato","ok");
+        }catch(e){
+          console.error(e);
+          showToast(e.message || "Errore salvataggio","err");
+        }
+      }, { once: true });
+      $("#sp-del")?.addEventListener("click", async () => {
+        try {
+          const date = isoFromInput($("#sp-date").value);
+          if (!date) throw new Error("Seleziona una data");
+          await deleteSpecial(date);
+          await refreshSpecialList();
+          showToast("Regola eliminata","ok");
+        } catch (e) {
+          console.error(e);
+          showToast(e.message || "Errore eliminazione","err");
+        }
+      }, { once: true });
+
       openModal("#modal-special");
-    } catch (e) {
-      alert("Errore caricamento giorni speciali: " + (e.message || e));
+    }catch(e){
       console.error(e);
+      showToast(e.message || "Errore caricamento giorni speciali","err");
     }
   }
-  $("#sp-add")?.addEventListener("click", async () => {
-    try {
-      const date = isoFromInput($("#sp-date").value);
-      const closed = $("#sp-closed").checked;
-      if (!date) throw new Error("Seleziona una data");
-      if (closed) {
-        await upsertSpecial({ date, closed: 1, ranges: [] });
-      } else {
-        const ranges = parseRanges($("#sp-ranges").value);
-        await upsertSpecial({ date, closed: 0, ranges });
-      }
-      await refreshSpecialList();
-      showToast("Giorno speciale salvato ✅", "ok");
-    } catch (e) {
-      console.error(e);
-      showToast(e.message || "db_error", "err");
-    }
-  });
-  $("#sp-del")?.addEventListener("click", async () => {
-    try {
-      const date = isoFromInput($("#sp-date").value);
-      if (!date) throw new Error("Seleziona una data");
-      await deleteSpecial(date);
-      await refreshSpecialList();
-      showToast("Regola eliminata 🗑️", "ok");
-    } catch (e) {
-      console.error(e);
-      showToast(e.message || "Errore eliminazione", "err");
-    }
-  });
 
   // ---------- SETTINGS UI ----------
   async function actionSettings() {
@@ -348,134 +335,95 @@
       $("#st-maxp").value = s.max_party ?? 12;
       $("#st-tz").value   = s.tz || "Europe/Rome";
       openModal("#modal-settings");
+
+      $("#settings-save")?.addEventListener("click", async ()=>{
+        try{
+          const payload = {
+            slot_step_min: Number($("#st-step").value || 15),
+            last_order_min: Number($("#st-last").value || 15),
+            capacity_per_slot: Number($("#st-cap").value || 6),
+            min_party: Number($("#st-minp").value || 1),
+            max_party: Number($("#st-maxp").value || 12),
+            tz: ($("#st-tz").value || "Europe/Rome").trim(),
+          };
+          await saveSettings(payload);
+          showToast("Impostazioni salvate","ok");
+          closeModal("#modal-settings");
+        }catch(e){
+          console.error(e);
+          showToast(e.message || "Errore salvataggio","err");
+        }
+      }, { once: true });
+
     } catch (e) {
-      alert("Errore caricamento impostazioni: " + (e.message || e));
       console.error(e);
+      showToast(e.message || "Errore caricamento impostazioni", "err");
     }
   }
-  $("#settings-save")?.addEventListener("click", async () => {
-    try {
-      const payload = {
-        slot_step_min:    Number($("#st-step").value) || 15,
-        last_order_min:   Number($("#st-last").value) || 15,
-        capacity_per_slot:Number($("#st-cap").value)  || 6,
-        min_party:        Number($("#st-minp").value) || 1,
-        max_party:        Number($("#st-maxp").value) || 12,
-        tz:               ($("#st-tz").value || "Europe/Rome").trim(),
-      };
-      await saveSettings(payload);
-      showToast("Impostazioni salvate ✅", "ok");
-      closeModal("#modal-settings");
-    } catch (e) {
-      console.error(e);
-      showToast(e.message || "Errore salvataggio impostazioni", "err");
-    }
-  });
 
-  // ---------- STATE (riepilogo) ----------
-  function humanState(st) {
-    const wrap = document.createElement("div");
-    const wk = normalizeWeeklyToArray(st.weekly);
-    const w = document.createElement("div");
-    w.innerHTML = "<strong>Orari settimanali</strong>";
-    const ul = document.createElement("ul");
-    wk.forEach((ranges, idx) => {
-      const li = document.createElement("li");
-      li.textContent = `${dayNames[idx]}: ${ranges.length ? ranges.map(r=>`${r.start}-${r.end}`).join(", ") : "CHIUSO"}`;
-      ul.appendChild(li);
-    });
-    w.appendChild(ul);
-    wrap.appendChild(w);
-
-    const specials = st.special_days || st.specials || [];
-    if (Array.isArray(specials) && specials.length) {
-      const s = document.createElement("div");
-      s.style.marginTop = "8px";
-      s.innerHTML = "<strong>Giorni speciali</strong>";
-      const ul2 = document.createElement("ul");
-      specials.forEach(it=>{
-        const li = document.createElement("li");
-        const ranges = (it.ranges||[]).map(r=>`${r.start}-${r.end}`).join(", ");
-        li.textContent = `${it.date}: ${it.closed ? "CHIUSO" : (ranges||"aperto")}`;
-        ul2.appendChild(li);
-      });
-      s.appendChild(ul2);
-      wrap.appendChild(s);
-    }
-    return wrap;
-  }
-  async function actionState() {
-    try {
+  // ---------- STATE UI ----------
+  async function actionState(){
+    try{
       const st = await getState();
-      const boxH = $("#state-human");
-      const boxJ = $("#state-json");
-      if (boxH) {
-        boxH.innerHTML = "";
-        boxH.appendChild(humanState(st));
+      const human = $("#state-human");
+      const weekly = normalizeWeeklyToArray(st.weekly || []);
+      const specials = st.special_days || [];
+      const s = st.settings || {};
+      const lines = [];
+      lines.push(`<div><strong>Orari settimanali</strong></div>`);
+      weekly.forEach((arr, i)=>{
+        lines.push(`<div class="mono">${dayNames[i]}: ${arr.length? arr.map(r=>`${r.start}-${r.end}`).join(", ") : '—'}</div>`);
+      });
+      lines.push(`<hr>`);
+      lines.push(`<div><strong>Giorni speciali</strong></div>`);
+      if(specials.length){
+        specials.forEach(it=>{
+          lines.push(`<div class="mono">${it.date}: ${it.is_closed? 'Chiuso' : rangesToString(it.ranges||[])}</div>`);
+        });
+      }else{
+        lines.push(`<div class="mono">Nessuna regola</div>`);
       }
-      if (boxJ) boxJ.textContent = JSON.stringify(st, null, 2);
+      lines.push(`<hr>`);
+      lines.push(`<div><strong>Impostazioni</strong></div>`);
+      lines.push(`<div class="mono">step=${s.slot_step_min ?? '—'} last=${s.last_order_min ?? '—'} capacity=${s.capacity_per_slot ?? '—'} party=${(s.min_party ?? '—')}-${(s.max_party ?? '—')} tz=${s.tz || '—'}</div>`);
+      human.innerHTML = lines.join("");
+
+      const pre = $("#state-json");
+      pre.textContent = JSON.stringify(st, null, 2);
+
       openModal("#modal-state");
-    } catch (e) {
-      alert("Errore lettura stato: " + (e.message || e));
+    }catch(e){
       console.error(e);
+      showToast(e.message || "Errore caricamento stato","err");
     }
   }
 
-  // ---------- HELP ----------
-  function actionHelp() { openModal("#modal-help"); }
-
-  // ---------- Wire menu ----------
-  kebabMenu?.addEventListener("click", (e) => {
-    const btn = e.target.closest(".k-item");
-    if (!btn) return;
-    const act = btn.dataset.act;
-    kebabClose();
-    if (act === "weekly")   return actionWeekly();
-    if (act === "special")  return actionSpecial();
-    if (act === "settings") return actionSettings();
-    if (act === "state")    return actionState();
-    if (act == "help")      return actionHelp();
-  });
-
-  // ---------- Ponte con prenotazioni: “Oggi” ----------
-  $("#btn-today")?.addEventListener("click", () => {
-    const fDate = $("#f-date") || $("#resv-date");
-    if (fDate) fDate.value = todayISO();
-  });
-
-  // ============ CREA PRENOTAZIONE (UI) ============
-  function openCreateModal() {
-    const fDate = $("#f-date") || $("#resv-date");
-    const today = todayISO();
-    $("#cr-date").value   = (fDate && fDate.value) || today;
-    $("#cr-time").value   = "20:00";
-    $("#cr-name").value   = "";
-    $("#cr-phone").value  = "";
-    $("#cr-party").value  = "2";
+  // ---------- CREA PRENOTAZIONE ----------
+  $("#btn-open-create")?.addEventListener("click", ()=>{
+    $("#cr-date").value = $("#resv-date")?.value || todayISO();
+    $("#cr-time").value = "20:00";
+    $("#cr-party").value = "2";
+    $("#cr-name").value = "";
+    $("#cr-phone").value = "";
     $("#cr-status").value = "confirmed";
-    $("#cr-notes").value  = "";
+    $("#cr-notes").value = "";
     openModal("#modal-create");
-  }
-  $("#btn-open-create")?.addEventListener("click", openCreateModal);
+  });
 
-  $("#btn-create-save")?.addEventListener("click", async () => {
+  $("#create-save")?.addEventListener("click", async ()=>{
     try{
       const payload = {
-        date:  $("#cr-date").value,
-        time:  $("#cr-time").value,
-        name:  ($("#cr-name").value || "").trim(),
+        date: ($("#cr-date").value || "").trim(),
+        time: ($("#cr-time").value || "").trim(),
+        name: ($("#cr-name").value || "").trim(),
         phone: ($("#cr-phone").value || "").trim(),
-        party_size: Number($("#cr-party").value || 0),
-        status: $("#cr-status").value || "confirmed",
-        notes:  ($("#cr-notes").value || "").trim(),
+        party_size: Number($("#cr-party").value || 2),
+        status: ($("#cr-status").value || "confirmed").trim(),
+        notes: ($("#cr-notes").value || "").trim(),
       };
-      if(!payload.date) throw new Error("Data mancante");
-      if(!/^\d{2}:\d{2}$/.test(payload.time)) throw new Error("Ora non valida (HH:MM)");
-      if(!payload.name) throw new Error("Nome obbligatorio");
-      if(payload.party_size <= 0) throw new Error("Persone > 0");
-
+      if(!payload.date || !payload.time || !payload.name) throw new Error("Compila data, ora, nome");
       await createReservation(payload);
-      showToast("Prenotazione creata ✅", "ok");
+      showToast("Prenotazione creata","ok");
       closeModal("#modal-create");
       $("#resv-refresh")?.click();
     }catch(e){
@@ -484,9 +432,6 @@
     }
   });
 
-  // --------- bootstrap token all’avvio (silenzioso) ---------
-  (async () => {
-    try { await getAdminToken(); } catch(_){}
-  })();
-
+  // --------- bootstrap token (silenzioso) ---------
+  (async () => { try { await getAdminToken(); } catch(_){/* no-op */} })();
 })();

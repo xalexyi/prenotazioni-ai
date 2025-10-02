@@ -44,12 +44,12 @@
   </section>
 
   <!-- KPI -->
-  <section class="kpi-grid {% if is_pizzeria %}kpi-3{% else %}kpi-2{% endif %}">
+  <section class="kpi-grid">
     <div class="card kpi-card">
       <div class="kpi-title">Prenotazioni oggi</div>
       <div class="kpi-value" id="kpi-today">0</div>
     </div>
-    {% if is_pizzeria %}
+    {% if pizza_mode %}
     <div class="card kpi-card">
       <div class="kpi-title">Pizze ordinate</div>
       <div class="kpi-value" id="kpi-pizzas">0</div>
@@ -74,13 +74,12 @@
         <button class="btn btn-outline" id="resv-today">Oggi</button>
         <button class="btn" id="resv-refresh">Aggiorna</button>
 
-        <!-- >>> CREA PRENOTAZIONE -->
         <span style="flex:1"></span>
         <button class="btn btn-primary" id="btn-open-create">Crea prenotazione</button>
       </div>
     </div>
-    <!-- Contenitore usato da reservations.js -->
-    <div id="list" class="table"></div>
+
+    <div class="card-body" id="list" aria-live="polite"></div>
   </section>
 </div>
 
@@ -92,15 +91,11 @@
       <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
     <div class="modal-body">
-      <div class="muted small">
-        Formato: <b>HH:MM-HH:MM</b> (es. <span class="chip">12:00-15:00</span>, <span class="chip">19:00-23:30</span>).
-        Giorno vuoto = <b>CHIUSO</b>.
-      </div>
       <div id="weekly-form" class="weekly-form"></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
-      <button class="btn" id="weekly-save">Salva</button>
+      <button class="btn" id="btn-save-weekly">Salva orari</button>
     </div>
   </div>
 </div>
@@ -141,16 +136,16 @@
 <div id="modal-settings" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-head">
-      <h3 class="card-title" id="settings-title">Impostazioni prenotazioni</h3>
-    <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
+      <h3 class="card-title" id="settings-title">Impostazioni</h3>
+      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
     </div>
-    <div class="modal-body grid-2">
-      <div><label>Step (min)</label><input id="st-step" type="number" class="input" min="1" value="15" data-autofocus></div>
-      <div><label>Ultimo anticipo (min)</label><input id="st-last" type="number" class="input" min="0" value="15"></div>
-      <div><label>Capacità per slot</label><input id="st-cap" type="number" class="input" min="1" value="6"></div>
-      <div><label>Persone min</label><input id="st-minp" type="number" class="input" min="1" value="1"></div>
-      <div><label>Persone max</label><input id="st-maxp" type="number" class="input" min="1" value="12"></div>
-      <div class="col-span-2"><label>Timezone</label><input id="st-tz" type="text" class="input" value="Europe/Rome"></div>
+    <div class="modal-body grid-3">
+      <div><label>Step slot (min)</label><input id="st-step" type="number" class="input" min="5" step="5" value="15"></div>
+      <div><label>Ultimo ordine (min)</label><input id="st-last" type="number" class="input" min="0" step="5" value="15"></div>
+      <div><label>Capienza/slot</label><input id="st-cap" type="number" class="input" min="1" step="1" value="6"></div>
+      <div><label>Min persone</label><input id="st-minp" type="number" class="input" min="1" step="1" value="1"></div>
+      <div><label>Max persone</label><input id="st-maxp" type="number" class="input" min="1" step="1" value="12"></div>
+      <div><label>Timezone</label><input id="st-tz" type="text" class="input" value="Europe/Rome"></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
@@ -179,55 +174,6 @@
   </div>
 </div>
 
-<!-- ====== MODAL: Guida codici rapidi ====== -->
-<div id="modal-help" class="modal-backdrop" aria-hidden="true">
-  <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="help-title">
-    <div class="modal-head">
-      <h3 class="card-title" id="help-title">Guida codici rapidi</h3>
-      <button class="btn btn-icon js-close" aria-label="Chiudi">✖</button>
-    </div>
-    <div class="modal-body help-body">
-      <div class="help-row">
-        <div class="help-k">Cos’è</div>
-        <div class="help-v">Comandi testuali equivalenti ai modali. Incolli una riga, aggiorni orari o regole in un colpo.</div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">Come usare</div>
-        <div class="help-v">
-          <ol style="margin:0; padding-left:18px">
-            <li>Apri il menu ⋮ e scegli il pannello (Orari, Speciali, Impostazioni).</li>
-            <li>Prendi un esempio sotto, modifica i valori e salva.</li>
-            <li>Controlla in “Stato & riepilogo”.</li>
-          </ol>
-        </div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">WEEK</div>
-        <div class="help-v">Orari settimanali (mon…sun):
-          <div class="chip">mon 12:00-15:00,19:00-23:30</div>
-          <div class="muted small">Lascia vuoto un giorno per chiuderlo.</div>
-        </div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">SPECIAL</div>
-        <div class="help-v">Giorno speciale:
-          <div class="chip">2025-12-25 CLOSED</div>
-          <div class="chip">2025-08-15 18:00-23:00</div>
-        </div>
-      </div>
-      <div class="help-row">
-        <div class="help-k">SETTINGS</div>
-        <div class="help-v">Impostazioni:
-          <div class="chip">step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome</div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-light js-close">Chiudi</button>
-    </div>
-  </div>
-</div>
-
 <!-- ====== MODAL: Crea prenotazione ====== -->
 <div id="modal-create" class="modal-backdrop" aria-hidden="true">
   <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="create-title">
@@ -246,45 +192,24 @@
         <select id="cr-status" class="input">
           <option value="confirmed">Confermata</option>
           <option value="pending">In attesa</option>
-          <option value="cancelled">Cancellata</option>
+          <option value="cancelled">Annullata</option>
         </select>
       </div>
-      <div class="col-span-2"><label>Note</label><textarea id="cr-notes" class="input" rows="3" placeholder="Allergie, tavolo, ecc."></textarea></div>
+      <div class="col-span-2"><label>Note</label><textarea id="cr-notes" class="input" rows="3"></textarea></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-light js-close">Chiudi</button>
-      <button class="btn" id="btn-create-save">Salva prenotazione</button>
+      <button class="btn" id="create-save">Salva</button>
     </div>
   </div>
 </div>
 
-<!-- Toast -->
-<div id="_toast" role="status" aria-live="polite"></div>
-{% endblock %}
-
-{% block scripts %}
-<!-- Espone l'ID ristorante al JS (per le chiamate API) -->
 <script>
-  window.RESTAURANT_ID = {{ restaurant.id }};
-</script>
-
-<!-- Shim di compatibilità per vecchi ID usati da alcune versioni di reservations.js -->
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  const rd = document.getElementById('resv-date');
-  const rq = document.getElementById('resv-q');
-
-  // alias nascosti per #f-date e #f-text
-  const fd = document.createElement('input'); fd.type='hidden'; fd.id='f-date'; fd.value = rd?.value || '';
-  const ft = document.createElement('input'); ft.type='hidden'; ft.id='f-text'; ft.value = rq?.value || '';
-  document.body.appendChild(fd); document.body.appendChild(ft);
-  rd?.addEventListener('input', ()=> fd.value = rd.value);
-  rq?.addEventListener('input', ()=> ft.value = rq.value);
-
-  // alias bottoni
+document.addEventListener('DOMContentLoaded', ()=>{
+  // alias pulsanti vecchi → nuovi id (se nel tuo CSS/HTML avevi altri id)
   function alias(oldId, targetId){
-    let b = document.getElementById(oldId);
-    if(!b){ b = document.createElement('button'); b.id = oldId; b.type='button'; b.style.display='none'; document.body.appendChild(b); }
+    const b = document.getElementById(oldId);
+    if(!b){ return; }
     b.addEventListener('click', ()=> document.getElementById(targetId)?.click());
   }
   alias('btn-filter',  'resv-filter');
