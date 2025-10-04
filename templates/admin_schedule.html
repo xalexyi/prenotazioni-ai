@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin Orari — {{ restaurant_name }}</title>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+  <style>
+    body{background:#0b1220;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .wrap{max-width:1100px;margin:36px auto;padding:0 16px}
+    .card{background:#0f172a;border:1px solid #1f2937;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:16px}
+    .row{display:flex;gap:12px;align-items:center}
+    .col{flex:1}
+    .btn{background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
+    .btn.ghost{background:#1f2937}
+    .btn.warn{background:#ef4444}
+    .menu{display:flex;gap:10px;flex-wrap:wrap}
+    dialog{border:none;border-radius:14px; padding:0; background:#0b1220; color:#e5e7eb; width:min(900px, calc(100vw - 40px))}
+    dialog .hd{padding:14px 16px; border-bottom:1px solid #1f2937; font-weight:600}
+    dialog .bd{padding:16px}
+    dialog .ft{padding:12px 16px; border-top:1px solid #1f2937; text-align:right}
+    .time-row{display:flex; align-items:center; gap:8px; margin:6px 0}
+    .time-row input[type=time]{background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:6px}
+    .time-row .btn-remove{background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 8px;cursor:pointer}
+    .section{border:1px solid #1f2937;border-radius:12px;padding:10px;margin-bottom:12px}
+    .section h4{margin:6px 0 10px 0}
+    .grid{display:grid;grid-template-columns:1fr auto;gap:10px}
+    .muted{color:#9ca3af;font-size:.9rem}
+  </style>
+</head>
+<body data-restaurant-id="{{ restaurant_id }}">
+  <div class="wrap">
+    <div class="row" style="justify-content:space-between;margin-bottom:16px">
+      <div>
+        <h2 style="margin:0 0 6px 0">{{ restaurant_name }} — Admin orari</h2>
+        <div class="muted">Gestisci orari settimanali, giorni speciali e impostazioni.</div>
+      </div>
+      <div class="menu">
+        <a class="btn ghost" href="/dashboard">← Dashboard</a>
+        <button class="btn" id="btn-token">Imposta token</button>
+        <button class="btn" id="btn-weekly">Orari settimanali</button>
+        <button class="btn" id="btn-special">Giorni speciali</button>
+        <button class="btn ghost" id="btn-help">Guida</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="muted">
+        La pagina invia comandi alle API admin usando l’header <code>X-Admin-Token</code>.<br/>
+        Il token viene salvato in sessione tramite <code>/api/public/sessions/:sid</code>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale: Token -->
+  <dialog id="modalToken" role="dialog" aria-labelledby="modalTokenTitle">
+    <div class="hd" id="modalTokenTitle">Imposta token admin</div>
+    <div class="bd">
+      <p>Inserisci il token (<code>ADMIN_TOKEN</code> su Render).</p>
+      <input id="adminTokenInput" type="text" placeholder="es. alex-super-token"
+             style="width:100%; background:#0f172a;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:10px;margin-top:10px"/>
+    </div>
+    <div class="ft">
+      <button class="btn ghost" type="button" onclick="document.getElementById('modalToken').close()">Annulla</button>
+      <button class="btn" id="btn-save-token">Salva</button>
+    </div>
+  </dialog>
+
+  <!-- Modale: Orari settimanali -->
+  <dialog id="modalWeekly" role="dialog" aria-labelledby="modalWeeklyTitle">
+    <div class="hd" id="modalWeeklyTitle">Orari settimanali & impostazioni</div>
+    <div class="bd">
+      <div class="section">
+        <h4>Fasce orarie per giorno</h4>
+        <div class="grid">
+          <div><strong>Lunedì</strong><div id="w-mon"></div></div><button id="btn-add-w-mon" class="btn ghost">+ fascia</button>
+          <div><strong>Martedì</strong><div id="w-tue"></div></div><button id="btn-add-w-tue" class="btn ghost">+ fascia</button>
+          <div><strong>Mercoledì</strong><div id="w-wed"></div></div><button id="btn-add-w-wed" class="btn ghost">+ fascia</button>
+          <div><strong>Giovedì</strong><div id="w-thu"></div></div><button id="btn-add-w-thu" class="btn ghost">+ fascia</button>
+          <div><strong>Venerdì</strong><div id="w-fri"></div></div><button id="btn-add-w-fri" class="btn ghost">+ fascia</button>
+          <div><strong>Sabato</strong><div id="w-sat"></div></div><button id="btn-add-w-sat" class="btn ghost">+ fascia</button>
+          <div><strong>Domenica</strong><div id="w-sun"></div></div><button id="btn-add-w-sun" class="btn ghost">+ fascia</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h4>Impostazioni</h4>
+        <div class="row">
+          <div class="col"><label>Step</label> <input id="set-step" type="number" value="15"/></div>
+          <div class="col"><label>Last</label> <input id="set-last" type="number" value="15"/></div>
+          <div class="col"><label>Capacity</label> <input id="set-capacity" type="number" value="6"/></div>
+          <div class="col"><label>Party min</label> <input id="set-party-min" type="number" value="1"/></div>
+          <div class="col"><label>Party max</label> <input id="set-party-max" type="number" value="12"/></div>
+          <div class="col"><label>Timezone</label> <input id="set-tz" type="text" value="Europe/Rome"/></div>
+        </div>
+      </div>
+    </div>
+    <div class="ft">
+      <button class="btn ghost" type="button" onclick="document.getElementById('modalWeekly').close()">Chiudi</button>
+      <button class="btn" id="btn-save-weekly">Salva</button>
+    </div>
+  </dialog>
+
+  <!-- Modale: Giorni speciali -->
+  <dialog id="modalSpecial" role="dialog" aria-labelledby="modalSpecialTitle">
+    <div class="hd" id="modalSpecialTitle">Giorno speciale</div>
+    <div class="bd">
+      <div class="row" style="gap:16px">
+        <div class="col">
+          <label>Data</label>
+          <input id="sp-date" type="date"/>
+        </div>
+        <div class="col">
+          <label>Chiuso tutto il giorno</label><br/>
+          <input id="sp-closed" type="checkbox" checked/>
+        </div>
+      </div>
+      <div class="section" id="sp-rows" style="margin-top:12px">
+        <h4>Finestre (se NON chiuso)</h4>
+      </div>
+      <button id="btn-add-sp-row" class="btn ghost">+ fascia</button>
+    </div>
+    <div class="ft">
+      <button class="btn ghost" type="button" onclick="document.getElementById('modalSpecial').close()">Chiudi</button>
+      <button class="btn warn" id="btn-del-special">Elimina regola</button>
+      <button class="btn" id="btn-save-special">Salva</button>
+    </div>
+  </dialog>
+
+  <!-- Modale: Guida -->
+  <dialog id="modalHelp" role="dialog" aria-labelledby="modalHelpTitle">
+    <div class="hd" id="modalHelpTitle">Guida codici rapidi</div>
+    <div class="bd">
+<pre style="white-space:pre-wrap;line-height:1.4">
+• Orari settimanali:
+  RID=&lt;id_ristorante&gt;
+  WEEK mon 12:00-15:00,19:00-23:30
+  ...
+  SETTINGS step=15 last=15 capacity=6 party=1-12 tz=Europe/Rome
+
+• Giorno speciale CHIUSO:
+  POST /api/admin/special-days/upsert
+  {"restaurant_id":1,"date":"2025-12-25","closed":true}
+
+• Giorno speciale APERTO con orari:
+  POST /api/admin/special-days/upsert
+  {"restaurant_id":1,"date":"2025-12-26","closed":false,
+   "ranges":"19:00-23:00"}
+
+• Rimuovere regola speciale:
+  POST /api/admin/special-days/delete
+  {"restaurant_id":1,"date":"2025-12-26"}
+</pre>
+    </div>
+    <div class="ft">
+      <button class="btn" type="button" onclick="document.getElementById('modalHelp').close()">Ok</button>
+    </div>
+  </dialog>
+
+  <script>
+    window.SESSION_ID = window.localStorage.getItem('session_id') || null;
+  </script>
+  <script src="/static/js/admin_schedule.js"></script>
+  <script>
+    document.getElementById('btn-token').onclick   = ()=>document.getElementById('modalToken').showModal();
+    document.getElementById('btn-weekly').onclick  = ()=>document.getElementById('modalWeekly').showModal();
+    document.getElementById('btn-special').onclick = ()=>document.getElementById('modalSpecial').showModal();
+    document.getElementById('btn-help').onclick    = ()=>document.getElementById('modalHelp').showModal();
+  </script>
+</body>
+</html>

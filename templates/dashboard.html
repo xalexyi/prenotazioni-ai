@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Ristorante{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex,nofollow"/>
+{% endblock %}
+
+{% block header_left %}
+<div class="brand-row">
+  <img class="logo-robot restaurant-logo" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo">
+  <div class="brand-title">
+    <span class="brand-strong">{{ (restaurant.name if restaurant else 'Ristorante') }}</span>
+    <span class="brand-sub">— Dashboard</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <h3 class="card-title">Prenotazioni</h3>
+    <div class="row" style="flex-wrap:wrap; gap:8px 10px">
+      <input type="date" id="resv-date" class="input" value="{{ (request.args.get('date') or '') }}">
+      <input type="text" id="resv-q" class="input" placeholder="Cerca nome / telefono / orario">
+      <button class="btn btn-outline" id="resv-filter">Filtra</button>
+      <button class="btn btn-outline" id="resv-clear">Elimina filtri</button>
+      <button class="btn btn-outline" id="resv-last30">Ultimi 30 gg</button>
+      <button class="btn btn" id="resv-today">Oggi</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="resv-refresh">Aggiorna</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="list" class="list"></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3 class="card-title">Gestione orari, giorni speciali, impostazioni</h3>
+    <div class="kebab-wrap">
+      <button id="btn-kebab" class="btn btn-icon" aria-haspopup="menu" aria-expanded="false" aria-label="Menu">⋮</button>
+      <div id="kebab-menu" class="kebab-menu" hidden role="menu" aria-labelledby="btn-kebab">
+        <button class="k-item" data-act="weekly">Orari settimanali…</button>
+        <button class="k-item" data-act="special">Giorni speciali…</button>
+        <button class="k-item" data-act="settings">Impostazioni…</button>
+        <hr>
+        <button class="k-item" data-act="state">Stato & riepilogo…</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-body grid-2">
+    <div>
+      <h4>Orari settimanali</h4>
+      <div id="weekly" class="stack gap"></div>
+      <button id="weekly-save" class="btn">Salva orari</button>
+    </div>
+
+    <div>
+      <h4>Giorni speciali</h4>
+      <div class="row gap">
+        <input id="sp-date" type="date" class="input">
+        <label><input id="sp-closed" type="checkbox"> chiuso</label>
+        <input id="sp-ranges" type="text" class="input" placeholder="es: 12:00-15:00, 19:00-23:00">
+        <button id="special-add" class="btn">Aggiungi/Salva</button>
+      </div>
+      <div id="special-list" class="stack gap"></div>
+    </div>
+
+    <div>
+      <h4>Impostazioni</h4>
+      <div class="grid">
+        <label>Timezone <input id="set-tz" class="input" placeholder="Europe/Rome" value="Europe/Rome"></label>
+        <label>Step (min) <input id="set-step" type="number" class="input" value="15"></label>
+        <label>Ultimo ordine (min) <input id="set-last" type="number" class="input" value="15"></label>
+        <label>Min persone <input id="set-min" type="number" class="input" value="1"></label>
+        <label>Max persone <input id="set-max" type="number" class="input" value="12"></label>
+        <label>Capacità/slot <input id="set-cap" type="number" class="input" value="6"></label>
+      </div>
+      <button id="settings-save" class="btn" onclick="void(0)">Salva impostazioni</button>
+    </div>
+
+    <div>
+      <h4>Nuova prenotazione</h4>
+      <div class="grid">
+        <input id="cr-date" type="date" class="input">
+        <input id="cr-time" type="time" class="input" step="60">
+        <input id="cr-name" type="text" class="input" placeholder="Nome e cognome">
+        <input id="cr-phone" type="text" class="input" placeholder="Telefono">
+        <input id="cr-party" type="number" class="input" value="2" min="1">
+        <input id="cr-notes" type="text" class="input" placeholder="Note">
+      </div>
+      <button id="cr-save" class="btn">Crea</button>
+    </div>
+  </div>
+</section>
+
+<div id="toast-bar" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='js/reservations.js') }}?v={{ BUILD_VERSION }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ BUILD_VERSION }}"></script>
+<script>
+  document.getElementById('settings-save')?.addEventListener('click', ()=> window.dispatchEvent(new CustomEvent('save-settings')));
+  document.getElementById('cr-save')?.addEventListener('click', ()=> window.dispatchEvent(new CustomEvent('create-reservation')));
+  window.addEventListener('save-settings', ()=>{}); // noop: handler in dashboard.js
+  window.addEventListener('create-reservation', ()=>{}); // idem
+</script>
+{% endblock %}

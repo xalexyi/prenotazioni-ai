@@ -1,0 +1,571 @@
+# -*- coding: utf-8 -*-
+# backend/api.py
+from __future__ import annotations
+
+import re
+from datetime import datetime, date as _date, timedelta
+from typing import Any, Dict, List, Tuple
+
+from flask import Blueprint, request, jsonify, session
+from flask_login import current_user, login_required
+from sqlalchemy import or_
+
+from backend.models import (
+    db,
+    Reservation,
+    ReservationPizza,
+    Pizza,
+    Restaurant,
+    InboundNumber,
+    CallLog,
+)
+from backend.rules_service import OpeningHour, SpecialDay, RestaurantSetting
+
+api = Blueprint("api", __name__, url_prefix="/api")
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+_TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def _is_hhmm(s: str) -> bool:
+    return bool(_TIME_RE.match((s or "").strip()))
+
+
+def current_restaurant() -> Restaurant | None:
+    """
+    Ritorna il ristorante loggato (flask-login) o, in alternativa,
+    quello salvato in sessione. Gestisce Restaurant come utente.
+    """
+    try:
+        if getattr(current_user, "is_authenticated", False):
+            if isinstance(current_user, Restaurant):
+                return current_user
+            rid = getattr(current_user, "restaurant_id", None) or getattr(current_user, "id", None)
+            if rid:
+                return Restaurant.query.get(int(rid))
+    except Exception:
+        pass
+
+    rid = session.get("restaurant_id")
+    return Restaurant.query.get(int(rid)) if rid else None
+
+
+def _ensure_restaurant_id():
+    r = current_restaurant()
+    if not r:
+        return None, (jsonify({"ok": False, "error": "not_authenticated"}), 401)
+    return r.id, None
+
+
+# -------------------------------------------------------------------
+# MENU
+# -------------------------------------------------------------------
+@api.get("/menu")
+@login_required
+def get_menu():
+    r = current_restaurant()
+    if not r:
+        return jsonify([])
+
+    items = (
+        Pizza.query.filter_by(restaurant_id=r.id)
+        .order_by(Pizza.name.asc())
+        .all()
+    )
+    return jsonify([{"id": p.id, "name": p.name, "price": p.price} for p in items])
+
+
+# -------------------------------------------------------------------
+# LISTA PRENOTAZIONI (DASHBOARD LOGGATA)
+# -------------------------------------------------------------------
+@api.get("/reservations")
+@login_required
+def list_reservations():
+    """
+    Parametri supportati:
+      - date=YYYY-MM-DD         (filtra quel giorno)
+      - range=today|30days      (se presente ha priorità su 'date' per today; 30days = date >= oggi-30)
+      - q=string                (match su nome/telefono/note)
+    """
+    r = current_restaurant()
+    if not r:
+        return jsonify([])
+
+    q = Reservation.query.filter_by(restaurant_id=r.id)
+
+    rng = (request.args.get("range") or "").strip().lower()
+    date_s = (request.args.get("date") or "").strip()
+    text = (request.args.get("q") or "").strip()
+
+    if text:
+        like = f"%{text}%"
+        q = q.filter(
+            or_(
+                Reservation.customer_name.ilike(like),
+                Reservation.customer_phone.ilike(like),
+                Reservation.notes.ilike(like),
+            )
+        )
+
+    if rng == "today":
+        q = q.filter(Reservation.date == _date.today())
+    elif rng == "30days":
+        since = _date.today() - timedelta(days=30)
+        q = q.filter(Reservation.date >= since)
+    elif date_s:
+        # accetta "YYYY-MM-DD"
+        try:
+            d = datetime.strptime(date_s, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"ok": False, "error": "bad_date_format", "hint": "YYYY-MM-DD"}), 400
+        q = q.filter(Reservation.date == d)
+
+    q = q.order_by(Reservation.date.desc(), Reservation.time.asc(), Reservation.created_at.desc())
+    reservations = q.limit(500).all()
+
+    out: List[Dict[str, Any]] = []
+    for res in reservations:
+        pizzas = [
+            {"id": rp.pizza_id, "name": getattr(rp.pizza, "name", None), "qty": rp.quantity}
+            for rp in getattr(res, "pizzas", [])
+        ]
+        out.append(
+            {
+                "id": res.id,
+                "restaurant_id": res.restaurant_id,
+                "customer_name": res.customer_name,
+                "customer_phone": res.customer_phone,
+                "date": res.date.isoformat() if hasattr(res.date, "isoformat") else str(res.date),
+                "time": res.time.strftime("%H:%M") if hasattr(res.time, "strftime") and res.time else str(res.time),
+                "party_size": res.party_size,
+                "notes": res.notes,
+                "status": res.status,
+                "source": res.source,
+                "pizzas": pizzas,
+                "created_at": res.created_at.isoformat() if getattr(res, "created_at", None) else None,
+            }
+        )
+    return jsonify(out)
+
+
+# -------------------------------------------------------------------
+# CREA PRENOTAZIONE (login)
+# -------------------------------------------------------------------
+@api.post("/reservations")
+@login_required
+def create_reservation():
+    r = current_restaurant()
+    if not r:
+        return jsonify({"ok": False, "error": "not_authenticated"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        res = Reservation(
+            restaurant_id=r.id,
+            customer_name=data["customer_name"],
+            customer_phone=data["customer_phone"],
+            date=data["date"],
+            time=data["time"],
+            party_size=int(data.get("party_size", 2)),
+            status="pending",
+            notes=data.get("notes"),
+            source=data.get("source", "dashboard"),
+        )
+    except KeyError as e:
+        return jsonify({"ok": False, "error": "missing_field", "field": str(e)}), 400
+
+    db.session.add(res)
+    db.session.flush()
+
+    pizzas = data.get("pizzas", [])
+    for item in pizzas:
+        pid = int(item.get("pizza_id", 0) or 0)
+        qty = int(item.get("qty", 0) or 0)
+        if pid and qty > 0:
+            db.session.add(
+                ReservationPizza(reservation_id=res.id, pizza_id=pid, quantity=qty)
+            )
+
+    db.session.commit()
+    return jsonify({"ok": True, "id": res.id})
+
+
+# -------------------------------------------------------------------
+# CREA PRENOTAZIONE PUBBLICA (per n8n)
+# -------------------------------------------------------------------
+@api.post("/public/reservations")
+def public_create_reservation():
+    data = request.get_json(force=True, silent=True) or {}
+    required = ["customer_name", "customer_phone", "date", "time", "party_size", "restaurant_id"]
+    missing = [k for k in required if k not in data]
+    if missing:
+        return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
+
+    try:
+        res = Reservation(
+            restaurant_id=int(data["restaurant_id"]),
+            customer_name=str(data["customer_name"]),
+            customer_phone=str(data["customer_phone"]),
+            date=str(data["date"]),
+            time=str(data["time"]),
+            party_size=int(data["party_size"]),
+            status=data.get("status", "pending"),
+            notes=str(data.get("notes", "")),
+            source=str(data.get("source", "voice")),
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": "invalid_payload", "detail": str(e)}), 400
+
+    db.session.add(res)
+    db.session.commit()
+    return jsonify({"ok": True, "id": res.id}), 201
+
+
+# -------------------------------------------------------------------
+# UPDATE STATO / DELETE
+# -------------------------------------------------------------------
+@api.patch("/reservations/<int:rid>")
+@login_required
+def update_reservation(rid: int):
+    r = current_restaurant()
+    if not r:
+        return jsonify({"ok": False, "error": "not_authenticated"}), 401
+
+    res = Reservation.query.filter_by(id=rid, restaurant_id=r.id).first_or_404()
+    data = request.get_json(force=True, silent=True) or {}
+    status = data.get("status")
+    if status in ("pending", "confirmed", "rejected"):
+        res.status = status
+        db.session.commit()
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "invalid_status"}), 400
+
+
+@api.delete("/reservations/<int:rid>")
+@login_required
+def delete_reservation(rid: int):
+    r = current_restaurant()
+    if not r:
+        return jsonify({"ok": False, "error": "not_authenticated"}), 401
+
+    res = Reservation.query.filter_by(id=rid, restaurant_id=r.id).first_or_404()
+    db.session.delete(res)
+    db.session.commit()
+    return ("", 204)
+
+
+# -------------------------------------------------------------------
+# N8N / TWILIO CALLS WEBHOOK (registrazione chiamate)
+# -------------------------------------------------------------------
+@api.post("/calls")
+def api_calls():
+    data = request.get_json(force=True, silent=True) or {}
+
+    expected = [
+        "call_sid",
+        "from",
+        "to",
+        "recording_sid",
+        "recording_url",
+        "duration_seconds",
+        "transcript",
+        "received_at",
+    ]
+    missing = [k for k in expected if k not in data]
+    if missing:
+        return jsonify({"ok": False, "error": "missing_fields", "fields": missing}), 400
+
+    ib = InboundNumber.query.filter_by(e164_number=data["to"]).first()
+    restaurant_id = ib.restaurant_id if ib else None
+
+    try:
+        duration = int(data.get("duration_seconds") or 0)
+    except Exception:
+        duration = 0
+
+    try:
+        # Supporta "...Z" → offset-aware
+        received_at = datetime.fromisoformat(str(data["received_at"]).replace("Z", "+00:00"))
+    except Exception:
+        received_at = datetime.utcnow()
+
+    log = CallLog(
+        restaurant_id=restaurant_id,
+        call_sid=str(data["call_sid"]),
+        from_number=str(data["from"]),
+        to_number=str(data["to"]),
+        recording_sid=str(data["recording_sid"]),
+        recording_url=str(data["recording_url"]),
+        duration_seconds=duration,
+        transcript=str(data.get("transcript", "")),
+        received_at=received_at,
+    )
+
+    db.session.add(log)
+    db.session.commit()
+    return jsonify({"ok": True, "id": log.id}), 200
+
+
+# -------------------------------------------------------------------
+# RESTAURANT LOOKUP PER NUMERO (pubblico)
+# -------------------------------------------------------------------
+@api.get("/public/restaurants/byNumber")
+def public_restaurant_by_number():
+    to = request.args.get("to")
+    if not to:
+        return jsonify({"error": "missing 'to'"}), 400
+
+    ino = InboundNumber.query.filter_by(e164_number=to, active=True).first()
+    if not ino:
+        return jsonify({"error": "not_found"}), 404
+
+    r = Restaurant.query.get(ino.restaurant_id)
+    if not r:
+        return jsonify({"error": "not_found"}), 404
+
+    return jsonify({"id": r.id, "name": r.name})
+
+
+# ===================================================================
+# ADMIN (loggato) — ORARI / SPECIAL / SETTINGS
+# ===================================================================
+def _load_weekly(rid: int) -> Dict[str, List[Dict[str, str]]]:
+    rows = (
+        OpeningHour.query.filter_by(restaurant_id=rid)
+        .order_by(OpeningHour.weekday.asc(), OpeningHour.start_time.asc())
+        .all()
+    )
+    weekly: Dict[str, List[Dict[str, str]]] = {str(i): [] for i in range(7)}
+    for h in rows:
+        weekly[str(h.weekday)].append(
+            {
+                "start": (h.start_time if isinstance(h.start_time, str) else str(h.start_time))[:5],
+                "end": (h.end_time if isinstance(h.end_time, str) else str(h.end_time))[:5],
+            }
+        )
+    return weekly
+
+
+def _load_settings(rid: int) -> Dict[str, Any]:
+    s = RestaurantSetting.query.filter_by(restaurant_id=rid).first()
+    if not s:
+        return {
+            "tz": "Europe/Rome",
+            "slot_step_min": 15,
+            "last_order_min": 15,
+            "min_party": 1,
+            "max_party": 12,
+            "capacity_per_slot": 6,
+        }
+    return {
+        "tz": s.tz,
+        "slot_step_min": s.slot_step_min,
+        "last_order_min": s.last_order_min,
+        "min_party": s.min_party,
+        "max_party": s.max_party,
+        "capacity_per_slot": s.capacity_per_slot,
+    }
+
+
+@api.get("/admin/schedule/state")
+@login_required
+def admin_schedule_state():
+    rid, err = _ensure_restaurant_id()
+    if err:
+        return err
+
+    weekly = _load_weekly(rid)
+
+    specials = (
+        SpecialDay.query.filter_by(restaurant_id=rid)
+        .order_by(SpecialDay.date.asc(), SpecialDay.start_time.asc())
+        .all()
+    )
+    sp: Dict[str, Dict[str, Any]] = {}
+    for s in specials:
+        dkey = s.date.isoformat() if hasattr(s.date, "isoformat") else str(s.date)
+        day = sp.setdefault(dkey, {"date": dkey, "closed": False, "ranges": []})
+        if s.is_closed:
+            day["closed"] = True
+            day["ranges"] = []
+        elif s.start_time and s.end_time and not day.get("closed"):
+            day["ranges"].append(
+                {
+                    "start": (s.start_time if isinstance(s.start_time, str) else str(s.start_time))[:5],
+                    "end": (s.end_time if isinstance(s.end_time, str) else str(s.end_time))[:5],
+                }
+            )
+
+    settings = _load_settings(rid)
+    return jsonify(
+        {"ok": True, "weekly": weekly, "special_days": list(sp.values()), "settings": settings}
+    )
+
+
+@api.post("/admin/schedule/weekly")
+@login_required
+def admin_schedule_weekly():
+    """
+    JSON:
+    {
+      "weekly":[
+        {"weekday":0,"ranges":[{"start":"12:00","end":"15:00"},{"start":"19:00","end":"23:30"}]},
+        ...
+      ]
+    }
+    """
+    rid, err = _ensure_restaurant_id()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    weekly = data.get("weekly") or []
+
+    for d in weekly:
+        if "weekday" not in d:
+            return jsonify({"ok": False, "error": "missing weekday"}), 400
+        wd = int(d.get("weekday"))
+        if wd < 0 or wd > 6:
+            return jsonify({"ok": False, "error": "invalid weekday"}), 400
+        for rge in d.get("ranges") or []:
+            a = (rge.get("start") or "").strip()
+            b = (rge.get("end") or "").strip()
+            if not (_is_hhmm(a) and _is_hhmm(b)):
+                return jsonify({"ok": False, "error": "invalid_time_format", "hint": "use HH:MM"}), 400
+
+    try:
+        with db.session.begin():
+            for d in weekly:
+                wd = int(d.get("weekday"))
+                rngs = d.get("ranges") or []
+                db.session.query(OpeningHour).filter_by(restaurant_id=rid, weekday=wd).delete()
+                for rge in rngs:
+                    a = (rge.get("start") or "").strip()
+                    b = (rge.get("end") or "").strip()
+                    if a and b:
+                        db.session.add(
+                            OpeningHour(restaurant_id=rid, weekday=wd, start_time=a, end_time=b)
+                        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 400
+
+
+@api.post("/admin/schedule/settings")
+@login_required
+def admin_schedule_settings():
+    rid, err = _ensure_restaurant_id()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+
+    s = (
+        RestaurantSetting.query.filter_by(restaurant_id=rid).first()
+        or RestaurantSetting(restaurant_id=rid)
+    )
+    for k in ["tz", "slot_step_min", "last_order_min", "min_party", "max_party", "capacity_per_slot"]:
+        if k in data and data[k] is not None:
+            setattr(s, k, data[k])
+
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({"ok": True, "settings": _load_settings(rid)})
+
+
+@api.get("/admin/special-days/list")
+@login_required
+def admin_special_days_list():
+    rid, err = _ensure_restaurant_id()
+    if err:
+        return err
+    q = SpecialDay.query.filter_by(restaurant_id=rid)
+    _from = request.args.get("from")
+    _to = request.args.get("to")
+    if _from:
+        q = q.filter(SpecialDay.date >= _from)
+    if _to:
+        q = q.filter(SpecialDay.date <= _to)
+
+    rows = q.order_by(SpecialDay.date.asc(), SpecialDay.start_time.asc()).all()
+    out: Dict[str, Dict[str, Any]] = {}
+    for s in rows:
+        dkey = s.date.isoformat() if hasattr(s.date, "isoformat") else str(s.date)
+        day = out.setdefault(dkey, {"date": dkey, "closed": False, "ranges": []})
+        if s.is_closed:
+            day["closed"] = True
+            day["ranges"] = []
+        elif s.start_time and s.end_time and not day.get("closed"):
+            day["ranges"].append(
+                {
+                    "start": (s.start_time if isinstance(s.start_time, str) else str(s.start_time))[:5],
+                    "end": (s.end_time if isinstance(s.end_time, str) else str(s.end_time))[:5],
+                }
+            )
+    return jsonify({"ok": True, "items": list(out.values())})
+
+
+@api.post("/admin/special-days/upsert")
+@login_required
+def admin_special_days_upsert():
+    """
+    { "date":"2025-12-25", "closed":true }
+    oppure
+    { "date":"2025-08-15", "ranges":[{"start":"18:00","end":"23:00"}] }
+    """
+    rid, err = _ensure_restaurant_id()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    date_s = (data.get("date") or "").strip()
+    closed = bool(data.get("closed"))
+    ranges = data.get("ranges") or []
+
+    if not date_s:
+        return jsonify({"ok": False, "error": "missing date"}), 400
+
+    for rge in ranges:
+        a = (rge.get("start") or "").strip()
+        b = (rge.get("end") or "").strip()
+        if not (_is_hhmm(a) and _is_hhmm(b)):
+            return jsonify({"ok": False, "error": "invalid_time_format", "hint": "use HH:MM"}), 400
+
+    try:
+        with db.session.begin():
+            db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+            if closed:
+                db.session.add(SpecialDay(restaurant_id=rid, date=date_s, is_closed=True))
+            else:
+                for rge in ranges:
+                    a = (rge.get("start") or "").strip()
+                    b = (rge.get("end") or "").strip()
+                    if a and b:
+                        db.session.add(
+                            SpecialDay(
+                                restaurant_id=rid,
+                                date=date_s,
+                                is_closed=False,
+                                start_time=a,
+                                end_time=b,
+                            )
+                        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 400
+
+
+@api.post("/admin/special-days/delete")
+@login_required
+def admin_special_days_delete():
+    rid, err = _ensure_restaurant_id()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    date_s = (data.get("date") or "").strip()
+    if not date_s:
+        return jsonify({"ok": False, "error": "missing date"}), 400
+    db.session.query(SpecialDay).filter_by(restaurant_id=rid, date=date_s).delete()
+    db.session.commit()
+    return jsonify({"ok": True})

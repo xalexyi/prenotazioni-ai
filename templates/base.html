@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="it" data-theme="{{ (request.cookies.get('theme') or 'light') }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Ristorante AI{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo_robot.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ config['BUILD_VERSION'] }}">
+    {% block head %}{% endblock %}
+  </head>
+  <body class="app-body {% if restaurant and restaurant.slug == 'pizzerianapoli' %}accent-pizza{% endif %}">
+    <header class="app-header">
+      <div class="header-left">
+        {% block header_left %}
+          {% set _logo_file = 'img/logo_robot.svg' %}
+          {% if restaurant and restaurant.logo %}
+            {% set _logo_file = 'img/' + restaurant.logo %}
+          {% endif %}
+          <div class="brand-row">
+            <img class="logo-robot restaurant-logo" src="{{ url_for('static', filename=_logo_file) }}" alt="logo">
+            <div class="brand-title">
+              <span class="brand-strong">{{ restaurant.name if restaurant else 'Ristorante AI' }}</span>
+              <span class="brand-sub">— {% block brand_sub %}Dashboard ristorante{% endblock %}</span>
+            </div>
+          </div>
+        {% endblock %}
+      </div>
+
+      <div class="header-right">
+        {% block header_right %}
+          <button id="themeToggle" class="toggle theme-toggle" aria-label="Tema Giorno/Notte" title="Giorno/Notte" aria-pressed="false">
+            <span class="toggle-icon sun">☀️</span>
+            <span class="toggle-icon moon">🌙</span>
+          </button>
+          <a href="{{ url_for('auth.logout') }}" class="btn btn-red logout-btn">Logout</a>
+        {% endblock %}
+      </div>
+    </header>
+
+    <main class="app-main">
+      {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts_head %}{% endblock %}
+    <!-- Usa lo script unico per il tema (evita doppia gestione inline) -->
+    <script src="{{ url_for('static', filename='js/theme.js') }}?v={{ config['BUILD_VERSION'] }}"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>
