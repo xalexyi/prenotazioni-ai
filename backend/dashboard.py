@@ -11,21 +11,30 @@ bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 @bp.route("/")
 @login_required
 def index():
-    # Evito accessi a campi non garantiti: passo l'oggetto utente così com'è
-    restaurant = current_user
-    # flag pizzeria best-effort
-    is_pizzeria = False
-    try:
-        if getattr(restaurant, "slug", "") == "pizzerianapoli":
-            is_pizzeria = True
-        elif hasattr(restaurant, "pizzas") and restaurant.pizzas:
-            is_pizzeria = len(restaurant.pizzas) > 0
-    except Exception:
-        is_pizzeria = False
+    r = current_user  # oggetto Restaurant
 
-    return render_template(
-        "dashboard.html",
-        restaurant=restaurant,
-        is_pizzeria=is_pizzeria,
-        today=date.today().isoformat(),
-    )
+    # Flag e valori che il template si aspetta (con fallback così non rompe mai)
+    ctx = {
+        "restaurant": r,
+        "today": date.today().isoformat(),
+
+        # blocco “Chiamate attive 0/3” e simili
+        "active_calls": 0,
+        "max_calls": 3,
+
+        # feature flags UI
+        "is_pizzeria": bool(getattr(r, "slug", "") == "pizzerianapoli"),
+        "has_hours": True,
+        "has_special_days": True,
+        "has_settings": True,
+
+        # impostazioni default form (evitano buchi grafici)
+        "default_timezone": "Europe/Rome",
+        "default_step_min": 15,
+        "default_last_order_min": 15,
+        "default_min_people": 1,
+        "default_max_people": 12,
+        "default_capacity": 6,
+    }
+
+    return render_template("dashboard.html", **ctx)
