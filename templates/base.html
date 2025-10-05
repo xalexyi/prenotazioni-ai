@@ -1,31 +1,165 @@
-<!DOCTYPE html>
-<html lang="it">
+<!doctype html>
+<html lang="it" data-theme="light">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Dashboard — Ristorante{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <script defer src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{% block title %}{{ restaurant.name }} — Dashboard ristorante{% endblock %}</title>
+
+  <link rel="icon" href="{{ url_for('static', filename='img/logo.png') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+
+  <!-- Inter font (opzionale) -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
   {% block head %}{% endblock %}
 </head>
-<body class="theme-dark">
+<body>
 
-<header>
-  <div class="header-left">
-    {% block header_left %}{% endblock %}
+<header class="app-header">
+  <div class="brand">
+    <img class="brand__logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" />
+    <div class="brand__text">
+      <div class="brand__name">{{ restaurant.name }}</div>
+      <div class="brand__sub">— Dashboard ristorante</div>
+    </div>
   </div>
-  <div class="header-right">
-    <button id="theme-toggle" class="theme-toggle" title="Cambia tema">🌙</button>
-    <form action="{{ url_for('auth.logout') }}" method="post" style="display:inline">
-      <button class="btn-logout">Logout</button>
+
+  <div class="header-actions">
+    <!-- Toggle tema -->
+    <button id="themeToggle" class="btn btn-icon" aria-label="Cambia tema" title="Tema">
+      <span class="icon-moon"></span>
+    </button>
+
+    <!-- Menu 3 puntini -->
+    <div class="dropdown">
+      <button id="kebabBtn" class="btn btn-icon" aria-haspopup="menu" aria-expanded="false" aria-controls="kebabMenu">
+        <span class="icon-kebab"></span>
+      </button>
+      <div id="kebabMenu" class="dropdown__menu" role="menu" aria-labelledby="kebabBtn">
+        <button class="dropdown__item" data-open="weekly-modal">Orari settimanali…</button>
+        <button class="dropdown__item" data-open="specials-modal">Giorni speciali…</button>
+        <button class="dropdown__item" data-open="settings-modal">Impostazioni…</button>
+        <button class="dropdown__item" data-open="status-modal">Stato & riepilogo…</button>
+        <button class="dropdown__item" data-open="token-modal">Imposta token…</button>
+      </div>
+    </div>
+
+    <form id="logoutForm" action="{{ url_for('auth.logout') }}" method="post">
+      <button class="btn btn-danger">Logout</button>
     </form>
   </div>
 </header>
 
-<main>
+<main class="app-main">
   {% block content %}{% endblock %}
 </main>
 
+<!-- Modali (stanno qui per l’intera app) -->
+<div id="weekly-modal" class="modal" aria-hidden="true">
+  <div class="modal__dialog modal--md">
+    <div class="modal__header">
+      <h3>Orari settimanali</h3>
+      <button class="modal__close" data-close>&times;</button>
+    </div>
+    <div class="modal__body">
+      <div class="hint">
+        Formato: <code>HH:MM-HH:MM</code> (es. <code>12:00-15:00</code>, <code>19:00-23:30</code>). Giorno vuoto = <strong>CHIUSO</strong>.
+      </div>
+      <div id="weekly-fields"><!-- campi generati da JS --></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-secondary" data-close>Chiudi</button>
+      <button id="saveWeekly" class="btn btn-primary">Salva</button>
+    </div>
+  </div>
+</div>
+
+<div id="specials-modal" class="modal" aria-hidden="true">
+  <div class="modal__dialog modal--sm">
+    <div class="modal__header">
+      <h3>Giorni speciali</h3>
+      <button class="modal__close" data-close>&times;</button>
+    </div>
+    <div class="modal__body">
+      <label class="form-label">Data</label>
+      <input id="specialDate" type="date" class="input" />
+      <label class="form-check">
+        <input id="specialClosed" type="checkbox" /> Chiudi tutto il giorno
+      </label>
+      <label class="form-label">Finestre (se aperto)</label>
+      <input id="specialWindows" type="text" class="input" placeholder="18:00-23:00, 12:00-15:00" />
+      <div class="hint">Esempio: <code>18:00-23:00, 12:00-15:00</code></div>
+      <div id="specials-list" class="mt-2"><!-- elenco da JS --></div>
+    </div>
+    <div class="modal__footer">
+      <button id="deleteSpecial" class="btn btn-danger">Elimina</button>
+      <div class="spacer"></div>
+      <button class="btn btn-secondary" data-close>Chiudi</button>
+      <button id="saveSpecial" class="btn btn-primary">Aggiungi / Aggiorna</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings-modal" class="modal" aria-hidden="true">
+  <div class="modal__dialog modal--sm">
+    <div class="modal__header">
+      <h3>Impostazioni</h3>
+      <button class="modal__close" data-close>&times;</button>
+    </div>
+    <div class="modal__body">
+      <label class="form-label">Timezone</label>
+      <input id="tz" type="text" class="input" value="{{ settings.timezone or 'Europe/Rome' }}" />
+      <label class="form-label">Step (min)</label>
+      <input id="stepMin" type="number" class="input" value="{{ settings.step_min or 15 }}" />
+      <label class="form-label">Ultimo ordine (min)</label>
+      <input id="lastOrder" type="number" class="input" value="{{ settings.last_order_min or 15 }}" />
+      <label class="form-label">Min persone</label>
+      <input id="minPeople" type="number" class="input" value="{{ settings.min_people or 1 }}" />
+      <label class="form-label">Max persone</label>
+      <input id="maxPeople" type="number" class="input" value="{{ settings.max_people or 12 }}" />
+      <label class="form-label">Capacità/slot</label>
+      <input id="slotCapacity" type="number" class="input" value="{{ settings.slot_capacity or 6 }}" />
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-secondary" data-close>Chiudi</button>
+      <button id="saveSettings" class="btn btn-primary">Salva impostazioni</button>
+    </div>
+  </div>
+</div>
+
+<div id="status-modal" class="modal" aria-hidden="true">
+  <div class="modal__dialog modal--sm">
+    <div class="modal__header">
+      <h3>Stato & riepilogo</h3>
+      <button class="modal__close" data-close>&times;</button>
+    </div>
+    <div class="modal__body">
+      <div id="statusContent"><!-- riempito da JS --></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-secondary" data-close>Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<div id="token-modal" class="modal" aria-hidden="true">
+  <div class="modal__dialog modal--sm">
+    <div class="modal__header">
+      <h3>Imposta token</h3>
+      <button class="modal__close" data-close>&times;</button>
+    </div>
+    <div class="modal__body">
+      <input id="tokenField" type="text" class="input" placeholder="Incolla qui il token" />
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-secondary" data-close>Chiudi</button>
+      <button id="saveToken" class="btn btn-primary">Salva</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
