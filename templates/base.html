@@ -1,38 +1,71 @@
 <!doctype html>
-<html lang="it">
+<html lang="it" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{% block title %}Dashboard — Ristorante{% endblock %}</title>
-  <link rel="icon" href="{{ url_for('static', filename='img/logo_robot.svg') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <title>{% block title %}Ristorante AI{% endblock %}</title>
+
+  <link rel="icon" href="{{ url_for('static', filename='img/logo_robot.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
+
   {% block head %}{% endblock %}
 </head>
 <body>
-  <header>
-    <div class="brand-row">
-      <img class="logo-robot" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo" />
-      <div class="brand-title">
-        {% block header_left %}
-        <span class="brand-strong">{{ (restaurant.name if restaurant else 'Ristorante AI') }}</span>
-        <span class="brand-sub">— Dashboard ristorante</span>
-        {% endblock %}
+  <header class="app-header">
+    <div class="brand">
+      <img class="brand__logo" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo">
+      <div class="brand__text">
+        <div class="brand__title">
+          {{ g.restaurant.name if g.get('restaurant') else 'Haru Asian Fusion Restaurant' }}
+        </div>
+        <div class="brand__subtitle">— Dashboard ristorante</div>
       </div>
     </div>
-    <div class="header-right">
-      <button class="theme-toggle" id="themeToggle" title="Tema">🌙</button>
-      <form method="post" action="/logout">
-        <button class="btn-logout" type="submit">Logout</button>
+
+    <div class="header-actions">
+      <button id="themeToggle" class="btn btn-icon" aria-label="Tema">
+        <span class="icon-moon"></span>
+      </button>
+
+      <form id="logoutForm" method="post" action="{{ url_for('auth.logout') }}">
+        <button id="logoutBtn" class="btn btn-danger">Logout</button>
       </form>
     </div>
   </header>
 
-  {% block content %}{% endblock %}
+  <main class="app-main">
+    {% block content %}{% endblock %}
+  </main>
 
-  <div id="toast" class="toast hidden"></div>
+  <script>
+    // Tema persistente
+    (() => {
+      const root = document.documentElement;
+      const saved = localStorage.getItem('theme') || 'dark';
+      root.setAttribute('data-theme', saved);
+      document.getElementById('themeToggle')?.addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
 
-  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+      // Logout: POST con fallback a GET, poi redirect a /login
+      const logoutForm = document.getElementById('logoutForm');
+      const logoutBtn  = document.getElementById('logoutBtn');
+      logoutBtn?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          const r = await fetch(logoutForm.action, { method: 'POST' });
+          if (!r.ok) throw new Error();
+        } catch {
+          await fetch(logoutForm.action, { method: 'GET' }).catch(()=>{});
+        } finally {
+          window.location.href = '/login';
+        }
+      });
+    })();
+  </script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

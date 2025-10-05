@@ -1,65 +1,81 @@
-# -*- coding: utf-8 -*-
 # backend/api.py
-from __future__ import annotations
-
-from datetime import date
-from flask import Blueprint, request, jsonify
-from flask_login import login_required, current_user
-from sqlalchemy import and_
-
-from backend.models import db, Reservation
+from flask import Blueprint, request, jsonify, session
+from backend.models import db, Restaurant
+from datetime import datetime
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
-def _parse_date(s: str | None) -> date | None:
-    if not s:
+def _require_restaurant():
+    rid = session.get("restaurant_id")
+    if not rid:
         return None
-    try:
-        return date.fromisoformat(s)
-    except Exception:
-        return None
+    return db.session.get(Restaurant, rid)
 
-@api.get("/reservations")
-@login_required
-def list_reservations():
-    """Lista prenotazioni filtrabili per data. Default: oggi."""
-    d = _parse_date(request.args.get("date")) or date.today()
-    q = Reservation.query.filter(
-        and_(Reservation.restaurant_id == current_user.id, Reservation.resv_date == d)
-    ).order_by(Reservation.resv_time.asc())
-    items = [{
-        "id": r.id,
-        "date": r.resv_date.isoformat(),
-        "time": r.resv_time,
-        "people": r.people,
-        "name": r.customer_name,
-        "phone": r.customer_phone,
-        "notes": r.notes or "",
-    } for r in q.all()]
-    return jsonify({"ok": True, "items": items})
+@api.route("/admin/state")
+def admin_state():
+    r = _require_restaurant()
+    if not r: return jsonify({"error":"unauthorized"}), 401
+    return jsonify({
+        "weekly_hours": r.weekly_hours or {},
+        "settings": r.settings or {},
+        "special_days": r.special_days or []
+    })
 
-@api.post("/reservations")
-@login_required
-def create_reservation():
-    """Crea una prenotazione dalla form 'Nuova prenotazione'."""
-    data = request.get_json(silent=True) or request.form
-
-    d = _parse_date(data.get("date"))
-    t = (data.get("time") or "").strip()
-    people = int(data.get("people") or 2)
-    name   = (data.get("name") or "").strip()
-    phone  = (data.get("phone") or "").strip()
-    notes  = (data.get("notes") or "").strip()
-
-    if not d or not t or people < 1:
-        return jsonify({"ok": False, "error": "invalid_payload"}), 400
-
-    r = Reservation(
-        restaurant_id=current_user.id,
-        resv_date=d, resv_time=t, people=people,
-        customer_name=name, customer_phone=phone, notes=notes
-    )
-    db.session.add(r)
+@api.route("/admin/weekly_hours", methods=["POST"])
+def save_weekly_hours():
+    r = _require_restaurant()
+    if not r: return jsonify({"error":"unauthorized"}), 401
+    data = request.get_json(force=True)
+    r.weekly_hours = data
     db.session.commit()
+    return jsonify({"ok": True})
 
-    return jsonify({"ok": True, "id": r.id})
+@api.route("/admin/special_day", methods=["POST", "DELETE"])
+def special_day():
+    r = _require_restaurant()
+    if not r: return jsonify({"error":"unauthorized"}), 401
+    data = request.get_json(force=True)
+    date = data.get("date")
+    if not date: return jsonify({"error":"missing_date"}), 400
+    items = list(r.special_days or [])
+    if request.method == "DELETE":
+        items = [x for x in items if x.get("date") != date]
+    else:
+        # upsert
+        found = False
+        for x in items:
+            if x.get("date") == date:
+                x.update({"closed": bool(data.get("closed")), "windows": data.get("windows")})
+                found = True
+                break
+        if not found:
+            items.append({"date": date, "closed": bool(data.get("closed")), "windows": data.get("windows")})
+    r.special_days = items
+    db.session.commit()
+    return jsonify({"ok": True})
+
+@api.route("/admin/settings", methods=["POST"])
+def save_settings():
+    r = _require_restaurant()
+    if not r: return jsonify({"error":"unauthorized"}), 401
+    s = request.get_json(force=True)
+    r.settings = s
+    db.session.commit()
+    return jsonify({"ok": True})
+
+@api.route("/admin/token", methods=["POST"])
+def save_token():
+    r = _require_restaurant()
+    if not r: return jsonify({"error":"unauthorized"}), 401
+    tok = (request.get_json(force=True) or {}).get("token","")
+    r.api_token = tok
+    db.session.commit()
+    return jsonify({"ok": True})
+
+@api.route("/admin/booking", methods=["POST"])
+def create_booking():
+    r = _require_restaurant()
+    if not r: return jsonify({"error":"unauthorized"}), 401
+    # qui salva la prenotazione nel tuo modello “Reservation”
+    # Placeholder: solo dimostrazione
+    return jsonify({"ok": True})

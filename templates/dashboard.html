@@ -2,181 +2,175 @@
 {% block title %}Dashboard — Ristorante{% endblock %}
 
 {% block content %}
-<main class="container">
-
-  <!-- Menu a 3 puntini -->
-  <div class="menu-wrap" style="margin-bottom:12px">
-    <button class="menu-dots" data-menu-toggle="#admin-menu">⋮</button>
-    <div id="admin-menu" class="menu hidden">
-      <button onclick="openModal('modal-orari')">Orari settimanali…</button>
-      <button onclick="openModal('modal-giorni')">Giorni speciali…</button>
-      <button onclick="openModal('modal-imp')">Impostazioni…</button>
-      <button onclick="openModal('modal-stato')">Stato & riepilogo…</button>
-      <button onclick="openModal('modal-token')">Imposta token…</button>
+<div class="topbar">
+  <div class="kpi kpi--status">
+    <div class="kpi__pill kpi__pill--ok">
+      <span class="dot dot--green"></span> Disponibile
     </div>
+    <div class="kpi__meta">Chiamate attive: <b id="callsActive">0/3</b></div>
   </div>
 
-  <!-- Card stato e KPI -->
-  <section class="grid-stats">
-    <div class="stat bot-status">
-      <div class="badge-green">
-        <span class="badge-dot"></span> Disponibile
+  <div class="kpi kpi--bookings">
+    <div class="kpi__title">Prenotazioni oggi</div>
+    <div class="kpi__value" id="bookingsToday">0</div>
+    <div class="kpi__meta">Incasso stimato: <b id="revenueToday">€ 0</b></div>
+  </div>
+
+  <div class="actions dropdown" id="actions">
+    <button id="actionsBtn" class="btn btn-icon" aria-haspopup="menu" aria-expanded="false">
+      <span class="icon-dots"></span>
+    </button>
+    <div class="dropdown-menu" role="menu" id="actionsMenu">
+      <button class="dropdown-item" data-open="#modalHours">Orari settimanali…</button>
+      <button class="dropdown-item" data-open="#modalSpecial">Giorni speciali…</button>
+      <button class="dropdown-item" data-open="#modalSettings">Impostazioni…</button>
+      <button class="dropdown-item" data-open="#modalSummary">Stato & riepilogo…</button>
+      <button class="dropdown-item" data-open="#modalToken">Imposta token…</button>
+    </div>
+  </div>
+</div>
+
+<section class="card bookings-card">
+  <div class="row row--wrap gap-8 align-center">
+    <div class="input input--with-icon">
+      <input id="dateFilter" type="text" placeholder="gg/mm/aaaa" />
+      <span class="icon-calendar"></span>
+    </div>
+    <div class="input grow">
+      <input id="search" type="text" placeholder="Cerca nome / telefono / orario" />
+    </div>
+    <div class="btn-group">
+      <button id="btnFilter"   class="btn">Filtra</button>
+      <button id="btnClear"    class="btn">Elimina filtri</button>
+      <button id="btn30"       class="btn">Storico 30gg</button>
+      <button id="btnToday"    class="btn btn-primary">Oggi</button>
+      <button id="btnRefresh"  class="btn">Aggiorna</button>
+      <button id="btnCreate"   class="btn btn-primary" data-open="#modalCreate">Crea prenotazione</button>
+    </div>
+  </div>
+</section>
+
+<!-- MODALE: ORARI SETTIMANALI -->
+<div class="modal" id="modalHours" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Orari settimanali</h3>
+      <button class="btn btn-icon modal-close" data-close><span class="icon-x"></span></button>
+    </div>
+    <div class="modal-body">
+      <p class="muted">Formato: <b>HH:MM-HH:MM</b> (es. <code>12:00-15:00</code>, <code>19:00-23:30</code>). Giorno vuoto = <b>CHIUSO</b>.</p>
+      <div id="hoursForm" class="hours-grid">
+        <!-- 7 righe generate da JS -->
       </div>
-      <div>Chiamate attive: 0/3</div>
     </div>
-    <div class="stat">
-      <div class="muted">Prenotazioni oggi</div>
-      <h2 style="margin:6px 0 2px">0</h2>
-      <div class="muted">Incasso stimato: <b>€ 0</b></div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Chiudi</button>
+      <button class="btn btn-primary" id="saveHoursBtn">Salva</button>
     </div>
-  </section>
+  </div>
+</div>
 
-  <!-- Box Prenotazioni -->
-  <section class="card box-reservations mt-16">
-    <h3 class="section-title">Prenotazioni</h3>
-    <div class="row filters">
-      <input id="flt-date" type="date" class="input" />
-      <div class="row" style="flex:1; min-width:280px">
-        <input id="flt-text" class="input" placeholder="Cerca nome / telefono / orario" />
+<!-- MODALE: GIORNI SPECIALI -->
+<div class="modal" id="modalSpecial" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Giorni speciali</h3>
+      <button class="btn btn-icon modal-close" data-close><span class="icon-x"></span></button>
+    </div>
+    <div class="modal-body">
+      <div class="row gap-8">
+        <div class="input input--with-icon">
+          <input id="specialDate" type="text" placeholder="gg/mm/aaaa" />
+          <span class="icon-calendar"></span>
+        </div>
+        <label class="chk">
+          <input id="specialClosed" type="checkbox"> Chiudi tutto il giorno
+        </label>
       </div>
-      <button class="btn" id="btnFilter">Filtra</button>
-      <button class="btn-outline" id="btnClear">Elimina filtri</button>
-      <button class="btn" id="btnLast30">Storico 30gg</button>
-      <button class="btn-blue" id="btnToday">Oggi</button>
-      <button class="btn" id="btnRefresh">Aggiorna</button>
-      <button class="btn-blue" onclick="openModal('modal-prenotazione')">Crea prenotazione</button>
-    </div>
-    <!-- Qui potresti avere tabella prenotazioni -->
-  </section>
-</main>
-
-<!-- ====== MODALI ====== -->
-
-<!-- Orari settimanali -->
-<div id="modal-orari">
-  <div class="modal-header">
-    <div class="modal-title">Orari settimanali</div>
-    <button class="modal-close" onclick="closeModal('modal-orari')">✕</button>
-  </div>
-  <div class="modal-body">
-    <p class="tip">Formato: <span class="kbd">HH:MM-HH:MM</span> (es. <span class="kbd">12:00-15:00</span>, <span class="kbd">19:00-23:30</span>). Giorno vuoto = <b>CHIUSO</b>.</p>
-    <div class="hours-list">
-      {% for day in ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"] %}
-      <div class="row">
-        <label style="width:120px">{{ day }}</label>
-        <input type="text" class="input" placeholder="12:00-15:00, 19:00-23:30" />
+      <div class="input">
+        <input id="specialWindows" type="text" placeholder="Finestre (se aperto) es. 12:00-15:00, 19:00-23:30" />
       </div>
-      {% endfor %}
+
+      <div id="specialList" class="special-list"></div>
     </div>
-  </div>
-  <div class="modal-footer">
-    <button class="btn" onclick="closeModal('modal-orari')">Chiudi</button>
-    <button class="btn-blue">Salva</button>
+    <div class="modal-foot">
+      <button class="btn btn-danger" id="deleteSpecialBtn">Elimina</button>
+      <button class="btn btn-primary" id="saveSpecialBtn">Aggiungi / Aggiorna</button>
+    </div>
   </div>
 </div>
 
-<!-- Giorni speciali -->
-<div id="modal-giorni">
-  <div class="modal-header">
-    <div class="modal-title">Giorni speciali</div>
-    <button class="modal-close" onclick="closeModal('modal-giorni')">✕</button>
-  </div>
-  <div class="modal-body">
-    <div class="row">
-      <input type="date" class="input" />
-      <label class="row"><input type="checkbox" /> Chiudi tutto il giorno</label>
+<!-- MODALE: IMPOSTAZIONI -->
+<div class="modal" id="modalSettings" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Impostazioni</h3>
+      <button class="btn btn-icon modal-close" data-close><span class="icon-x"></span></button>
     </div>
-    <input type="text" class="input mt-8" placeholder="Finestre (se aperto)" />
-  </div>
-  <div class="modal-footer">
-    <button class="btn-danger">Elimina</button>
-    <button class="btn-blue">Aggiungi / Aggiorna</button>
+    <div class="modal-body settings-grid" id="settingsForm">
+      <!-- campi creati da JS -->
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Chiudi</button>
+      <button class="btn btn-primary" id="saveSettingsBtn">Salva impostazioni</button>
+    </div>
   </div>
 </div>
 
-<!-- Impostazioni -->
-<div id="modal-imp">
-  <div class="modal-header">
-    <div class="modal-title">Impostazioni</div>
-    <button class="modal-close" onclick="closeModal('modal-imp')">✕</button>
-  </div>
-  <div class="modal-body">
-    <div class="row"><label style="width:160px">Timezone</label><input class="input" value="Europe/Rome" /></div>
-    <div class="row"><label style="width:160px">Step (min)</label><input class="input" type="number" value="15" /></div>
-    <div class="row"><label style="width:160px">Ultimo ordine (min)</label><input class="input" type="number" value="15" /></div>
-    <div class="row"><label style="width:160px">Min persone</label><input class="input" type="number" value="1" /></div>
-    <div class="row"><label style="width:160px">Max persone</label><input class="input" type="number" value="12" /></div>
-    <div class="row"><label style="width:160px">Capacità/slot</label><input class="input" type="number" value="6" /></div>
-  </div>
-  <div class="modal-footer">
-    <button class="btn" onclick="closeModal('modal-imp')">Chiudi</button>
-    <button class="btn-blue">Salva impostazioni</button>
+<!-- MODALE: RIEPILOGO -->
+<div class="modal" id="modalSummary" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Stato & riepilogo</h3>
+      <button class="btn btn-icon modal-close" data-close><span class="icon-x"></span></button>
+    </div>
+    <div class="modal-body" id="summaryBody">
+      <!-- riempito da JS -->
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Chiudi</button>
+    </div>
   </div>
 </div>
 
-<!-- Stato & riepilogo -->
-<div id="modal-stato">
-  <div class="modal-header">
-    <div class="modal-title">Stato & riepilogo</div>
-    <button class="modal-close" onclick="closeModal('modal-stato')">✕</button>
-  </div>
-  <div class="modal-body">
-    <div class="section-title">Orari settimanali</div>
-    <ul style="margin:0;padding-left:18px">
-      <li>Lunedì: CHIUSO</li><li>Martedì: CHIUSO</li><li>Mercoledì: CHIUSO</li>
-      <li>Giovedì: CHIUSO</li><li>Venerdì: CHIUSO</li><li>Sabato: CHIUSO</li><li>Domenica: CHIUSO</li>
-    </ul>
-    <div class="section-title mt-16">Giorni speciali</div>
-    <ul style="margin:0;padding-left:18px"><li>2025-12-25: CHIUSO</li></ul>
-  </div>
-  <div class="modal-footer">
-    <button class="btn" onclick="closeModal('modal-stato')">Chiudi</button>
+<!-- MODALE: TOKEN -->
+<div class="modal" id="modalToken" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Imposta token</h3>
+      <button class="btn btn-icon modal-close" data-close><span class="icon-x"></span></button>
+    </div>
+    <div class="modal-body">
+      <div class="input">
+        <input id="tokenInput" type="text" placeholder="Incolla qui il token">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Chiudi</button>
+      <button class="btn btn-primary" id="saveTokenBtn">Salva</button>
+    </div>
   </div>
 </div>
 
-<!-- Imposta token -->
-<div id="modal-token">
-  <div class="modal-header">
-    <div class="modal-title">Imposta token</div>
-    <button class="modal-close" onclick="closeModal('modal-token')">✕</button>
-  </div>
-  <div class="modal-body">
-    <input class="input" placeholder="Incolla qui il token" />
-  </div>
-  <div class="modal-footer">
-    <button class="btn-blue" onclick="showToast('Token salvato ✅','success');closeModal('modal-token')">Salva</button>
-  </div>
-</div>
-
-<!-- Crea prenotazione -->
-<div id="modal-prenotazione">
-  <div class="modal-header">
-    <div class="modal-title">Crea prenotazione</div>
-    <button class="modal-close" onclick="closeModal('modal-prenotazione')">✕</button>
-  </div>
-  <div class="modal-body">
-    <div class="row">
-      <input type="date" class="input" />
-      <input type="time" class="input" value="20:00" />
+<!-- MODALE: CREA PRENOTAZIONE -->
+<div class="modal" id="modalCreate" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Crea prenotazione</h3>
+      <button class="btn btn-icon modal-close" data-close><span class="icon-x"></span></button>
     </div>
-    <div class="row">
-      <input class="input" placeholder="Nome e cognome" />
-      <input class="input" placeholder="Telefono" />
+    <div class="modal-body create-grid" id="createForm">
+      <!-- campi creati da JS -->
     </div>
-    <div class="row">
-      <input class="input" type="number" value="2" />
-      <select class="input"><option>Confermata</option><option>In attesa</option></select>
+    <div class="modal-foot">
+      <button class="btn" data-close>Chiudi</button>
+      <button class="btn btn-primary" id="saveBookingBtn">Salva prenotazione</button>
     </div>
-    <textarea class="input" placeholder="Allergie, tavolo, ecc."></textarea>
-  </div>
-  <div class="modal-footer">
-    <button class="btn" onclick="closeModal('modal-prenotazione')">Chiudi</button>
-    <button class="btn-blue">Salva prenotazione</button>
   </div>
 </div>
 
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=9"></script>
 {% endblock %}
