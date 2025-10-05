@@ -4,67 +4,105 @@ from __future__ import annotations
 
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import UserMixin
-from werkzeug.security import check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
-class Restaurant(UserMixin, db.Model):
+# ============================================================
+#  Modello Restaurant
+# ============================================================
+
+class Restaurant(db.Model):
     __tablename__ = "restaurants"
 
-    id            = db.Column(db.Integer, primary_key=True)
-    name          = db.Column(db.String(255), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120))
+    username = db.Column(db.String(80))
+    password_hash = db.Column(db.String(255))
+    slug = db.Column(db.String(80))
+    logo = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    email         = db.Column(db.Text)
-    username      = db.Column(db.Text)
-    slug          = db.Column(db.Text)
-    password_hash = db.Column(db.Text)
-    logo          = db.Column(db.Text)
-    created_at    = db.Column(db.DateTime(timezone=True), server_default=db.func.now())
+    # Relazioni
+    reservations = db.relationship("Reservation", backref="restaurant", lazy=True)
 
-    # relations (facoltative)
-    reservations  = db.relationship("Reservation", backref="restaurant", lazy="dynamic")
-    inbound_numbers = db.relationship("InboundNumber", backref="restaurant", lazy="dynamic")
+    # Helpers password
+    def set_password(self, password: str):
+        self.password_hash = generate_password_hash(password)
 
-    def get_id(self) -> str:
-        return str(self.id)
+    def check_password(self, password: str) -> bool:
+        return check_password_hash(self.password_hash or "", password)
 
-    def check_password(self, plain: str) -> bool:
-        if not self.password_hash or not plain:
-            return False
-        try:
-            return check_password_hash(self.password_hash, plain)
-        except Exception:
-            return False
+    def __repr__(self):
+        return f"<Restaurant {self.id} {self.name}>"
 
-    def __repr__(self) -> str:
-        return f"<Restaurant id={self.id} name={self.name!r} username={self.username!r}>"
-
+# ============================================================
+#  Modello Reservation
+# ============================================================
 
 class Reservation(db.Model):
     __tablename__ = "reservations"
 
-    id            = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.id"), nullable=False)
 
-    # campi base che la dashboard usa
-    resv_date     = db.Column(db.Date, nullable=False)
-    resv_time     = db.Column(db.String(8), nullable=False)  # "19:30"
-    people        = db.Column(db.Integer, nullable=False, default=2)
+    # Dati cliente / prenotazione
+    name = db.Column(db.String(120))          # alcuni progetti usano "name"
+    phone = db.Column(db.String(40))
+    date = db.Column(db.String(10))           # ISO 'YYYY-MM-DD'
+    time = db.Column(db.String(5))            # 'HH:MM'
+    people = db.Column(db.Integer)
 
-    customer_name = db.Column(db.String(255))
-    customer_phone= db.Column(db.String(32))
-    notes         = db.Column(db.Text)
+    # Stato/metadata
+    status = db.Column(db.String(20), default="pending")  # pending|confirmed|rejected
+    notes = db.Column(db.Text)
+    source = db.Column(db.String(20), default="voice")    # voice|manual|web
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    created_at    = db.Column(db.DateTime(timezone=True), server_default=db.func.now())
+    def as_dict(self):
+        return {
+            "id": self.id,
+            "restaurant_id": self.restaurant_id,
+            "name": self.name,
+            "phone": self.phone,
+            "date": self.date,
+            "time": self.time,
+            "people": self.people,
+            "status": self.status,
+            "notes": self.notes,
+            "source": self.source,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
 
+    def __repr__(self):
+        return f"<Reservation {self.id} {self.name} {self.date} {self.time}>"
+
+# ============================================================
+#  Modello InboundNumber (es. Twilio / AI Voice)
+# ============================================================
 
 class InboundNumber(db.Model):
     __tablename__ = "inbound_numbers"
 
-    id            = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurants.id"), nullable=False)
-    phone         = db.Column(db.String(32), nullable=False)
-    active        = db.Column(db.Boolean, nullable=False, default=True)
+    number = db.Column(db.String(32), nullable=False)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    created_at    = db.Column(db.DateTime(timezone=True), server_default=db.func.now())
+    def __repr__(self):
+        return f"<InboundNumber {self.number} (r{self.restaurant_id})>"
+
+# ============================================================
+#  Helper per inizializzazione DB
+# ============================================================
+
+def init_db(app):
+    """
+    Inizializza SQLAlchemy e crea le tabelle se non esistono.
+    Chiama questa funzione in app.py dopo aver configurato SQLALCHEMY_DATABASE_URI.
+    """
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()

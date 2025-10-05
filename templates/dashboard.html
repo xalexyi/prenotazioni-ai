@@ -1,88 +1,81 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Ristorante{% endblock %}
-
-{% block head %}
-  <meta name="robots" content="noindex,nofollow"/>
-{% endblock %}
-
-{% block header_left %}
-<div class="brand-row">
-  <img class="logo-robot restaurant-logo" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo">
-  <div class="brand-title">
-    <span class="brand-strong">{{ (restaurant.name if restaurant else 'Ristorante') }}</span>
-    <span class="brand-sub">— Dashboard</span>
-  </div>
-</div>
-{% endblock %}
+{% block title %}{{ restaurant.name }} — Dashboard ristorante{% endblock %}
 
 {% block content %}
-<section class="card">
-  <div class="card-head">
-    <h3 class="card-title">Prenotazioni</h3>
-    <div class="row" style="flex-wrap:wrap; gap:8px 10px">
-      <input type="date" id="resv-date" class="input" value="{{ (request.args.get('date') or '') }}">
-      <input type="text" id="resv-search" class="input" placeholder="Cerca nome / telefono / orario">
-      <button id="filter-btn" class="btn">Filtra</button>
-      <button id="filter-reset" class="btn-outline">Elimina filtri</button>
-      <button id="filter-30" class="btn-outline">Storico 30gg</button>
-      <button id="filter-today" class="btn-blue">Oggi</button>
-    </div>
-  </div>
 
-  <div id="reservations-list" class="reservations">
-    <p class="muted">Nessuna prenotazione trovata.</p>
+<!-- HEADER STICKY TOOLS -->
+<section class="sticky-tools">
+  <div class="left">
+    <h2 class="panel-title">
+      Prenotazioni
+      <span class="live-clock" id="liveClock">--:--</span>
+    </h2>
+  </div>
+  <div class="right tools">
+    <div class="search-box">
+      <input id="searchBox" class="input" type="text" placeholder="Cerca nome / telefono / orario…" />
+    </div>
+    <input id="dateFilter" type="date" class="input input--date" />
+    <button id="btnToday" class="btn btn-secondary">Oggi</button>
+    <button id="btnLast30" class="btn btn-secondary">Ultimi 30gg</button>
+    <button id="btnRefresh" class="btn btn-secondary">Aggiorna</button>
+    <button id="btnCreateReservation" class="btn btn-primary">Crea prenotazione</button>
   </div>
 </section>
 
-<section class="card">
-  <h3 class="card-title">Gestione orari, giorni speciali, impostazioni</h3>
-  <div class="settings-row">
-    <button class="menu-dots" title="Altro">⋮</button>
-  </div>
+<!-- CARDS SUMMARY -->
+<section class="cards">
+  <article class="card">
+    <div class="card__title">Prenotazioni oggi</div>
+    <div class="card__value" id="sumBookings">0</div>
+  </article>
+  <article class="card">
+    <div class="card__title">Persone totali</div>
+    <div class="card__value" id="sumPeople">0</div>
+  </article>
+  <article class="card">
+    <div class="card__title">% Occupazione stimata</div>
+    <div class="card__value" id="sumOcc">0%</div>
+  </article>
+  <article class="card card--ai">
+    <div class="card__title">Riepilogo AI</div>
+    <div class="card__ai" id="aiSummary">Analisi in corso…</div>
+  </article>
+</section>
 
-  <div class="settings-section">
-    <h4>Orari settimanali</h4>
-    <button class="btn-blue">Salva orari</button>
-  </div>
+<!-- TABELLA -->
+<section class="panel">
+  <header class="panel__header">
+    <div class="tabs">
+      <button class="tab is-active" data-range="today">Oggi</button>
+      <button class="tab" data-range="last30">Ultimi 30gg</button>
+      <button class="tab" data-range="all">Tutte</button>
+    </div>
+    <div class="panel__tools">
+      <button id="btnExport" class="btn btn-secondary">Esporta CSV</button>
+    </div>
+  </header>
 
-  <div class="settings-section">
-    <h4>Giorni speciali</h4>
-    <div class="row">
-      <input type="date" class="input">
-      <label><input type="checkbox"> chiuso</label>
-      <input type="text" class="input" placeholder="es: 12:00-15:00, 19:00-23:00">
-      <button class="btn-blue">Aggiungi/Salva</button>
+  <div class="panel__body">
+    <div id="reservationsTable" class="table">
+      <!-- riempito da JS -->
     </div>
   </div>
+</section>
 
-  <div class="settings-section">
-    <h4>Impostazioni</h4>
-    <form id="settings-form" class="settings-form">
-      <div class="grid">
-        <label>Timezone <input type="text" class="input" value="Europe/Rome"></label>
-        <label>Step (min) <input type="number" class="input" value="15"></label>
-        <label>Ultimo ordine (min) <input type="number" class="input" value="15"></label>
-        <label>Min persone <input type="number" class="input" value="1"></label>
-        <label>Max persone <input type="number" class="input" value="12"></label>
-        <label>Capacità/slot <input type="number" class="input" value="6"></label>
-      </div>
-      <button class="btn-blue" type="submit">Salva impostazioni</button>
-    </form>
-  </div>
-
-  <div class="settings-section">
-    <h4>Nuova prenotazione</h4>
-    <form id="new-resv-form" class="settings-form">
-      <div class="grid">
-        <label>Data <input type="date" class="input"></label>
-        <label>Ora <input type="time" class="input"></label>
-        <label>Nome e cognome <input type="text" class="input"></label>
-        <label>Telefono <input type="tel" class="input"></label>
-        <label>Persone <input type="number" class="input" value="2"></label>
-        <label>Note <input type="text" class="input"></label>
-      </div>
-      <button class="btn-blue" type="submit">Crea</button>
-    </form>
+<!-- ANALISI ORARI -->
+<section class="panel">
+  <header class="panel__header">
+    <h3 class="panel-title">Suggerimenti AI sugli orari</h3>
+    <button id="btnAnalyzeHours" class="btn btn-secondary">Analizza orari</button>
+  </header>
+  <div class="panel__body">
+    <div id="hoursInsights" class="ai-insights muted">Nessuna analisi ancora.</div>
   </div>
 </section>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
