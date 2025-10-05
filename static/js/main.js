@@ -1,62 +1,49 @@
-// static/js/main.js
+// Dropdown 3 puntini (apre sotto il bottone)
 (function () {
-  function _resolveTarget(target) {
-    if (!target) return null;
-    if (target instanceof Element) return target;
-    // prova per id (senza #), poi come selettore
-    return document.getElementById(String(target)) || document.querySelector(String(target));
+  const btn = document.getElementById('kebabBtn');
+  const menu = document.getElementById('kebabMenu');
+
+  if (!btn || !menu) return;
+
+  function close() {
+    menu.classList.remove('is-open');
+    btn.setAttribute('aria-expanded', 'false');
   }
 
-  function _showModal(el) {
-    // Coerenza con CSS: usa "hidden"
-    el.hidden = false;
-    // Retro-compatibilità con vecchio CSS basato su aria-hidden
-    el.removeAttribute('aria-hidden');
-    // piccolo aiuto per accessibilità
-    if (!el.hasAttribute('role')) el.setAttribute('role', 'dialog');
-    if (!el.hasAttribute('aria-modal')) el.setAttribute('aria-modal', 'true');
-    // focus iniziale
-    const focusable = el.querySelector(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    (focusable || el).focus?.();
+  function open() {
+    // Posiziona sotto il bottone
+    const r = btn.getBoundingClientRect();
+    menu.style.minWidth = r.width + 'px';
+    menu.style.left = r.left + 'px';
+    menu.style.top = r.bottom + 6 + 'px';
+    menu.classList.add('is-open');
+    btn.setAttribute('aria-expanded', 'true');
   }
 
-  function _hideModal(el) {
-    el.hidden = true;
-    el.setAttribute('aria-hidden', 'true'); // retro-compatibilità
-  }
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.classList.contains('is-open')) close();
+    else open();
+  });
 
-  window.UI = {
-    moneyEUR(v) {
-      const n = Number(v || 0);
-      try {
-        return n.toLocaleString('it-IT', {
-          style: 'currency',
-          currency: 'EUR',
-          maximumFractionDigits: 0
-        });
-      } catch (e) {
-        return '€ ' + Math.round(n);
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target) && e.target !== btn) close();
+  });
+
+  // Apri modali dai comandi della tendina
+  menu.querySelectorAll('[data-open]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.getAttribute('data-open');
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.classList.add('is-open');
+        close();
       }
-    },
+    });
+  });
 
-    /**
-     * Apri un modal-backdrop.
-     * @param {string|Element} target - id senza # (es. 'modal-weekly') oppure selettore (es. '#modal-weekly') o Element
-     */
-    openModal(target = 'modal') {
-      const el = _resolveTarget(target);
-      if (el) _showModal(el);
-    },
-
-    /**
-     * Chiudi un modal-backdrop.
-     * @param {string|Element} target - id/selettore/Element
-     */
-    closeModal(target = 'modal') {
-      const el = _resolveTarget(target);
-      if (el) _hideModal(el);
-    }
-  };
+  // Chiudi modali
+  document.querySelectorAll('.modal [data-close], .modal .modal__close').forEach(x => {
+    x.addEventListener('click', () => x.closest('.modal').classList.remove('is-open'));
+  });
 })();
