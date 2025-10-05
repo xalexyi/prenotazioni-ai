@@ -1,88 +1,192 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Ristorante{% endblock %}
+{% block title %}Haru Asian Fusion Restaurant — Dashboard ristorante{% endblock %}
 
 {% block head %}
   <meta name="robots" content="noindex,nofollow"/>
 {% endblock %}
 
 {% block header_left %}
-<div class="brand-row">
-  <img class="logo-robot restaurant-logo" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo">
-  <div class="brand-title">
-    <span class="brand-strong">{{ (restaurant.name if restaurant else 'Ristorante') }}</span>
-    <span class="brand-sub">— Dashboard</span>
+<div class="brand-row" style="display:flex;align-items:center;gap:10px">
+  <img src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="" style="height:22px;width:22px;border-radius:50%;box-shadow:0 0 0 2px #900 inset;">
+  <div style="display:flex;flex-direction:column">
+    <strong>Haru Asian Fusion Restaurant</strong>
+    <span class="muted">— Dashboard ristorante</span>
+  </div>
+  <div style="position:relative;margin-left:10px">
+    <button id="menu-dots" class="menu-dots" title="Altro" aria-haspopup="true">⋮</button>
+    <div id="menu-panel" class="panel" style="display:none;position:absolute;left:0;top:36px;min-width:220px;z-index:40">
+      <button class="panel-item" data-open="#modal-hours">Orari settimanali…</button>
+      <button class="panel-item" data-open="#modal-special">Giorni speciali…</button>
+      <button class="panel-item" data-open="#modal-settings">Impostazioni…</button>
+      <button class="panel-item" data-open="#modal-status">Stato &amp; riepilogo…</button>
+      <button class="panel-item" data-open="#modal-token">Imposta token…</button>
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block content %}
-<section class="card">
-  <div class="card-head">
-    <h3 class="card-title">Prenotazioni</h3>
-    <div class="row" style="flex-wrap:wrap; gap:8px 10px">
-      <input type="date" id="resv-date" class="input" value="{{ (request.args.get('date') or '') }}">
+
+<!-- STATI IN ALTO -->
+<section class="card" style="max-width:980px">
+  <div style="display:flex;gap:18px;flex-wrap:wrap">
+    <div class="pill ok" id="calls-pill" style="flex:1 1 320px">
+      <div>Chiamate attive: <strong id="calls-active">0</strong>/<strong id="calls-max">3</strong></div>
+      <div class="muted" style="color:#8f8">● Disponibile</div>
+    </div>
+
+    <div class="stat-card" style="flex:1 1 320px">
+      <div class="muted">Prenotazioni oggi</div>
+      <div class="big" id="stat-resv-today">0</div>
+    </div>
+
+    <div class="stat-card" style="flex:1 1 320px">
+      <div class="muted">Incasso stimato</div>
+      <div class="big">€ <span id="stat-revenue">0</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRENOTAZIONI -->
+<section class="card" style="max-width:980px">
+  <h3 class="card-title">Prenotazioni</h3>
+  <div class="row" style="gap:10px;align-items:center">
+    <input type="date" id="resv-date" class="input" value="{{ (request.args.get('date') or '') }}">
+    <div style="position:relative;flex:1 1 480px;max-width:600px">
       <input type="text" id="resv-search" class="input" placeholder="Cerca nome / telefono / orario">
-      <button id="filter-btn" class="btn">Filtra</button>
-      <button id="filter-reset" class="btn-outline">Elimina filtri</button>
-      <button id="filter-30" class="btn-outline">Storico 30gg</button>
-      <button id="filter-today" class="btn-blue">Oggi</button>
     </div>
+    <button id="btn-filter" class="btn">Filtra</button>
+    <button id="btn-reset" class="btn-outline">Elimina filtri</button>
+    <button id="btn-30d" class="btn-outline">Storico 30gg</button>
+    <button id="btn-today" class="btn-blue">Oggi</button>
+    <button id="btn-refresh" class="btn">Aggiorna</button>
+    <div style="flex:1"></div>
+    <button id="btn-new" class="btn-blue">Crea prenotazione</button>
   </div>
 
-  <div id="reservations-list" class="reservations">
-    <p class="muted">Nessuna prenotazione trovata.</p>
+  <div id="reservations-list" class="reservations" style="margin-top:14px">
+    <p class="muted" id="resv-empty">Nessuna prenotazione trovata.</p>
   </div>
 </section>
 
-<section class="card">
-  <h3 class="card-title">Gestione orari, giorni speciali, impostazioni</h3>
-  <div class="settings-row">
-    <button class="menu-dots" title="Altro">⋮</button>
-  </div>
-
-  <div class="settings-section">
-    <h4>Orari settimanali</h4>
-    <button class="btn-blue">Salva orari</button>
-  </div>
-
-  <div class="settings-section">
-    <h4>Giorni speciali</h4>
-    <div class="row">
-      <input type="date" class="input">
-      <label><input type="checkbox"> chiuso</label>
-      <input type="text" class="input" placeholder="es: 12:00-15:00, 19:00-23:00">
-      <button class="btn-blue">Aggiungi/Salva</button>
+<!-- =============== MODALI =============== -->
+<div id="modal-hours"   class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong>Orari settimanali</strong><button class="x" data-close>✕</button></div>
+    <p class="muted">Formato: <b>HH:MM-HH:MM</b> (es. <code>12:00-15:00</code>, <code>19:00-23:30</code>). Giorno vuoto = <b>CHIUSO</b>.</p>
+    <div class="grid">
+      {% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
+      {% for d in days %}
+      <label>{{ d }}
+        <input class="input hours-input" data-day="{{ d|lower }}" placeholder="12:00-15:00, 19:00-23:30">
+      </label>
+      {% endfor %}
+    </div>
+    <div class="modal-foot">
+      <button class="btn-outline" data-close>Chiudi</button>
+      <button id="save-hours" class="btn-blue">Salva</button>
     </div>
   </div>
+</div>
 
-  <div class="settings-section">
-    <h4>Impostazioni</h4>
-    <form id="settings-form" class="settings-form">
-      <div class="grid">
-        <label>Timezone <input type="text" class="input" value="Europe/Rome"></label>
-        <label>Step (min) <input type="number" class="input" value="15"></label>
-        <label>Ultimo ordine (min) <input type="number" class="input" value="15"></label>
-        <label>Min persone <input type="number" class="input" value="1"></label>
-        <label>Max persone <input type="number" class="input" value="12"></label>
-        <label>Capacità/slot <input type="number" class="input" value="6"></label>
-      </div>
-      <button class="btn-blue" type="submit">Salva impostazioni</button>
-    </form>
-  </div>
+<div id="modal-special" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong>Giorni speciali</strong><button class="x" data-close>✕</button></div>
+    <div class="row" style="gap:10px">
+      <label>Data <input type="date" id="sp-date" class="input"></label>
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="sp-closed"> Chiudi tutto il giorno</label>
+    </div>
+    <label style="margin-top:8px">Finestre (se aperto)
+      <input id="sp-windows" class="input" placeholder="18:00-23:00, 12:00-15:00">
+    </label>
 
-  <div class="settings-section">
-    <h4>Nuova prenotazione</h4>
-    <form id="new-resv-form" class="settings-form">
-      <div class="grid">
-        <label>Data <input type="date" class="input"></label>
-        <label>Ora <input type="time" class="input"></label>
-        <label>Nome e cognome <input type="text" class="input"></label>
-        <label>Telefono <input type="tel" class="input"></label>
-        <label>Persone <input type="number" class="input" value="2"></label>
-        <label>Note <input type="text" class="input"></label>
-      </div>
-      <button class="btn-blue" type="submit">Crea</button>
-    </form>
+    <div id="sp-list" class="muted" style="margin-top:12px"></div>
+
+    <div class="modal-foot">
+      <button class="btn-outline" data-close>Chiudi</button>
+      <button id="sp-delete" class="btn" style="background:#333;border:1px solid #555">Elimina</button>
+      <button id="sp-save" class="btn-blue">Aggiungi / Aggiorna</button>
+    </div>
   </div>
-</section>
+</div>
+
+<div id="modal-settings" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong>Impostazioni</strong><button class="x" data-close>✕</button></div>
+    <form id="settings-form" class="grid">
+      <label>Timezone <input id="set-tz" class="input" value="Europe/Rome"></label>
+      <label>Step (min) <input id="set-step" type="number" class="input" value="15"></label>
+      <label>Ultimo ordine (min) <input id="set-last" type="number" class="input" value="15"></label>
+      <label>Min persone <input id="set-minp" type="number" class="input" value="1"></label>
+      <label>Max persone <input id="set-maxp" type="number" class="input" value="12"></label>
+      <label>Capacità/slot <input id="set-cap" type="number" class="input" value="6"></label>
+    </form>
+    <div class="modal-foot">
+      <button class="btn-outline" data-close>Chiudi</button>
+      <button id="set-save" class="btn-blue">Salva impostazioni</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-status" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong>Stato &amp; riepilogo</strong><button class="x" data-close>✕</button></div>
+    <div class="muted">
+      <p><b>Orari settimanali</b></p>
+      <ul id="sum-hours" style="margin-top:6px"></ul>
+      <p style="margin-top:12px"><b>Giorni speciali</b></p>
+      <ul id="sum-special"></ul>
+      <details style="margin-top:12px"><summary>Vedi JSON</summary><pre id="sum-json" class="muted" style="white-space:pre-wrap"></pre></details>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-outline" data-close>Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-token" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong>Imposta token</strong><button class="x" data-close>✕</button></div>
+    <label>Token
+      <input id="token-input" class="input" placeholder="copincolla il token API">
+    </label>
+    <div class="modal-foot">
+      <button class="btn-outline" data-close>Chiudi</button>
+      <button id="token-save" class="btn-blue">Salva token</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-create" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong>Crea prenotazione</strong><button class="x" data-close>✕</button></div>
+    <form id="create-form" class="grid">
+      <label>Data <input name="date" type="date" class="input" required></label>
+      <label>Ora <input name="time" type="time" class="input" value="20:00" required></label>
+      <label>Nome <input name="name" type="text" class="input" required></label>
+      <label>Telefono <input name="phone" type="tel" class="input"></label>
+      <label>Persone <input name="people" type="number" class="input" value="2" min="1"></label>
+      <label>Stato
+        <select name="status" class="input">
+          <option value="confirmed">Confermata</option>
+          <option value="pending">In attesa</option>
+          <option value="cancelled">Annullata</option>
+        </select>
+      </label>
+      <label>Note <input name="notes" type="text" class="input" placeholder="Allergie, tavolo, ecc."></label>
+    </form>
+    <div class="modal-foot">
+      <button class="btn-outline" data-close>Chiudi</button>
+      <button id="create-save" class="btn-blue">Salva prenotazione</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast" hidden></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
