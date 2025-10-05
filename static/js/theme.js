@@ -1,16 +1,7 @@
-(() => {
-  const btn = document.getElementById("theme-toggle");
+(function(){
+  const btn = document.getElementById('themeToggle');
   if (!btn) return;
-  const root = document.documentElement;
-  const current = localStorage.getItem("theme") || "dark";
-  root.classList.toggle("theme-light", current === "light");
-  root.classList.toggle("theme-dark", current !== "light");
-  btn.textContent = current === "light" ? "☀️" : "🌙";
-  btn.addEventListener("click", () => {
-    const newTheme = root.classList.contains("theme-light") ? "dark" : "light";
-    localStorage.setItem("theme", newTheme);
-    root.classList.toggle("theme-light");
-    root.classList.toggle("theme-dark");
-    btn.textContent = newTheme === "light" ? "☀️" : "🌙";
+  btn.addEventListener('click', () => {
+    document.documentElement.classList.toggle('light');
   });
 })();

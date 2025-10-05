@@ -1,32 +1,38 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{% block title %}Dashboard — Ristorante{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <script defer src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="icon" href="{{ url_for('static', filename='img/logo_robot.svg') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
   {% block head %}{% endblock %}
 </head>
-<body class="theme-dark">
+<body>
+  <header>
+    <div class="brand-row">
+      <img class="logo-robot" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="logo" />
+      <div class="brand-title">
+        {% block header_left %}
+        <span class="brand-strong">{{ (restaurant.name if restaurant else 'Ristorante AI') }}</span>
+        <span class="brand-sub">— Dashboard ristorante</span>
+        {% endblock %}
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="theme-toggle" id="themeToggle" title="Tema">🌙</button>
+      <form method="post" action="/logout">
+        <button class="btn-logout" type="submit">Logout</button>
+      </form>
+    </div>
+  </header>
 
-<header>
-  <div class="header-left">
-    {% block header_left %}{% endblock %}
-  </div>
-  <div class="header-right">
-    <button id="theme-toggle" class="theme-toggle" title="Cambia tema">🌙</button>
-    <form action="{{ url_for('auth.logout') }}" method="post" style="display:inline">
-      <button class="btn-logout">Logout</button>
-    </form>
-  </div>
-</header>
-
-<main>
   {% block content %}{% endblock %}
-</main>
 
-<script src="{{ url_for('static', filename='js/main.js') }}"></script>
-{% block scripts %}{% endblock %}
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
