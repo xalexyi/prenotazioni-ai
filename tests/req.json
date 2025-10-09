@@ -1,0 +1,10 @@
+{
+  "call_sid": "CA_test_123",
+  "from": "+393491234567",
+  "to": "+39035551234",
+  "recording_sid": "RE_test_123",
+  "recording_url": "https://example.com/test.mp3",
+  "duration_seconds": 12,
+  "transcript": "Ciao questa \u00e8 una prova",
+  "received_at": "2025-08-29T12:00:00Z"
+}

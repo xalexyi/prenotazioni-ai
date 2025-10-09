@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- bordo -->
+  <circle cx="32" cy="32" r="30" fill="#f4d19a" stroke="#d89b3c" stroke-width="4"/>
+  <!-- fetta -->
+  <path d="M32 32 L58 8 A30 30 0 0 0 32 2 Z" fill="#ffcc66" stroke="#d89b3c" stroke-width="2"/>
+  <!-- pomodori -->
+  <circle cx="20" cy="20" r="4" fill="#e63946"/>
+  <circle cx="44" cy="20" r="4" fill="#e63946"/>
+  <circle cx="32" cy="40" r="4" fill="#e63946"/>
+  <!-- basilico -->
+  <path d="M18 28 Q20 26 22 28 Q20 30 18 28" fill="#4caf50"/>
+  <path d="M42 36 Q44 34 46 36 Q44 38 42 36" fill="#4caf50"/>
+</svg>

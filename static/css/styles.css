@@ -1,0 +1,334 @@
+/* ===================================================================
+   Ristorante AI — styles.css (Dark + Light Fix Contrast)
+   =================================================================== */
+
+/* --------- VARIABILI BASE (tema scuro di default) --------- */
+:root {
+  --bg: #0f1419;
+  --panel: #17202a;
+  --panel-2: #111820;
+  --text: #e8eef5;
+  --muted: #9fb0c0;
+  --primary: #3b82f6;
+  --danger: #ef4444;
+  --ok: #22c55e;
+  --line-1: #1e2935;
+  --line-2: #1c2835;
+  --line-3: #223347;
+  --btn-bg: #223047;
+  --btn-br: #2b3a4d;
+  --btn-fg: #e8eef5;
+  --input-bg: #0f1722;
+  --input-br: #233347;
+  --input-fg: #e8eef5;
+  --pill-bg: #112232;
+  --pill-br: #38506b;
+  --pill-fg: #b6c7d8;
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --card-radius: 14px;
+  --gap: 16px;
+}
+
+/* --------- OVERRIDE TEMA CHIARO (più contrastato e leggibile) --------- */
+body.theme-light {
+  --bg: #d8dde4;            /* sfondo pagina morbido */
+  --panel: #f0f3f7;         /* pannelli chiari ma non bianchi */
+  --panel-2: #e3e8ee;
+  --text: #111a22;          /* testo scuro pieno */
+  --muted: #364b5b;         /* testo secondario ben visibile */
+  --primary: #1d4ed8;
+  --danger: #d61f1f;
+  --ok: #16a34a;
+  --line-1: #c4cdd6;
+  --line-2: #b5c1cc;
+  --line-3: #a7b5c2;
+  --btn-bg: #e0e6ef;
+  --btn-br: #aebdce;
+  --btn-fg: #111a22;
+  --input-bg: #f8fafc;
+  --input-br: #aebdce;
+  --input-fg: #111a22;
+  --pill-bg: #dce6f4;
+  --pill-br: #a5bad6;
+  --pill-fg: #1a3c5f;
+  --shadow: 0 8px 22px rgba(15, 30, 45, .15);
+}
+
+/* ===================================================================
+   BASE
+   =================================================================== */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+  overflow-x:hidden;
+}
+
+/* ===================================================================
+   TOPBAR
+   =================================================================== */
+.topbar{
+  height:64px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;border-bottom:1px solid var(--line-1);background:var(--panel-2);
+  position:sticky;top:0;z-index:50;
+}
+.topbar .left{display:flex;align-items:center;gap:10px}
+.rest-logo{width:22px;height:22px;display:block}
+.rest-name{font-weight:600}
+.topbar .right{display:flex;gap:10px}
+.btn-link{text-decoration:none}
+.theme-toggle{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 10px;border-radius:999px;border:1px solid var(--line-3);
+  background:var(--panel);cursor:pointer;font-size:13px;color:var(--muted);
+}
+
+/* ===================================================================
+   BUTTONS
+   =================================================================== */
+.btn{
+  background:var(--btn-bg);
+  color:var(--btn-fg);
+  border:1px solid var(--btn-br);
+  border-radius:10px;
+  padding:8px 14px;
+  cursor:pointer;
+  transition:filter .15s ease, background .15s ease;
+}
+.btn:hover{filter:brightness(1.05)}
+.btn.ghost{background:transparent}
+.btn.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.btn-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.icon-btn{background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:16px}
+
+/* ===================================================================
+   LAYOUT
+   =================================================================== */
+.content{max-width:1150px;margin:28px auto;padding:0 14px}
+.kpis{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--gap);margin-bottom:var(--gap)}
+.card{
+  background:var(--panel);
+  border:1px solid var(--line-2);
+  border-radius:var(--card-radius);
+  box-shadow:var(--shadow);
+  padding:16px;
+  overflow:hidden;
+}
+
+/* KPI */
+.kpi{display:flex;align-items:center;justify-content:space-between}
+.kpi-title{color:var(--muted)}
+.kpi-value{font-size:28px;font-weight:700}
+.kpi-status{color:var(--ok)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+.dot.green{background:var(--ok)}
+
+/* ===================================================================
+   FILTRI
+   =================================================================== */
+.filters{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+}
+.filters input[type="date"],.filters input[type="text"]{
+  background:var(--input-bg);border:1px solid var(--input-br);color:var(--input-fg);
+  height:36px;border-radius:10px;padding:0 10px;
+}
+.filters input[type="date"]{flex:0 0 180px;min-width:160px;}
+.filters input[type="text"]{flex:1 1 360px;min-width:240px;}
+.filters .btn{flex:0 0 auto;}
+
+/* ===================================================================
+   LISTA PRENOTAZIONI
+   =================================================================== */
+.list{margin-top:16px}
+.res-list{list-style:none;margin:0;padding:0}
+.res-item{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--panel);
+  border:1px solid var(--line-3);
+  border-radius:12px;
+  padding:14px 16px;margin-top:14px;
+}
+.res-left{display:flex;gap:8px;align-items:center;color:var(--text)}
+.res-time{font-weight:700}
+.res-name{font-weight:600}
+.res-note{color:var(--muted);margin-top:4px}
+.pill{font-size:12px;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--pill-br);color:var(--pill-fg);background:var(--pill-bg)}
+.res-actions{display:flex;gap:8px}
+
+/* ===================================================================
+   MODALS
+   =================================================================== */
+.modal{border:0;padding:0;background:transparent}
+.modal::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+body.theme-light .modal::backdrop{background:rgba(15,20,30,.28)}
+.modal-box{
+  width:820px;max-width:95vw;background:var(--panel);
+  border:1px solid var(--line-3);border-radius:16px;box-shadow:var(--shadow);padding:18px;margin:auto;
+}
+.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.grid-1{display:grid;gap:12px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr}
+.col-2{grid-column:span 2}
+.gap-16{gap:16px}
+label{display:block;color:var(--muted);margin-bottom:6px}
+input[type="text"],input[type="date"],input[type="time"],input[type="number"],select{
+  width:100%;height:36px;border-radius:10px;border:1px solid var(--input-br);
+  background:var(--input-bg);color:var(--input-fg);padding:0 10px;
+}
+.mt{margin-top:10px}
+.row{display:flex;align-items:center;gap:10px;margin:6px 0}
+.w120{width:120px;color:var(--text)}
+
+/* ===================================================================
+   LOGIN — contrasto fisso
+   =================================================================== */
+.auth-info.card {
+  background: linear-gradient(180deg, rgba(45,55,65,.35) 0%, rgba(25,30,40,.25) 100%);
+  border: 1px solid rgba(255,255,255,.06);
+}
+body.theme-light .auth-info.card{
+  background: #eef1f6;                     /* sfondo più solido */
+  border: 1px solid #c3ccd6;
+  box-shadow: 0 6px 18px rgba(60,70,90,.15);
+}
+body.theme-light .auth-info.card .auth-list li,
+body.theme-light .auth-info.card .hint {
+  color: #2d3f50;
+}
+body.theme-light .auth-info.card b {
+  color: #0f1722;
+}
+
+.login.card {
+  background: #f6f8fb;
+  border: 1px solid #c4ccd6;
+  box-shadow: 0 6px 18px rgba(60,70,90,.15);
+}
+.login label {color:#334455;}
+.login input[type="text"],.login input[type="password"] {
+  background:#ffffff;
+  border:1px solid #b6c2cf;
+  color:#0f1722;
+}
+
+/* ===================================================================
+   UTILITIES
+   =================================================================== */
+.muted{color:var(--muted)}
+.alert.error{
+  background:rgba(239,68,68,.12);
+  color:#fecaca;
+  border:1px solid rgba(239,68,68,.35);
+  border-radius:10px;
+  padding:10px 12px;
+}
+/* ===========================================================
+   FIX CONTRASTO LOGIN — TEMA CHIARO (override forti)
+   Incolla questo blocco IN FONDO al file.
+   =========================================================== */
+
+body.theme-light .auth-info.card,
+body.theme-light .login.card{
+  background: #ffffff !important;              /* bianco pieno */
+  border: 1px solid #c0c9d4 !important;        /* bordo netto */
+  box-shadow: 0 10px 28px rgba(20,30,45,.18) !important;
+}
+
+/* Testo: molto più scuro e leggibile */
+body.theme-light .auth-info.card,
+body.theme-light .auth-info.card *{
+  color: #0e1720 !important;                   /* testo principale */
+}
+
+body.theme-light .auth-info.card .hint,
+body.theme-light .auth-info.card .auth-list li{
+  color: #223342 !important;                   /* secondario scuro */
+}
+
+/* Bullet e parti in evidenza */
+body.theme-light .auth-info.card b{
+  color: #0a0f14 !important;
+  font-weight: 700 !important;
+}
+
+/* Tratteggio del box interno: ben visibile */
+body.theme-light .auth-info.card .dashed{
+  background: #f3f6fa !important;
+  border: 1.5px dashed #c4ced9 !important;
+  border-radius: 12px;
+}
+
+/* Card form login: input e label super leggibili */
+body.theme-light .login.card label{
+  color: #102030 !important;
+}
+body.theme-light .login.card input[type="text"],
+body.theme-light .login.card input[type="password"]{
+  background: #ffffff !important;
+  border: 1px solid #9fb2c6 !important;
+  color: #0e1720 !important;
+  box-shadow: inset 0 1px 0 rgba(0,0,0,.03);
+}
+
+/* Pulsante primario visibile anche su bianco */
+body.theme-light .login.card .btn.btn-primary{
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #fff !important;
+}
+
+/* Microidem: testo "Demo" e link */
+body.theme-light .login.card .demo{
+  color: #2a3b4c !important;
+}
+body.theme-light .login.card .demo b{
+  color: #0e1720 !important;
+}
+
+/* Ombra e separazione dal fondo della pagina */
+body.theme-light{
+  --bg: #dfe5ec;                               /* sfondo pagina un filo più scuro */
+}
+/* ==== FIX DEFINITIVO LOGIN — TEMA SCURO (forza coerenza) ==== */
+body.theme-dark .auth-info.card{
+  background: linear-gradient(180deg, rgba(45,55,65,.35) 0%, rgba(25,30,40,.25) 100%) !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+body.theme-dark .login.card{
+  background: var(--panel) !important;        /* pannello scuro */
+  border: 1px solid var(--line-2) !important; /* bordo scuro */
+  box-shadow: var(--shadow) !important;
+  color: var(--text) !important;
+}
+
+body.theme-dark .login.card label{
+  color: var(--muted) !important;
+}
+
+body.theme-dark .login.card input[type="text"],
+body.theme-dark .login.card input[type="password"]{
+  background: var(--input-bg) !important;     /* input scuri */
+  border: 1px solid var(--input-br) !important;
+  color: var(--input-fg) !important;
+  box-shadow: none !important;
+}
+
+body.theme-dark .login.card .btn.btn-primary{
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+}
+
+body.theme-dark .login.card .demo{
+  color: var(--muted) !important;
+}

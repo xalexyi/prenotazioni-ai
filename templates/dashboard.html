@@ -1,0 +1,178 @@
+{% extends "base.html" %} 
+{% block title %}Dashboard — Ristorante{% endblock %}
+
+{% block body %}
+<main class="content">
+  <!-- KPI -->
+  <div class="kpis">
+    <div class="card kpi">
+      <div class="kpi-title">Chiamate attive: <b>0/3</b></div>
+      <div class="kpi-status"><span class="dot green"></span> Disponibile</div>
+    </div>
+    <div class="card kpi">
+      <div class="kpi-title">Prenotazioni oggi</div>
+      <div class="kpi-value" id="kpiToday">{{ kpi_today }}</div>
+    </div>
+    <div class="card kpi">
+      <div class="kpi-title">Incasso stimato</div>
+      <div class="kpi-value" id="kpiIncome">{{ kpi_income }} €</div>
+    </div>
+  </div>
+
+  <!-- FILTRI -->
+  <div class="card filters">
+    <input type="date" id="fDate" />
+    <input type="text" id="fQuery" placeholder="Cerca nome / telefono / orari">
+    <button id="btnFilter" class="btn" type="button">Filtra</button>
+    <button id="btnClear" class="btn" type="button">Elimina filtri</button>
+    <button id="btnToday" class="btn" type="button">Oggi</button>
+    <button id="btnHistory" class="btn" type="button">Storico 30gg</button>
+    <button id="btnNew" class="btn btn-primary" type="button">+ Nuova prenotazione</button>
+  </div>
+
+  <!-- LISTA PRENOTAZIONI -->
+  <div class="card list" id="listWrap" style="padding-top:10px">
+    <div id="empty" class="muted">Nessuna prenotazione trovata</div>
+    <ul id="reservations" class="res-list"></ul>
+  </div>
+</main>
+
+<!-- DIALOG CREA/MODIFICA -->
+<dialog id="dlgCreate" class="modal">
+  <form method="dialog" class="modal-box" id="formCreate">
+    <input type="hidden" id="cId">
+    <div class="modal-head">
+      <b id="dlgCreateTitle">Crea prenotazione</b>
+      <button class="icon-btn" data-close type="button" aria-label="Chiudi">✕</button>
+    </div>
+
+    <div class="grid-2 gap-16">
+      <div>
+        <label for="cDate">Data</label>
+        <input type="date" id="cDate" required>
+      </div>
+      <div>
+        <label for="cTime">Ora</label>
+        <input type="time" id="cTime" required>
+      </div>
+
+      <div>
+        <label for="cName">Nome</label>
+        <input type="text" id="cName" required>
+      </div>
+      <div>
+        <label for="cPhone">Telefono</label>
+        <input type="text" id="cPhone">
+      </div>
+
+      <div>
+        <label for="cPeople">Persone</label>
+        <input type="number" id="cPeople" min="1" value="2">
+      </div>
+      <div>
+        <label for="cStatus">Stato</label>
+        <select id="cStatus">
+          <option value="confirmed">Confermata</option>
+          <option value="pending">In attesa</option>
+          <option value="rejected">Rifiutata</option>
+          <option value="cancelled">Cancellata</option>
+        </select>
+      </div>
+
+      <div class="col-2">
+        <label for="cNote">Note</label>
+        <input type="text" id="cNote" placeholder="Allergie, tavolo, ecc.">
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn" data-close type="button">Chiudi</button>
+      <button class="btn btn-primary" id="btnCreateSave" type="submit">Salva</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG CONFERMA ELIMINA -->
+<dialog id="dlgConfirm" class="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <b>Conferma</b>
+      <button class="icon-btn" data-close type="button" aria-label="Chiudi">✕</button>
+    </div>
+    <p id="confirmText">Sei sicuro di eliminare?</p>
+    <div class="modal-foot">
+      <button class="btn" data-close type="button">Annulla</button>
+      <button class="btn btn-danger" id="btnConfirmYes" type="button">Elimina</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- DIALOG ORARI SETTIMANALI -->
+<dialog id="dlgWeekly" class="modal">
+  <form method="dialog" class="modal-box" id="formWeekly">
+    <div class="modal-head">
+      <b>Orari settimanali</b>
+      <button class="icon-btn" data-close type="button" aria-label="Chiudi">✕</button>
+    </div>
+    <p class="muted">Formato: <b>HH:MM-HH:MM</b> (es. <code>12:00-15:00</code>, <code>19:00-23:30</code>). Giorno vuoto = <b>CHIUSO</b>.</p>
+    <div class="grid-1">
+      {% for d in ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
+      <div class="row" style="margin-bottom:10px">
+        <label class="w120">{{ d }}</label>
+        <input type="text" class="ww" data-day="{{ d }}" placeholder="12:00-15:00, 19:00-23:00">
+      </div>
+      {% endfor %}
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close type="button">Chiudi</button>
+      <button class="btn btn-primary" id="btnWeeklySave" type="submit">Salva</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG GIORNI SPECIALI -->
+<dialog id="dlgSpecial" class="modal">
+  <form method="dialog" class="modal-box" id="formSpecial">
+    <div class="modal-head">
+      <b>Giorni speciali</b>
+      <button class="icon-btn" data-close type="button" aria-label="Chiudi">✕</button>
+    </div>
+    <div class="grid-1">
+      <label for="spDate">Data</label>
+      <input type="date" id="spDate" required>
+
+      <label class="check">
+        <input type="checkbox" id="spClosed"> <span>Chiudi tutto il giorno</span>
+      </label>
+
+      <label for="spWindows">Finestre (se aperto)</label>
+      <input type="text" id="spWindows" placeholder="18:00-23:00, 12:00-15:00">
+
+      <div id="spList" class="muted mt"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close type="button">Chiudi</button>
+      <button class="btn btn-danger" id="btnSpecialDelete" type="button">Elimina</button>
+      <button class="btn btn-primary" id="btnSpecialSave" type="submit">Aggiungi / Aggiorna</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG STATO -->
+<dialog id="dlgStatus" class="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <b>Stato &amp; riepilogo</b>
+      <button class="icon-btn" data-close type="button" aria-label="Chiudi">✕</button>
+    </div>
+    <div id="statusContent"></div>
+    <div class="modal-foot">
+      <button class="btn" data-close type="button">Chiudi</button>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
+{% endblock %}
