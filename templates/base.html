@@ -1,138 +1,41 @@
 <!doctype html>
 <html lang="it">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{% block title %}Ristorante AI{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
-  <style>
-    /* mini-stili per il menu a tendina e il toggle */
-    .topbar .right { display:flex; align-items:center; gap:10px; }
-    .dropdown { position:relative; }
-    .dropdown > .btn { user-select:none; }
-    .dropdown-menu{
-      position:absolute; right:0; top:100%;
-      min-width: 220px; padding:6px; margin-top:8px;
-      background:#0f1722; border:1px solid #223347; border-radius:12px;
-      box-shadow:0 8px 24px rgba(0,0,0,.35); display:none; z-index:1500;
-    }
-    .dropdown-menu .item{
-      display:block; width:100%; text-align:left;
-      padding:8px 10px; border-radius:8px; color:#e6edf3; background:transparent;
-    }
-    .dropdown-menu .item:hover{ background:#142033; }
-    .theme-toggle{
-      display:inline-flex; align-items:center; gap:6px;
-      padding:6px 10px; border-radius:999px; border:1px solid #223347;
-      background:#0f1722; cursor:pointer; font-size:13px; color:#a9b4bf;
-    }
-    .btn-link { text-decoration:none; } /* niente sottolineatura */
-    .rest-logo{ height:18px; width:auto; vertical-align:middle; }
-
-    /* Garantisce click sopra overlay/menu */
-    .topbar{ position:sticky; z-index:100; top:0; }
-    .topbar .right{ position:relative; z-index:101; }
-    .theme-toggle{ position:relative; z-index:102; }
-  </style>
+  <meta charset="utf-8">
+  <title>{% block title %}Prenotazioni AI{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="/static/css/styles.css" rel="stylesheet">
 </head>
 <body class="theme-dark">
-  {% set on_login = (request.endpoint == 'login') %}
   <header class="topbar">
     <div class="left">
-      {% if on_login %}
-        <!-- LOGIN: logo fisso robot -->
-        <img class="rest-logo" src="{{ url_for('static', filename='img/logo_robot.svg') }}" alt="">
-        <span class="rest-name">Ristorante AI</span>
-      {% else %}
-        <!-- APP: logo/nome del ristorante + sottotitolo -->
-        <img class="rest-logo" src="{{ url_for('static', filename=restaurant.logo_path if restaurant and restaurant.logo_path else 'img/logo_sushi.svg') }}" alt="">
-        <span class="rest-name">{{ restaurant.name if restaurant else 'Ristorante AI' }}</span>
-        <span class="muted">— Dashboard ristorante</span>
-      {% endif %}
+      <a class="brand" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('login_page') }}">
+        Prenotazioni AI
+      </a>
     </div>
 
     <div class="right">
-      <!-- Toggle tema: sempre visibile (anche nel login) -->
-      <button id="themeToggle" class="theme-toggle" type="button" aria-label="Cambia tema">
-        <span id="themeIcon">🌙</span><span id="themeText">Scuro</span>
-      </button>
-
-      {% if not on_login %}
-        <!-- Menu a tendina Azioni -->
-        <div class="dropdown">
-          <button id="actionsMenuBtn" class="btn ghost" type="button">Azioni ▾</button>
-          <div id="actionsMenu" class="dropdown-menu">
-            <button id="btnWeekly"  class="item" type="button">Orari settimanali…</button>
-            <button id="btnSpecial" class="item" type="button">Giorni speciali…</button>
-            <button id="btnStatus"  class="item" type="button">Stato &amp; riepilogo…</button>
-            <hr style="border:none;border-top:1px solid #223347;margin:6px 4px;">
-            <button id="btnMenuPricing" class="item" type="button">Menù &amp; prezzi…</button>
-          </div>
+      {% if current_user.is_authenticated %}
+      <div class="dropdown">
+        <button class="btn">Azioni ▾</button>
+        <div class="dropdown-menu">
+          <button id="btn-weekly-hours" class="dropdown-item">Orari settimanali...</button>
+          <button id="btn-special-days" class="dropdown-item">Giorni speciali...</button>
+          <button id="btn-status" class="dropdown-item">Stato &amp; riepilogo...</button>
+          <button id="btn-menu" class="dropdown-item" onclick="alert('Menù & prezzi: da implementare 🧑‍🍳')">Menù & prezzi...</button>
+          <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+            <button class="dropdown-item text-danger" type="submit">Logout</button>
+          </form>
         </div>
-
-        <!-- Logout come bottone senza sottolineatura -->
-        <a class="btn btn-danger btn-link" href="{{ url_for('logout') }}">Logout</a>
+      </div>
       {% endif %}
     </div>
   </header>
 
-  <div id="app">{% block body %}{% endblock %}</div>
+  <main class="container">
+    {% block body %}{% endblock %}
+  </main>
 
-  {% block scripts %}{% endblock %}
-
-  <script>
-    // --------- Toggle tema (persistenza su localStorage) ----------
-    (function(){
-      function apply(theme){
-        const body = document.body;
-        const icn  = document.getElementById('themeIcon');
-        const txt  = document.getElementById('themeText');
-        body.classList.toggle('theme-dark', theme === 'dark');
-        body.classList.toggle('theme-light', theme === 'light');
-        if (icn && txt){
-          if (theme === 'dark'){ icn.textContent = '🌙'; txt.textContent = 'Scuro'; }
-          else { icn.textContent = '🌞'; txt.textContent = 'Chiaro'; }
-        }
-      }
-      // Applica quando il DOM è pronto
-      document.addEventListener('DOMContentLoaded', function () {
-        const saved = localStorage.getItem('theme') || 'dark';
-        apply(saved);
-        const btn = document.getElementById('themeToggle');
-        if (btn){
-          btn.addEventListener('click', function(e){
-            e.preventDefault(); e.stopPropagation();
-            const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
-            localStorage.setItem('theme', next); apply(next);
-          });
-        }
-      });
-      // helper opzionale per debug da console
-      window.setTheme = function(t){ localStorage.setItem('theme', t); apply(t); };
-    })();
-
-    // --------- Dropdown Azioni (solo quando presente) ------------
-    (function(){
-      const btn = document.getElementById('actionsMenuBtn');
-      const menu = document.getElementById('actionsMenu');
-      if (!btn || !menu) return;
-
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
-      });
-      document.addEventListener('click', (e) => {
-        if (!menu.contains(e.target) && !btn.contains(e.target)) menu.style.display = 'none';
-      });
-    })();
-
-    // Placeholder click handler per "Menù & prezzi…"
-    (function(){
-      const mp = document.getElementById('btnMenuPricing');
-      if (mp) mp.addEventListener('click', () => {
-        alert('Menù & prezzi: da implementare 👨‍🍳');
-      });
-    })();
-  </script>
+  <script src="/static/js/main.js"></script>
 </body>
 </html>

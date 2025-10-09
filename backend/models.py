@@ -1,118 +1,98 @@
-# backend/models.py
-from __future__ import annotations
-
-from datetime import date, time, timedelta
+from datetime import datetime, time as dtime, date as ddate
 from flask_login import UserMixin
-from sqlalchemy.sql import func
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 
-# Importa il db dall'app principale per evitare due istanze diverse
-try:
-    from app import db
-except Exception:
-    # in casi particolari (es. struttura package diversa) puoi rimpiazzare con:
-    # from flask_sqlalchemy import SQLAlchemy
-    # db = SQLAlchemy()
-    from app import db  # fallback esplicito
+from app import db  # usa l'istanza condivisa
+
 
 class Restaurant(db.Model):
     __tablename__ = "restaurant"
-
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
-    logo_path = db.Column(db.String(255), nullable=False, default="img/logo_robot.svg")
-
-    weekly_hours_json = db.Column(db.Text, nullable=True)
+    name = db.Column(db.String(200), nullable=False, unique=True)
+    logo_path = db.Column(db.String(255), default="img/logo_robot.svg")
 
     users = db.relationship("User", backref="restaurant", lazy=True)
     reservations = db.relationship("Reservation", backref="restaurant", lazy=True)
 
-    def __repr__(self) -> str:
-        return f"<Restaurant {self.id} {self.name!r}>"
+    def to_dict(self):
+        return {"id": self.id, "name": self.name, "logo_path": self.logo_path}
 
 
-class User(db.Model, UserMixin):
-    """
-    Compatibile con Flask-Login grazie a UserMixin.
-    """
-    __tablename__ = "user"
-
+class User(UserMixin, db.Model):
+    __tablename__ = "user"  # ok in Postgres
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(255), nullable=False)  # può essere plain o hash
+    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    password = db.Column(db.String(255), nullable=False)
     restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
 
-    def __repr__(self) -> str:
-        return f"<User {self.id} {self.username!r}>"
+    def get_id(self):
+        return str(self.id)
 
 
 class Reservation(db.Model):
     __tablename__ = "reservation"
-
     id = db.Column(db.Integer, primary_key=True)
     restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
-
-    # Info cliente
     name = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(40), nullable=True)
-
+    phone = db.Column(db.String(40), nullable=False)
     people = db.Column(db.Integer, nullable=False, default=2)
-    status = db.Column(db.String(20), nullable=False, default="pending")
-    note = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="pending")  # pending/confirmed/cancelled
+    notes = db.Column(db.Text, default="")
+    datetime = db.Column(db.DateTime, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=func.now())
 
-    # Data & ora
-    date = db.Column(db.Date, nullable=False, default=date.today)
-    time = db.Column(db.Time, nullable=True)
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "phone": self.phone,
+            "people": self.people,
+            "status": self.status,
+            "notes": self.notes or "",
+            "date": self.datetime.strftime("%d/%m/%Y"),
+            "time": self.datetime.strftime("%H:%M"),
+        }
 
-    def __repr__(self) -> str:
-        return f"<Reservation {self.id} {self.date} {self.time} {self.name!r}>"
+
+class OpeningHour(db.Model):
+    """
+    Orari settimanali: weekday 0=lun ... 6=dom
+    più righe per giorno se più finestre.
+    """
+    __tablename__ = "opening_hour"
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
+    weekday = db.Column(db.Integer, nullable=False)  # 0..6
+    start = db.Column(db.Time, nullable=False)
+    end = db.Column(db.Time, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "weekday": self.weekday,
+            "start": self.start.strftime("%H:%M"),
+            "end": self.end.strftime("%H:%M"),
+        }
 
 
 class SpecialDay(db.Model):
+    """
+    Giorni speciali/chiusure. Se closed=True, ignorare start/end.
+    """
     __tablename__ = "special_day"
-
     id = db.Column(db.Integer, primary_key=True)
     restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
+    day = db.Column(db.Date, nullable=False, index=True)
+    closed = db.Column(db.Boolean, default=False)
+    start = db.Column(db.Time)
+    end = db.Column(db.Time)
 
-    date = db.Column(db.Date, nullable=False)
-    closed = db.Column(db.Boolean, nullable=False, default=False)
-    windows = db.Column(db.String(255), nullable=True)
-
-    def __repr__(self) -> str:
-        return f"<SpecialDay {self.date} closed={self.closed}>"
-
-
-class WeeklyHour(db.Model):
-    __tablename__ = "weekly_hour"
-
-    id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
-
-    # 0=Lunedì ... 6=Domenica
-    weekday = db.Column(db.Integer, nullable=False)
-    windows = db.Column(db.String(255), nullable=True)
-
-    __table_args__ = (
-        db.UniqueConstraint("restaurant_id", "weekday", name="uq_restaurant_weekday"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<WeeklyHour {self.weekday} {self.windows!r}>"
-
-
-class ActiveCall(db.Model):
-    __tablename__ = "active_calls"
-
-    id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(db.Integer, nullable=False, index=True)
-    call_sid = db.Column(db.String, nullable=False, unique=True, index=True)
-    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
-
-    @staticmethod
-    def cleanup(ttl_minutes: int = 10):
-        """Fail-safe: disattiva chiamate troppo vecchie per evitare slot bloccati."""
-        cutoff = func.now() - timedelta(minutes=ttl_minutes)
-        (db.session.query(ActiveCall)
-         .filter(ActiveCall.active.is_(True), ActiveCall.created_at < cutoff)
-         .update({ActiveCall.active: False}, synchronize_session=False))
-        db.session.commit()
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "day": self.day.strftime("%d/%m/%Y"),
+            "closed": bool(self.closed),
+            "start": self.start.strftime("%H:%M") if self.start else None,
+            "end": self.end.strftime("%H:%M") if self.end else None,
+        }

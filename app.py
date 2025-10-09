@@ -1,140 +1,94 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, jsonify, abort
+from datetime import datetime, date
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from werkzeug.security import check_password_hash, generate_password_hash
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from werkzeug.security import check_password_hash
 
+# -----------------------------------------------------------------------------
+# DB setup
+# -----------------------------------------------------------------------------
 db = SQLAlchemy()
-login_manager = LoginManager()
 
 
 def _normalize_db_url(url: str) -> str:
+    # Render/Heroku: postgres:// -> postgresql://
     if url and url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql://", 1)
     return url
 
 
-def create_app():
+def create_app() -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
     CORS(app)
 
     # ------------------- Config -------------------
     database_url = _normalize_db_url(os.getenv("DATABASE_URL", ""))
     if not database_url:
-        database_url = "sqlite:///instance/dev.sqlite3"
         os.makedirs("instance", exist_ok=True)
+        database_url = "sqlite:///instance/dev.sqlite3"
 
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JSON_SORT_KEYS"] = False
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
 
-    # Init estensioni
+    # Init DB
     db.init_app(app)
-    login_manager.init_app(app)
-    login_manager.login_view = "login_page"
-    login_manager.login_message_category = "info"
 
     # ------------------- Import modelli -------------------
-    # I tuoi modelli stanno in models.py (o backend/models.py)
-    User = Restaurant = None
+    # I modelli stanno nel file models.py del tuo progetto
     try:
         import models  # type: ignore
-        User = getattr(models, "User", None)
-        Restaurant = getattr(models, "Restaurant", None)
     except Exception:
-        try:
-            from backend import models as _models  # type: ignore
-            User = getattr(_models, "User", None)
-            Restaurant = getattr(_models, "Restaurant", None)
-        except Exception:
-            pass
+        from backend import models  # type: ignore
 
-    if User is None:
-        @login_manager.user_loader
-        def _no_user_loader(_user_id: str):
+    # ------------------- Login Manager -------------------
+    login_manager = LoginManager(app)
+    login_manager.login_view = "login_page"
+
+    @login_manager.user_loader
+    def load_user(user_id: str):
+        # Evita transazione “sporca” se la tabella non esiste ancora
+        try:
+            return db.session.get(models.User, int(user_id))
+        except Exception:
+            db.session.rollback()
             return None
-    else:
-        @login_manager.user_loader
-        def load_user(user_id: str):
-            try:
-                return db.session.get(User, int(user_id))
-            except Exception:
-                return User.query.get(int(user_id))  # type: ignore[attr-defined]
 
-    # ------------------- Blueprints esistenti (se presenti) -------------
-    for dotted in [
-        "backend.api_public:bp_public",
-        "backend.auth:bp_auth",
-        "backend.admin:bp_admin",
-        "backend.dashboard:bp_dashboard",
-    ]:
-        try:
-            module_name, var_name = dotted.split(":")
-            mod = __import__(module_name, fromlist=[var_name])
-            app.register_blueprint(getattr(mod, var_name))
-        except Exception:
-            pass
-
-    # ------------------- Voice slots endpoints --------------------------
+    # ------------------- Blueprint opzionali -------------------
+    # Voice slots REST (già presente nel repo)
     try:
-        from backend.voice_slots import bp_voice_slots
+        from backend.voice_slots import bp_voice_slots  # type: ignore
     except Exception:
         from voice_slots import bp_voice_slots  # type: ignore
     app.register_blueprint(bp_voice_slots)
 
-    # ------------------- Healthcheck -----------------------------------
+    # ------------------- Healthcheck -------------------
     @app.get("/healthz")
-    def _health():
+    def healthz():
         return {"ok": True}
 
-    # ------------------- Auth (UI) -------------------------------------
-    @app.get("/")
+    # ------------------- Routing: login come homepage -------------------
+    @app.route("/", methods=["GET"])
     def login_page():
+        # se già loggato → dashboard
+        if current_user.is_authenticated:
+            return redirect(url_for("dashboard"))
         return render_template("login.html")
 
-    @app.post("/login", endpoint="login")
+    @app.post("/login")
     def login_post():
-        if User is None:
-            abort(500, description="User model non disponibile.")
+        username = (request.form.get("username") or "").strip()
+        password = (request.form.get("password") or "").strip()
 
-        # i tuoi template usano 'username' / 'password'
-        if request.is_json:
-            payload = request.get_json(silent=True) or {}
-            username = (payload.get("username") or "").strip()
-            password = payload.get("password") or ""
-        else:
-            username = (request.form.get("username") or "").strip()
-            password = request.form.get("password") or ""
+        user = models.User.query.filter_by(username=username).first()
+        if not user or not check_password_hash(user.password, password):
+            return render_template("login.html", error="Credenziali non valide.")
 
-        if not username or not password:
-            return render_template("login.html", error="Inserisci username e password"), 400
-
-        # cerca user
-        try:
-            user = User.query.filter_by(username=username).first()  # type: ignore[attr-defined]
-        except Exception:
-            stmt = db.select(User).filter_by(username=username)
-            user = db.session.execute(stmt).scalar_one_or_none()
-
-        if not user:
-            return render_template("login.html", error="Credenziali non valide"), 401
-
-        stored = getattr(user, "password", None)
-        ok = False
-        if isinstance(stored, str) and (
-            stored.startswith("pbkdf2:") or stored.startswith("scrypt:") or stored.startswith("argon2:")
-        ):
-            ok = check_password_hash(stored, password)
-        else:
-            ok = (stored == password)
-
-        if not ok:
-            return render_template("login.html", error="Credenziali non valide"), 401
-
-        login_user(user)
-        return redirect(url_for("dashboard_page"))
+        login_user(user, remember=bool(request.form.get("remember")))
+        return redirect(url_for("dashboard"))
 
     @app.get("/logout")
     @login_required
@@ -142,76 +96,119 @@ def create_app():
         logout_user()
         return redirect(url_for("login_page"))
 
+    # ------------------- Dashboard (protetta) -------------------
     @app.get("/dashboard")
     @login_required
-    def dashboard_page():
-        return render_template("dashboard.html", user=current_user)
+    def dashboard():
+        # carica qualche dato base
+        rest = models.Restaurant.query.get(current_user.restaurant_id)
+        return render_template("dashboard.html", restaurant=rest)
 
-    # ------------------- BOOTSTRAP TEMPORANEO (crea tabelle + admin) ----
-    BOOT_TOKEN = os.getenv("ADMIN_BOOTSTRAP_TOKEN", "")
-
-    def _check_bootstrap_token():
-        if not BOOT_TOKEN:
-            abort(403, description="ADMIN_BOOTSTRAP_TOKEN non impostato.")
-        hdr = request.headers.get("X-Bootstrap-Token", "")
-        if hdr != BOOT_TOKEN:
-            abort(403, description="X-Bootstrap-Token errato.")
-
-    @app.post("/admin/bootstrap/init")
-    def bootstrap_init():
-        """Crea tutte le tabelle dei modelli."""
-        _check_bootstrap_token()
-        if User is None:
-            abort(500, description="Modelli non importati.")
-
-        with app.app_context():
-            db.create_all()
-        return jsonify(ok=True, created=True)
-
-    @app.post("/admin/bootstrap/seed-admin")
-    def bootstrap_seed_admin():
+    # =========================================================================
+    # ===============            API BACKOFFICE               ==================
+    # =========================================================================
+    # Tutte le API richiedono autenticazione
+    # 1) Prenotazioni
+    @app.post("/api/reservations")
+    @login_required
+    def api_reservation_create():
         """
-        Crea (se mancano) un Restaurant di default e un utente admin.
-        Env usate:
-          ADMIN_USERNAME (default: admin)
-          ADMIN_PASSWORD (default: changeme)
-          ADMIN_RESTAURANT (default: 'Haru Asian Fusion Restaurant')
+        Payload atteso (JSON):
+        {
+          "date":"YYYY-MM-DD", "time":"HH:MM",
+          "name":"", "phone":"", "people":4,
+          "status":"Confermata", "notes":""
+        }
         """
-        _check_bootstrap_token()
-        if User is None or Restaurant is None:
-            abort(500, description="Modelli non importati.")
-
-        admin_username = os.getenv("ADMIN_USERNAME", "admin")
-        admin_password = os.getenv("ADMIN_PASSWORD", "changeme")
-        admin_hash = generate_password_hash(admin_password)
-
-        rest_name = os.getenv("ADMIN_RESTAURANT", "Haru Asian Fusion Restaurant")
-
-        # crea restaurant se manca
-        rest = Restaurant.query.filter_by(name=rest_name).first()
-        if not rest:
-            rest = Restaurant(name=rest_name, logo_path="img/logo_robot.svg")
-            db.session.add(rest)
+        data = request.get_json(force=True, silent=False)
+        try:
+            when = datetime.strptime(f"{data['date']} {data['time']}", "%Y-%m-%d %H:%M")
+            r = models.Reservation(
+                restaurant_id=current_user.restaurant_id,
+                when=when,
+                customer_name=(data.get("name") or "").strip(),
+                customer_phone=(data.get("phone") or "").strip(),
+                party_size=int(data.get("people", 2)),
+                status=(data.get("status") or "Confermata"),
+                notes=(data.get("notes") or "").strip(),
+            )
+            db.session.add(r)
             db.session.commit()
+            return jsonify(ok=True, id=r.id)
+        except Exception as e:
+            db.session.rollback()
+            return jsonify(ok=False, error=str(e)), 400
 
-        # crea user se manca
-        user = User.query.filter_by(username=admin_username).first()
-        if not user:
-            user = User(username=admin_username, password=admin_hash, restaurant_id=rest.id)
-            db.session.add(user)
+    # 2) Orari settimanali (stringhe tipo "12:00-15, 19:00-22:30")
+    @app.put("/api/restaurant/hours")
+    @login_required
+    def api_hours_update():
+        """
+        Payload atteso:
+        { "mon":"12:00-15, 19:00-22:30", "tue":"", "wed":"", "thu":"", "fri":"", "sat":"", "sun":"" }
+        Giorno vuoto = chiuso
+        """
+        data = request.get_json(force=True, silent=False)
+        try:
+            rest = models.Restaurant.query.get_or_404(current_user.restaurant_id)
+            for key in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]:
+                setattr(rest, f"hours_{key}", (data.get(key) or "").strip())
             db.session.commit()
-            created = True
-        else:
-            # aggiorna password se vuoi forzare
-            user.password = admin_hash
-            db.session.commit()
-            created = False
+            return jsonify(ok=True)
+        except Exception as e:
+            db.session.rollback()
+            return jsonify(ok=False, error=str(e)), 400
 
-        return jsonify(ok=True, restaurant_id=rest.id, user_id=user.id, created=created)
+    # 3) Giorni speciali (aperture/chiusure e finestre orarie)
+    @app.post("/api/restaurant/special")
+    @login_required
+    def api_special_upsert():
+        """
+        Payload:
+        { "date":"YYYY-MM-DD", "closed":true/false, "windows":"18:00-23:00, 12:00-15:00" }
+        """
+        data = request.get_json(force=True, silent=False)
+        try:
+            d = datetime.strptime(data["date"], "%Y-%m-%d").date()
+            s = models.SpecialDay.query.filter_by(
+                restaurant_id=current_user.restaurant_id, day=d
+            ).first()
+            if not s:
+                s = models.SpecialDay(
+                    restaurant_id=current_user.restaurant_id,
+                    day=d,
+                )
+                db.session.add(s)
+            s.is_closed = bool(data.get("closed", False))
+            s.windows = (data.get("windows") or "").strip()
+            db.session.commit()
+            return jsonify(ok=True, id=s.id)
+        except Exception as e:
+            db.session.rollback()
+            return jsonify(ok=False, error=str(e)), 400
+
+    @app.delete("/api/restaurant/special")
+    @login_required
+    def api_special_delete():
+        # querystring: ?date=YYYY-MM-DD
+        ds = request.args.get("date")
+        try:
+            d = datetime.strptime(ds, "%Y-%m-%d").date()
+            s = models.SpecialDay.query.filter_by(
+                restaurant_id=current_user.restaurant_id, day=d
+            ).first()
+            if s:
+                db.session.delete(s)
+                db.session.commit()
+            return jsonify(ok=True)
+        except Exception as e:
+            db.session.rollback()
+            return jsonify(ok=False, error=str(e)), 400
 
     return app
 
 
+# WSGI entrypoint per gunicorn
 app = create_app()
 
 if __name__ == "__main__":
