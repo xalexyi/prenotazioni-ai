@@ -4,7 +4,7 @@ from sqlalchemy import func
 
 # import robusti per db e modello
 try:
-    from backend import db
+    from backend import db  # se hai un backend package che re-exporta db
 except Exception:
     try:
         from app import db
@@ -14,16 +14,17 @@ except Exception:
 try:
     from models import ActiveCall   # models.py in root
 except Exception:
-    # se i modelli sono in backend/models.py
-    from backend.models import ActiveCall
+    from backend.models import ActiveCall  # se i modelli sono in backend/models.py
 
 bp_voice_slots = Blueprint("voice_slots", __name__, url_prefix="/api/voice/slot")
+
 
 def _get_json():
     data = request.get_json(silent=True) or {}
     if not data and request.form:
         data = request.form.to_dict()
     return data
+
 
 @bp_voice_slots.route("/acquire", methods=["POST"])
 def acquire_slot():

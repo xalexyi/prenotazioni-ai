@@ -1,4 +1,3 @@
-# app.py
 import os
 from flask import Flask, render_template, request, redirect, url_for, jsonify, abort
 from flask_sqlalchemy import SQLAlchemy
@@ -90,62 +89,58 @@ def create_app():
     def _health():
         return {"ok": True}
 
-    # ------------------- Auth minimale ---------------------------------
+    # ------------------- Auth ---------------------------------
     # HOME = pagina di login
     @app.get("/")
     def login_page():
         return render_template("login.html")
 
-    # POST /login supporta form HTML (email/password) o JSON
-    @app.post("/login")
+    # POST /login (endpoint forzato a 'login' per compatibilità template)
+    @app.post("/login", endpoint="login")
     def login_post():
         if User is None:
             abort(500, description="User model non disponibile: non posso autenticare.")
 
+        # Legge sia JSON che form, ma i tuoi template usano form con 'username'/'password'
         if request.is_json:
             payload = request.get_json(silent=True) or {}
-            email = (payload.get("email") or "").strip().lower()
+            username = (payload.get("username") or "").strip()
             password = payload.get("password") or ""
         else:
-            email = (request.form.get("email") or "").strip().lower()
+            username = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
 
-        if not email or not password:
-            return render_template("login.html", error="Inserisci email e password"), 400
+        if not username or not password:
+            return render_template("login.html", error="Inserisci username e password"), 400
 
-        # Trova utente
+        # Trova utente per username
         try:
-            # Preferisci User.query.filter_by(...)
-            user = User.query.filter_by(email=email).first()  # type: ignore[attr-defined]
+            user = User.query.filter_by(username=username).first()  # type: ignore[attr-defined]
         except Exception:
-            # SQLAlchemy 2.x con session
-            stmt = db.select(User).filter_by(email=email)
+            stmt = db.select(User).filter_by(username=username)
             user = db.session.execute(stmt).scalar_one_or_none()
 
         if not user:
             return render_template("login.html", error="Credenziali non valide"), 401
 
-        # Verifica password: prova metodo custom, altrimenti check hash
+        # Verifica password: se è hash riconosciuto -> check_password_hash; altrimenti confronto diretto
+        stored = getattr(user, "password", None)
         ok = False
-        if hasattr(user, "check_password"):
-            try:
-                ok = bool(user.check_password(password))  # type: ignore[attr-defined]
-            except Exception:
-                ok = False
-        if not ok:
-            # fallback su password_hash
-            pwd_hash = getattr(user, "password_hash", None)
-            if pwd_hash:
-                ok = check_password_hash(pwd_hash, password)
+        if isinstance(stored, str) and (
+            stored.startswith("pbkdf2:") or stored.startswith("scrypt:") or stored.startswith("argon2:")
+        ):
+            ok = check_password_hash(stored, password)
+        else:
+            ok = (stored == password)
 
         if not ok:
             return render_template("login.html", error="Credenziali non valide"), 401
 
         login_user(user)  # crea la sessione
-        # redirect alla dashboard
         return redirect(url_for("dashboard_page"))
 
     @app.get("/logout")
+    @login_required
     def logout():
         logout_user()
         return redirect(url_for("login_page"))
@@ -154,8 +149,6 @@ def create_app():
     @app.get("/dashboard")
     @login_required
     def dashboard_page():
-        # qui sei sicuro che current_user è autenticato
-        # puoi passare info al template se ti serve
         return render_template("dashboard.html", user=current_user)
 
     # Endpoint di info rapido
@@ -164,7 +157,7 @@ def create_app():
         return jsonify(
             ok=True,
             auth=bool(current_user.is_authenticated),
-            user=getattr(current_user, "email", None),
+            user=getattr(current_user, "username", None),
             routes=["/", "/login", "/logout", "/dashboard (protetta)", "/healthz"],
         )
 
