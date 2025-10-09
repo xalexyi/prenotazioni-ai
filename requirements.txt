@@ -11,3 +11,4 @@ openai==1.45.0
 phonenumbers==8.13.45
 requests==2.32.3
 python-dateutil==2.9.0.post0
+Flask-Cors==4.0.1
