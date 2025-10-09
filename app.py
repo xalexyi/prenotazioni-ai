@@ -1,18 +1,13 @@
+# app.py
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
-# -----------------------------------------------------------------------------
-# DB setup (unico punto d'ingresso, non rompe import esistenti)
-# -----------------------------------------------------------------------------
 db = SQLAlchemy()
 
 
 def _normalize_db_url(url: str) -> str:
-    """
-    Render/Heroku a volte forniscono 'postgres://...' ma SQLAlchemy vuole 'postgresql://...'
-    """
     if url and url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql://", 1)
     return url
@@ -25,7 +20,6 @@ def create_app():
     # ------------------- Config -------------------
     database_url = _normalize_db_url(os.getenv("DATABASE_URL", ""))
     if not database_url:
-        # fallback locale (solo dev)
         database_url = "sqlite:///instance/dev.sqlite3"
         os.makedirs("instance", exist_ok=True)
 
@@ -34,10 +28,9 @@ def create_app():
     app.config["JSON_SORT_KEYS"] = False
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
 
-    # Inizializza DB
     db.init_app(app)
 
-    # ------------------- Import modelli -------------------
+    # ------------------- Import modelli (best-effort) -------------------
     try:
         import models  # noqa: F401
     except Exception:
@@ -46,7 +39,7 @@ def create_app():
         except Exception:
             pass
 
-    # ------------------- Blueprint esistenti -------------------
+    # ------------------- Blueprints esistenti (se presenti) -------------
     for dotted in [
         "backend.api_public:bp_public",
         "backend.auth:bp_auth",
@@ -60,42 +53,70 @@ def create_app():
         except Exception:
             pass
 
-    # ------------------- Blueprint: voice_slots -------------------
+    # ------------------- Voice slots endpoints --------------------------
     try:
         from backend.voice_slots import bp_voice_slots
     except Exception:
         from voice_slots import bp_voice_slots  # type: ignore
     app.register_blueprint(bp_voice_slots)
 
-    # ------------------- (OPZIONALE) Blueprint admin_sql -------------------
-    try:
-        from backend.admin_sql import bp_admin_sql  # type: ignore
-        app.register_blueprint(bp_admin_sql)
-    except Exception:
-        pass
+    # ------------------- Healthcheck -----------------------------------
+    @app.get("/healthz")
+    def _health():
+        return {"ok": True}
 
-    # ------------------- Rotte principali (UI) -------------------
+    # ------------------- UI Routes (con fallback) -----------------------
+    FALLBACK_HTML = """<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prenotazioni AI</title>
+<link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body style="font-family:system-ui,Segoe UI,Roboto,Arial;padding:24px;max-width:900px;margin:auto">
+  <h1>🟢 Prenotazioni AI</h1>
+  <p>Backend attivo. La pagina dashboard non è disponibile o ha richiesto variabili non fornite.</p>
+  <ul>
+    <li><a href="/healthz">/healthz</a> – stato</li>
+    <li><a href="/dashboard">/dashboard</a> – prova a caricare il template</li>
+  </ul>
+</body>
+</html>"""
+
+    def _safe_render(name: str) -> Response:
+        """
+        Prova a renderizzare un template. Se manca o il template va in errore
+        (es. variabili attese non presenti), torna una landing HTML di fallback.
+        """
+        try:
+            return render_template(name)
+        except Exception as e:
+            # Logga l’errore su console (visibile nei Logs di Render)
+            print(f"[ui] render_template('{name}') FAILED: {e}")
+            return Response(FALLBACK_HTML, mimetype="text/html")
 
     @app.get("/")
     def home():
-        # mostra la dashboard (puoi cambiare in "index.html" se vuoi homepage diversa)
-        return render_template("dashboard.html")
+        # prova dashboard.html -> fallback HTML statico
+        return _safe_render("dashboard.html")
+
+    @app.get("/dashboard")
+    def dashboard():
+        return _safe_render("dashboard.html")
 
     @app.get("/login")
     def login_page():
-        return render_template("login.html")
+        return _safe_render("login.html")
 
-    # ------------------- Healthcheck -------------------
-    @app.get("/healthz")
-    def _health():
-        return {"ok": True, "service": "prenotazioni-ai", "docs": "/healthz"}
+    # endpoint di servizio
+    @app.get("/__info")
+    def __info():
+        return jsonify(ok=True, service="prenotazioni-ai", routes=["/", "/dashboard", "/login", "/healthz"])
 
     return app
 
 
-# -----------------------------------------------------------------------------
-# Avvio app per Render o locale
-# -----------------------------------------------------------------------------
 app = create_app()
 
 if __name__ == "__main__":
