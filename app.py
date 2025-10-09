@@ -1,6 +1,6 @@
 # app.py
 import os
-from flask import Flask, render_template, jsonify, Response
+from flask import Flask, render_template
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
@@ -42,7 +42,7 @@ def create_app():
     # ------------------- Blueprints esistenti (se presenti) -------------
     for dotted in [
         "backend.api_public:bp_public",
-        "backend.auth:bp_auth",
+        "backend.auth:bp_auth",         # ← se hai le route di login/logout qui, restano valide
         "backend.admin:bp_admin",
         "backend.dashboard:bp_dashboard",
     ]:
@@ -60,59 +60,22 @@ def create_app():
         from voice_slots import bp_voice_slots  # type: ignore
     app.register_blueprint(bp_voice_slots)
 
+    # ------------------- UI: login come home, dashboard separata --------
+    @app.get("/")
+    def login_page():
+        # pagina iniziale = login
+        return render_template("login.html")
+
+    @app.get("/dashboard")
+    def dashboard_page():
+        # pagina dashboard (se vuoi proteggerla con Flask-Login,
+        # aggiungi @login_required qui oppure gestiscilo nel blueprint auth)
+        return render_template("dashboard.html")
+
     # ------------------- Healthcheck -----------------------------------
     @app.get("/healthz")
     def _health():
         return {"ok": True}
-
-    # ------------------- UI Routes (con fallback) -----------------------
-    FALLBACK_HTML = """<!doctype html>
-<html lang="it">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Prenotazioni AI</title>
-<link rel="stylesheet" href="/static/css/styles.css">
-</head>
-<body style="font-family:system-ui,Segoe UI,Roboto,Arial;padding:24px;max-width:900px;margin:auto">
-  <h1>🟢 Prenotazioni AI</h1>
-  <p>Backend attivo. La pagina dashboard non è disponibile o ha richiesto variabili non fornite.</p>
-  <ul>
-    <li><a href="/healthz">/healthz</a> – stato</li>
-    <li><a href="/dashboard">/dashboard</a> – prova a caricare il template</li>
-  </ul>
-</body>
-</html>"""
-
-    def _safe_render(name: str) -> Response:
-        """
-        Prova a renderizzare un template. Se manca o il template va in errore
-        (es. variabili attese non presenti), torna una landing HTML di fallback.
-        """
-        try:
-            return render_template(name)
-        except Exception as e:
-            # Logga l’errore su console (visibile nei Logs di Render)
-            print(f"[ui] render_template('{name}') FAILED: {e}")
-            return Response(FALLBACK_HTML, mimetype="text/html")
-
-    @app.get("/")
-    def home():
-        # prova dashboard.html -> fallback HTML statico
-        return _safe_render("dashboard.html")
-
-    @app.get("/dashboard")
-    def dashboard():
-        return _safe_render("dashboard.html")
-
-    @app.get("/login")
-    def login_page():
-        return _safe_render("login.html")
-
-    # endpoint di servizio
-    @app.get("/__info")
-    def __info():
-        return jsonify(ok=True, service="prenotazioni-ai", routes=["/", "/dashboard", "/login", "/healthz"])
 
     return app
 
