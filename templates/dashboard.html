@@ -27,20 +27,25 @@
   <div class="card filters">
     <div class="filter-row">
       <div class="date-input">
-        <input class="input" type="text" value="{{ selected_date or '25/09/2025' }}" aria-label="Data">
+        <!-- ID agganciati al JS -->
+        <input id="flt-date" class="input" type="date" aria-label="Data">
         <span class="calendar-ico">📅</span>
       </div>
-      <input class="input grow" type="text" placeholder="Cerca nome / telefono / orario">
+      <input id="flt-q" class="input grow" type="text" placeholder="Cerca nome / telefono / orario">
       <div class="row-gap"></div>
-      <button class="btn">Filtra</button>
-      <button class="btn btn-ghost">Elimina filtri</button>
-      <button class="btn btn-ghost">Storico 30gg</button>
-      <button class="btn btn-ghost">Oggi</button>
-      <button class="btn btn-primary right">+ Nuova prenotazione</button>
+      <button id="btn-filter" class="btn">Filtra</button>
+      <button id="btn-clear" class="btn btn-ghost">Elimina filtri</button>
+      <button id="btn-30d" class="btn btn-ghost">Storico 30gg</button>
+      <button id="btn-today" class="btn btn-ghost">Oggi</button>
+      <button id="btn-new" class="btn btn-primary right">+ Nuova prenotazione</button>
     </div>
   </div>
 
-  <div class="card empty">
+  <!-- elenco prenotazioni -->
+  <div id="list"></div>
+
+  <!-- stato vuoto -->
+  <div id="list-empty" class="card empty" style="display:none">
     <div class="empty-title">Nessuna prenotazione trovata</div>
     <div class="muted">Prova a cambiare filtri o aggiungi una nuova prenotazione.</div>
     <button class="pill minus" aria-label="collapse">−</button>
