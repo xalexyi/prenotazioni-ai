@@ -1,19 +1,17 @@
 # app.py
 import os
-from flask import Flask
+from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
 # -----------------------------------------------------------------------------
-# DB setup (unico punto d'ingresso, non rompe import esistenti)
+# DB setup (unico punto d'ingresso)
 # -----------------------------------------------------------------------------
 db = SQLAlchemy()
 
 
 def _normalize_db_url(url: str) -> str:
-    """
-    Render/Heroku a volte forniscono 'postgres://...' ma SQLAlchemy vuole 'postgresql://...'
-    """
+    """Render/Heroku: 'postgres://' -> 'postgresql://' per SQLAlchemy."""
     if url and url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql://", 1)
     return url
@@ -24,7 +22,6 @@ def create_app():
     CORS(app)
 
     # ------------------- Config -------------------
-    # Prende DATABASE_URL dall'ambiente Render
     database_url = _normalize_db_url(os.getenv("DATABASE_URL", ""))
     if not database_url:
         # fallback locale (solo dev)
@@ -39,19 +36,17 @@ def create_app():
     # Inizializza DB
     db.init_app(app)
 
-    # ------------------- Import modelli (non tocco la tua struttura) -------------------
-    # Carica i modelli così le tabelle esistono quando serve
+    # ------------------- Import modelli -------------------
+    # Carichiamo i modelli così le tabelle sono note all'app
     try:
         import models  # noqa: F401
     except Exception:
         try:
             from backend import models as _models  # noqa: F401
         except Exception:
-            pass  # se i modelli vengono importati altrove, va comunque bene
+            pass
 
     # ------------------- Blueprint di base esistenti (se presenti) -------------------
-    # Registriamo eventuali blueprint già nel tuo progetto, ma solo se esistono.
-    # Questi try/except NON alterano la tua struttura: se non ci sono, saltano.
     for dotted in [
         "backend.api_public:bp_public",
         "backend.auth:bp_auth",
@@ -70,30 +65,24 @@ def create_app():
     try:
         from backend.voice_slots import bp_voice_slots
     except Exception:
-        # Se hai messo voice_slots.py accanto a app.py
         from voice_slots import bp_voice_slots  # type: ignore
     app.register_blueprint(bp_voice_slots)
 
-    # ------------------- (OPZIONALE) Blueprint admin_sql una-tantum -------------------
-    # Attivalo SOLO se vuoi inizializzare il DB via /admin/sql/init-active-calls,
-    # poi rimuovi questa registrazione per sicurezza.
-    try:
-        from backend.admin_sql import bp_admin_sql  # type: ignore
-        app.register_blueprint(bp_admin_sql)
-    except Exception:
-        pass
-
-    # ------------------- Healthcheck semplice -------------------
+    # ------------------- Healthcheck & root -------------------
     @app.get("/healthz")
     def _health():
         return {"ok": True}
 
+    @app.get("/")
+    def _root():
+        # Facoltativo: pagina base per evitare 404 in homepage
+        return jsonify(ok=True, service="prenotazioni-ai", docs="/healthz")
+
     return app
 
 
-# Per gunicorn: `web: gunicorn app:app` (Render)
+# Per gunicorn: `web: gunicorn app:app`
 app = create_app()
 
 if __name__ == "__main__":
-    # Avvio locale
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
