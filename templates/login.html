@@ -1,27 +1,33 @@
 {% extends "base.html" %}
+{% block title %}Accedi — Ristorante AI{% endblock %}
+{% block brand %}Ristorante AI{% endblock %}
+{% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
+
 {% block body %}
 <div class="login-grid">
-  <section class="card">
-    <h2>Benvenuto/a 👋</h2>
-    <p>Gestisci prenotazioni e stato chiamate in un click.</p>
+  <section class="card welcome-card">
+    <h1 class="welcome-title">Benvenuto/a <span class="wave">👋</span></h1>
+    <p class="muted">Gestisci prenotazioni e stato chiamate in un click.</p>
 
-    <div class="callout">
-      <b>📋 Istruzioni rapide</b>
-      <div class="cols">
+    <div class="dashed-box">
+      <div class="chunk">
+        <div class="chunk-title">Istruzioni rapide</div>
+      </div>
+      <div class="grid-2">
         <div>
-          <p><b>Come entrare</b></p>
-          <ul>
-            <li>🔑 Inserisci <b>username</b> del ristorante</li>
-            <li>🔒 Digita la <b>password</b></li>
-            <li>✅ Clicca <b>“Log in”</b></li>
+          <div class="chunk-title">Come entrare</div>
+          <ul class="list">
+            <li><span class="dot dot-blue"></span>Inserisci <strong>username</strong> del ristorante</li>
+            <li><span class="dot dot-yellow"></span>Digita la <strong>password</strong></li>
+            <li><span class="dot dot-green"></span>Clicca <strong>“Log in”</strong></li>
           </ul>
         </div>
         <div>
-          <p><b>Dopo il login vedrai</b></p>
-          <ul>
-            <li>🟢 <b>Chiamate attive</b> e stato linea</li>
-            <li>📅 <b>Prenotazioni del giorno</b></li>
-            <li>⚡ Azioni rapide: <b>Conferma / Rifiuta / Elimina</b></li>
+          <div class="chunk-title">Dopo il login vedrai</div>
+          <ul class="list">
+            <li><span class="led led-green"></span><strong>Chiamate attive</strong> e stato linea</li>
+            <li><span class="led led-purple"></span><strong>Prenotazioni del giorno</strong></li>
+            <li><span class="zap">⚡</span>Azioni rapide: <strong>Conferma / Rifiuta / Elimina</strong></li>
           </ul>
         </div>
       </div>
@@ -29,25 +35,27 @@
   </section>
 
   <section class="card form-card">
-    <form method="post" action="{{ url_for('login') }}">
-      <label>Username
-        <input name="username" autocomplete="username" placeholder="haru_admin" required />
+    <form method="post" action="{{ url_for('login_page') }}" class="form">
+      <label class="lbl">Username
+        <input class="input" name="username" autocomplete="username"
+               value="{{ request.form.username or 'haru_admin' }}" required>
       </label>
 
-      <label>Password
-        <input name="password" type="password" autocomplete="current-password" placeholder="Password123!" required />
+      <label class="lbl">Password
+        <input class="input" type="password" name="password" autocomplete="current-password"
+               value="{{ request.form.password or 'Password123!' }}" required>
       </label>
 
-      <label class="checkbox">
-        <input type="checkbox" name="remember" value="1" checked />
-        Rimani connesso
+      <label class="check">
+        <input type="checkbox" name="remember" checked>
+        <span>Rimani connesso</span>
       </label>
 
       <button class="btn btn-primary" type="submit">Log in</button>
 
-      <p class="muted" style="margin-top:12px">
-        Demo: <code>haru_admin / Password123!</code> — <code>pizzerianapoli / Password123!</code>
-      </p>
+      <div class="demo-note">
+        Demo: <strong>sushitokyo / Password123!</strong> — <strong>pizzerianapoli / Password123!</strong>
+      </div>
     </form>
   </section>
 </div>
