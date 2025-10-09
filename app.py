@@ -1,17 +1,18 @@
-# app.py
 import os
-from flask import Flask, jsonify
+from flask import Flask, render_template
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 
 # -----------------------------------------------------------------------------
-# DB setup (unico punto d'ingresso)
+# DB setup (unico punto d'ingresso, non rompe import esistenti)
 # -----------------------------------------------------------------------------
 db = SQLAlchemy()
 
 
 def _normalize_db_url(url: str) -> str:
-    """Render/Heroku: 'postgres://' -> 'postgresql://' per SQLAlchemy."""
+    """
+    Render/Heroku a volte forniscono 'postgres://...' ma SQLAlchemy vuole 'postgresql://...'
+    """
     if url and url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql://", 1)
     return url
@@ -37,7 +38,6 @@ def create_app():
     db.init_app(app)
 
     # ------------------- Import modelli -------------------
-    # Carichiamo i modelli così le tabelle sono note all'app
     try:
         import models  # noqa: F401
     except Exception:
@@ -46,7 +46,7 @@ def create_app():
         except Exception:
             pass
 
-    # ------------------- Blueprint di base esistenti (se presenti) -------------------
+    # ------------------- Blueprint esistenti -------------------
     for dotted in [
         "backend.api_public:bp_public",
         "backend.auth:bp_auth",
@@ -60,28 +60,42 @@ def create_app():
         except Exception:
             pass
 
-    # ------------------- (NUOVO) Blueprint: voice_slots -------------------
-    # /api/voice/slot/acquire  e  /api/voice/slot/release
+    # ------------------- Blueprint: voice_slots -------------------
     try:
         from backend.voice_slots import bp_voice_slots
     except Exception:
         from voice_slots import bp_voice_slots  # type: ignore
     app.register_blueprint(bp_voice_slots)
 
-    # ------------------- Healthcheck & root -------------------
-    @app.get("/healthz")
-    def _health():
-        return {"ok": True}
+    # ------------------- (OPZIONALE) Blueprint admin_sql -------------------
+    try:
+        from backend.admin_sql import bp_admin_sql  # type: ignore
+        app.register_blueprint(bp_admin_sql)
+    except Exception:
+        pass
+
+    # ------------------- Rotte principali (UI) -------------------
 
     @app.get("/")
-    def _root():
-        # Facoltativo: pagina base per evitare 404 in homepage
-        return jsonify(ok=True, service="prenotazioni-ai", docs="/healthz")
+    def home():
+        # mostra la dashboard (puoi cambiare in "index.html" se vuoi homepage diversa)
+        return render_template("dashboard.html")
+
+    @app.get("/login")
+    def login_page():
+        return render_template("login.html")
+
+    # ------------------- Healthcheck -------------------
+    @app.get("/healthz")
+    def _health():
+        return {"ok": True, "service": "prenotazioni-ai", "docs": "/healthz"}
 
     return app
 
 
-# Per gunicorn: `web: gunicorn app:app`
+# -----------------------------------------------------------------------------
+# Avvio app per Render o locale
+# -----------------------------------------------------------------------------
 app = create_app()
 
 if __name__ == "__main__":
