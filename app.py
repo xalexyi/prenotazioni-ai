@@ -1,114 +1,164 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash
+from datetime import datetime
+
+from flask import (
+    Flask, render_template, request, redirect, url_for, flash, jsonify
+)
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import (
+    LoginManager, login_user, logout_user, login_required, current_user
+)
 from flask_cors import CORS
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
 
 # -----------------------------------------------------------------------------
-# DB setup (unico punto d'ingresso)
+# DB
 # -----------------------------------------------------------------------------
 db = SQLAlchemy()
 
 
 def _normalize_db_url(url: str) -> str:
-    """
-    Render/Heroku a volte forniscono 'postgres://...' ma SQLAlchemy vuole 'postgresql://...'
-    """
+    # Render/Heroku a volte danno "postgres://", SQLAlchemy vuole "postgresql://"
     if url and url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql://", 1)
     return url
 
 
-def create_app():
+# -----------------------------------------------------------------------------
+# App factory
+# -----------------------------------------------------------------------------
+def create_app() -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
     CORS(app)
 
-    # ------------------- Config -------------------
+    # Config
     database_url = _normalize_db_url(os.getenv("DATABASE_URL", ""))
     if not database_url:
-        database_url = "sqlite:///instance/dev.sqlite3"
         os.makedirs("instance", exist_ok=True)
+        database_url = "sqlite:///instance/dev.sqlite3"
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["JSON_SORT_KEYS"] = False
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
+    app.config.update(
+        SQLALCHEMY_DATABASE_URI=database_url,
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        JSON_SORT_KEYS=False,
+        SECRET_KEY=os.getenv("SECRET_KEY", "dev-secret"),
+        REMEMBER_COOKIE_DURATION=60 * 60 * 24 * 30,  # 30 giorni
+    )
 
-    # Inizializza DB
+    # Init estensioni
     db.init_app(app)
 
-    # ------------------- Modelli -------------------
-    # I tuoi modelli stanno in backend/models.py
+    # Modelli (compatibile con root o backend/)
     try:
-        from backend.models import User, Restaurant  # type: ignore
-    except Exception:
-        # fallback se i modelli fossero in models.py (root)
         from models import User, Restaurant  # type: ignore
+    except Exception:  # pragma: no cover
+        from backend.models import User, Restaurant  # type: ignore
 
-    # ------------------- Login Manager -------------------
-    login_manager = LoginManager()
-    login_manager.login_view = "login_page"
-    login_manager.init_app(app)
+    # Login manager
+    login_manager = LoginManager(app)
+    login_manager.login_view = "login"  # se non loggato → /login
 
     @login_manager.user_loader
-    def load_user(user_id):
+    def load_user(user_id: str):
         try:
-            # SQLAlchemy 2.x
-            return db.session.get(User, int(user_id))  # type: ignore[attr-defined]
+            return db.session.get(User, int(user_id))
         except Exception:
-            # compat vecchia API
-            return User.query.get(int(user_id))  # type: ignore[attr-defined]
+            # Evita di tenere sessioni rotte in caso di tabelle non create
+            return None
 
-    # ------------------- Rotte di autenticazione -------------------
+    # Context comuni ai template
+    @app.context_processor
+    def inject_globals():
+        rest_name = None
+        try:
+            rest = Restaurant.query.first()
+            if rest:
+                rest_name = rest.name
+        except Exception:
+            pass
+        return dict(now=datetime.utcnow(), rest_name=rest_name)
+
+    # -----------------------------------------------------------------------------
+    # ROUTES
+    # -----------------------------------------------------------------------------
+
+    # Home = login
     @app.route("/", methods=["GET"])
-    def login_page():
-        # Mostra login sempre come prima pagina
+    def root():
+        return redirect(url_for("login"))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        """
+        GET: mostra login
+        POST: autentica e reindirizza al dashboard
+        """
+        if request.method == "POST":
+            username = (request.form.get("username") or "").strip()
+            password = request.form.get("password") or ""
+            remember = bool(request.form.get("remember"))
+
+            user = None
+            try:
+                # username case-sensitive (come avevi prima)
+                user = User.query.filter_by(username=username).first()
+            except Exception:
+                user = None
+
+            if not user:
+                flash("Utente inesistente.", "error")
+                return render_template("login.html"), 401
+
+            # password: accetta sia hash che plain (per ambienti test)
+            ok = False
+            try:
+                ok = check_password_hash(user.password, password)
+            except Exception:
+                ok = (user.password == password)
+
+            if not ok:
+                flash("Password errata.", "error")
+                return render_template("login.html"), 401
+
+            login_user(user, remember=remember)
+            return redirect(url_for("dashboard"))
+
+        # GET
         return render_template("login.html")
 
-    @app.route("/login", methods=["POST"])
-    def login():
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-
-        user = User.query.filter_by(username=username).first()  # type: ignore[attr-defined]
-        if not user or not check_password_hash(user.password, password):
-            flash("Credenziali non valide", "error")
-            return redirect(url_for("login_page"))
-
-        login_user(user)
-        return redirect(url_for("dashboard"))
-
     @app.route("/logout", methods=["POST", "GET"])
-    @login_required
     def logout():
         logout_user()
-        return redirect(url_for("login_page"))
+        return redirect(url_for("login"))
 
-    # ------------------- Dashboard protetta -------------------
-    @app.route("/dashboard", methods=["GET"])
+    @app.route("/dashboard")
     @login_required
     def dashboard():
-        # Qui puoi caricare dati del ristorante associato all'utente
-        rest = None
-        if current_user and getattr(current_user, "restaurant_id", None):
-            rest = db.session.get(Restaurant, current_user.restaurant_id)  # type: ignore
-        return render_template("dashboard.html", restaurant=rest)
+        # Mostra la tua dashboard (template già presente nel progetto)
+        return render_template("dashboard.html")
 
-    # ------------------- Blueprint: voice_slots -------------------
-    # /api/voice/slot/acquire  e  /api/voice/slot/release
-    from backend.voice_slots import bp_voice_slots  # <-- IMPORT PULITO (usa SQL grezzo, no modelli)
-    app.register_blueprint(bp_voice_slots)
-
-    # ------------------- Healthcheck -------------------
     @app.get("/healthz")
-    def _health():
-        return {"ok": True}
+    def healthz():
+        return jsonify(ok=True, service="prenotazioni-ai")
+
+    # -----------------------------------------------------------------------------
+    # Blueprints opzionali (registrati SOLO se presenti)
+    # -----------------------------------------------------------------------------
+    # voice_slots → /api/voice/slot/*
+    try:
+        try:
+            from backend.voice_slots import bp_voice_slots  # type: ignore
+        except Exception:
+            from voice_slots import bp_voice_slots  # type: ignore
+        app.register_blueprint(bp_voice_slots, url_prefix="/api/voice/slot")
+    except Exception:
+        # se non esiste nessuno dei due, ignora senza rompere il boot
+        pass
 
     return app
 
 
-# Per gunicorn: `web: gunicorn app:app`
+# Istanza WSGI per gunicorn
 app = create_app()
 
 if __name__ == "__main__":
