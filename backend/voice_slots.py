@@ -1,91 +1,137 @@
-# backend/voice_slots.py
 from flask import Blueprint, request, jsonify
-from sqlalchemy import func
-
-# import robusti per db e modello
-try:
-    from backend import db  # se hai un backend package che re-exporta db
-except Exception:
-    try:
-        from app import db
-    except Exception:
-        from . import db  # se sei in un package
-
-try:
-    from models import ActiveCall   # models.py in root
-except Exception:
-    from backend.models import ActiveCall  # se i modelli sono in backend/models.py
+from sqlalchemy import text
+from app import db
 
 bp_voice_slots = Blueprint("voice_slots", __name__, url_prefix="/api/voice/slot")
 
 
-def _get_json():
-    data = request.get_json(silent=True) or {}
-    if not data and request.form:
-        data = request.form.to_dict()
-    return data
+def _bool(v):
+    # Converte valori Postgres in boolean Python in modo sicuro
+    if isinstance(v, bool):
+        return v
+    if v in (1, "1", "t", "true", "True", "TRUE"):
+        return True
+    return False
 
 
-@bp_voice_slots.route("/acquire", methods=["POST"])
+@bp_voice_slots.post("/acquire")
 def acquire_slot():
     """
-    Body: { restaurant_id:int, call_sid:str, max:int? }
-    Ritorno: { overload:bool, active_count:int }
+    Body JSON:
+    {
+      "restaurant_id": 1,
+      "call_sid": "CA_xxx",
+      "max": 3
+    }
+
+    Ritorna:
+    { "restaurant_id": 1, "call_sid": "CA_xxx", "overload": false }
     """
-    p = _get_json()
+    data = request.get_json(force=True, silent=True) or {}
+
+    rid = int(data.get("restaurant_id") or 0)
+    csid = (data.get("call_sid") or "").strip()
+    max_calls = int(data.get("max") or 3)
+
+    if not rid or not csid:
+        return jsonify(error="restaurant_id e call_sid sono obbligatori"), 400
+
     try:
-        rid = int(p.get("restaurant_id") or 0)
-    except Exception:
-        rid = 0
-    call_sid = (p.get("call_sid") or "").strip()
-    max_concurrent = int(p.get("max") or 3)
+        # Chiama la funzione SQL (creata via 2025-10-active-calls.sql)
+        # acquire_slot(rid, call_sid, max) -> boolean (TRUE se overload)
+        res = db.session.execute(
+            text("SELECT acquire_slot(:rid, :csid, :max) AS overload"),
+            {"rid": rid, "csid": csid, "max": max_calls},
+        ).mappings().first()
 
-    if not rid or not call_sid:
-        return jsonify(error=True, reason="MISSING_FIELDS"), 400
+        overload = _bool(res["overload"]) if res is not None else True
+        db.session.commit()
 
-    # ripulisci eventuali pendenti troppo vecchie
-    ActiveCall.cleanup(ttl_minutes=10)
+        return jsonify(
+            restaurant_id=rid,
+            call_sid=csid,
+            overload=overload,
+            version="pg-func-1",
+        )
+    except Exception as e:
+        db.session.rollback()
+        # Fallback di emergenza (se le funzioni non esistono)
+        # Controllo conteggio attivi e poi inserimento grezzo
+        try:
+            cnt = db.session.execute(
+                text(
+                    "SELECT COUNT(*) AS n FROM active_calls WHERE restaurant_id=:rid AND active=TRUE"
+                ),
+                {"rid": rid},
+            ).scalar()
+            if cnt is None:
+                cnt = 0
 
-    active_count = (db.session.query(func.count(ActiveCall.id))
-                    .filter_by(restaurant_id=rid, active=True)
-                    .scalar())
+            if int(cnt) >= max_calls:
+                return jsonify(
+                    restaurant_id=rid, call_sid=csid, overload=True, version="fallback-raw"
+                ), 200
 
-    if active_count >= max_concurrent:
-        return jsonify(overload=True, active_count=active_count), 200
+            db.session.execute(
+                text(
+                    """
+                    INSERT INTO active_calls (restaurant_id, call_sid, active)
+                    VALUES (:rid, :csid, TRUE)
+                    ON CONFLICT (call_sid) DO UPDATE
+                      SET active = EXCLUDED.active,
+                          restaurant_id = EXCLUDED.restaurant_id
+                    """
+                ),
+                {"rid": rid, "csid": csid},
+            )
+            db.session.commit()
+            return jsonify(
+                restaurant_id=rid, call_sid=csid, overload=False, version="fallback-raw"
+            ), 200
+        except Exception as e2:
+            db.session.rollback()
+            return jsonify(error=f"acquire failed: {e2}"), 500
 
-    # upsert idempotente su call_sid
-    rec = ActiveCall.query.filter_by(call_sid=call_sid).one_or_none()
-    if rec:
-        rec.active = True
-        rec.restaurant_id = rid
-    else:
-        rec = ActiveCall(restaurant_id=rid, call_sid=call_sid, active=True)
-        db.session.add(rec)
 
-    db.session.commit()
-
-    active_count = (db.session.query(func.count(ActiveCall.id))
-                    .filter_by(restaurant_id=rid, active=True)
-                    .scalar())
-
-    return jsonify(overload=False, active_count=active_count), 200
-
-
-@bp_voice_slots.route("/release", methods=["POST"])
+@bp_voice_slots.post("/release")
 def release_slot():
     """
-    Body: { call_sid:str }
-    Ritorno: { released:bool }
+    Body JSON:
+    {
+      "call_sid": "CA_xxx"
+    }
+
+    Ritorna:
+    { "released": true }
     """
-    p = _get_json()
-    call_sid = (p.get("call_sid") or "").strip()
-    if not call_sid:
-        return jsonify(error=True, reason="MISSING_CALLSID"), 400
+    data = request.get_json(force=True, silent=True) or {}
+    csid = (data.get("call_sid") or "").strip()
 
-    rec = ActiveCall.query.filter_by(call_sid=call_sid).one_or_none()
-    if rec and rec.active:
-        rec.active = False
+    if not csid:
+        return jsonify(error="call_sid è obbligatorio"), 400
+
+    try:
+        # Chiama la funzione SQL (creata via 2025-10-active-calls.sql)
+        res = db.session.execute(
+            text("SELECT release_slot(:csid) AS released"),
+            {"csid": csid},
+        ).mappings().first()
+
+        released = _bool(res["released"]) if res is not None else False
         db.session.commit()
-        return jsonify(released=True), 200
-
-    return jsonify(released=False), 200
+        return jsonify(released=released, version="pg-func-1")
+    except Exception as e:
+        db.session.rollback()
+        # Fallback: update diretto
+        try:
+            res = db.session.execute(
+                text(
+                    "UPDATE active_calls SET active=FALSE WHERE call_sid=:csid AND active=TRUE RETURNING TRUE AS released"
+                ),
+                {"csid": csid},
+            ).mappings().first()
+            db.session.commit()
+            return jsonify(released=bool(res["released"]) if res else False, version="fallback-raw")
+        except Exception as e2:
+            db.session.rollback()
+            return jsonify(error=f"release failed: {e2}"), 500
