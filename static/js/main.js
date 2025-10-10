@@ -1,52 +1,78 @@
-// === helper già presenti nel tuo file (li lascio invariati se esistono) ===
-const $ = sel => document.querySelector(sel);
-const api = async (url, opts={}) => {
+/* helpers */
+const $  = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+async function api(url, opts = {}) {
   opts.credentials = 'include';
   opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
   const res = await fetch(url, opts);
-  const data = await res.json().catch(()=>({ok:false,error:'bad_json'}));
-  if(!res.ok || data.ok===false){ throw new Error(data.error || res.statusText); }
-  return data;
-};
+  let data = null;
+  try { data = await res.json(); } catch { /* HTML or empty */ }
+  if(!res.ok || (data && data.ok === false)){
+    const msg = (data && (data.error || data.message)) || res.statusText || 'Errore richiesta';
+    throw new Error(msg);
+  }
+  return data ?? {ok:true};
+}
 
-// === THEME TOGGLE FIX ===
+/* THEME toggle */
 function applyTheme(mode){
-  document.body.classList.toggle('theme-dark', mode === 'dark');
-  document.body.classList.toggle('theme-light', mode === 'light');
-  localStorage.setItem('theme', mode);
+  const body = document.body;
+  if(mode === 'light'){
+    body.classList.remove('theme-dark');
+    body.classList.add('theme-light');
+  } else {
+    body.classList.remove('theme-light');
+    body.classList.add('theme-dark');
+  }
 }
 function initThemeToggle(){
   const sw = $('#themeSwitch');
-  if(!sw) return;
-  sw.addEventListener('change', ()=>{
-    const mode = sw.checked ? 'light' : 'dark';
-    applyTheme(mode);
-  });
-  // se non presente, imposto dark
   const saved = localStorage.getItem('theme') || 'dark';
   applyTheme(saved);
-  sw.checked = (saved === 'light');
+  if(sw) sw.checked = (saved === 'light');
+  sw?.addEventListener('change', ()=>{
+    const mode = sw.checked ? 'light' : 'dark';
+    localStorage.setItem('theme', mode);
+    applyTheme(mode);
+  });
 }
 
-// === le tue funzioni esistenti (le mantengo) ===
+/* SIDEBAR */
+function openSidebar(){ $('#sidebar')?.classList.add('open'); $('#sidebarBackdrop')?.classList.add('show'); }
+function closeSidebar(){ $('#sidebar')?.classList.remove('open'); $('#sidebarBackdrop')?.classList.remove('show'); }
+function initSidebar(){
+  $('#sidebarOpen')?.addEventListener('click', openSidebar);
+  $('#sidebarClose')?.addEventListener('click', closeSidebar);
+  $('#sidebarBackdrop')?.addEventListener('click', closeSidebar);
+}
+
+/* RESERVATIONS */
 const fmtDateInput = d => d.toISOString().slice(0,10);
 
 async function loadReservations(){
-  const d = $('#flt-date') ? $('#flt-date').value : '';
-  const q = $('#flt-q') ? $('#flt-q').value.trim() : '';
+  const d = $('#flt-date')?.value || '';
+  const q = $('#flt-q')?.value?.trim() || '';
   const params = new URLSearchParams();
   if(d) params.set('date', d);
   if(q) params.set('q', q);
+
   const res = await api('/api/reservations?'+params.toString(), {method:'GET'});
   const list = $('#list'); if(!list) return;
   list.innerHTML = '';
   const empty = $('#list-empty');
-  if(empty) empty.style.display = (res.items.length ? 'none' : 'block');
+  if(!res.items || !res.items.length){
+    if(empty) empty.style.display = 'block';
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+
   res.items.forEach(r=>{
     const el = document.createElement('div');
     el.className = 'card';
+    el.style.padding = '12px 14px';
     el.innerHTML = `
-      <div class="row" style="gap:12px;align-items:center;padding:12px">
+      <div class="row" style="gap:12px;align-items:center;display:flex;flex-wrap:wrap">
         <b>${r.date} ${r.time}</b>
         <span>${r.name}</span>
         <span>${r.phone||''}</span>
@@ -54,13 +80,14 @@ async function loadReservations(){
         <span class="chip">${r.status||''}</span>
         <span class="grow"></span>
         <button class="btn" data-edit="${r.id}">Modifica</button>
-        <button class="btn" data-del="${r.id}">Elimina</button>
+        <button class="btn btn-danger" data-del="${r.id}">Elimina</button>
       </div>
-      ${r.note? `<div style="margin:6px 12px 12px;color:#9bb1c7">Note: ${r.note}</div>`:''}
+      ${r.note? `<div style="margin-top:6px;color:#9bb1c7">Note: ${r.note}</div>`:''}
     `;
     list.appendChild(el);
   });
 
+  // bind
   list.querySelectorAll('[data-del]').forEach(b=>{
     b.onclick = async () => {
       if(!confirm('Eliminare la prenotazione?')) return;
@@ -71,67 +98,102 @@ async function loadReservations(){
   list.querySelectorAll('[data-edit]').forEach(b=>{
     b.onclick = async () => {
       const id = b.dataset.edit;
-      const when = prompt('Nuova data (YYYY-MM-DD) o lascia vuoto', '');
-      const at = prompt('Nuova ora (HH:MM) o lascia vuoto', '');
-      const payload = {};
-      if(when) payload.date = when;
-      if(at) payload.time = at;
-      if(Object.keys(payload).length===0) return;
-      await api('/api/reservations/'+id, {method:'PUT', body:JSON.stringify(payload)});
-      await loadReservations();
+      openReservationModal('Modifica prenotazione');
+      // carica record esistente
+      try{
+        const item = await api('/api/reservations/'+id, {method:'GET'});
+        fillReservationForm(item);
+        $('#mr-save').onclick = async () => {
+          const payload = collectReservationForm();
+          await api('/api/reservations/'+id, {method:'PUT', body:JSON.stringify(payload)});
+          closeModal('modal-reservation');
+          await loadReservations();
+        };
+      }catch(e){ alert('Errore: '+e.message); }
     };
   });
 }
 
-async function createReservation(){
-  const today = ($('#flt-date') && $('#flt-date').value) || fmtDateInput(new Date());
-  const dateStr = prompt('Data (YYYY-MM-DD)', today);
-  const timeStr = prompt('Ora (HH:MM)', '20:00');
-  const name = prompt('Nome', '');
-  const phone = prompt('Telefono', '');
-  const people = parseInt(prompt('Persone', '2')||'2',10);
-  if(!dateStr || !timeStr || !name) return;
-  const payload = {date:dateStr,time:timeStr,name,phone,people,status:'Confermata',note:''};
-  await api('/api/reservations', {method:'POST', body:JSON.stringify(payload)});
-  await loadReservations();
+function collectReservationForm(){
+  return {
+    date:  $('#mr-date').value,
+    time:  $('#mr-time').value,
+    name:  $('#mr-name').value,
+    phone: $('#mr-phone').value,
+    people: parseInt($('#mr-people').value||'1',10),
+    status: $('#mr-status').value,
+    note:   $('#mr-note').value
+  };
+}
+function fillReservationForm(r){
+  $('#mr-date').value = r.date || fmtDateInput(new Date());
+  $('#mr-time').value = r.time || '20:00';
+  $('#mr-name').value = r.name || '';
+  $('#mr-phone').value = r.phone || '';
+  $('#mr-people').value = r.people || 2;
+  $('#mr-status').value = r.status || 'Confermata';
+  $('#mr-note').value = r.note || '';
 }
 
-async function saveWeeklyHours(){
-  const map = {};
-  const days = ['0 Lun','1 Mar','2 Mer','3 Gio','4 Ven','5 Sab','6 Dom'];
-  days.forEach(d=>{
-    const val = prompt(`Finestre orarie per ${d} (es. 12:00-15:00, 19:00-22:30). Vuoto = chiuso`, '');
-    if(val!==null) map[d.split(' ')[0]] = (val||'');
+/* MODAL utility */
+function openModal(id){ const m = $('#'+id); if(m){ m.classList.add('show'); m.setAttribute('aria-hidden','false'); } }
+function closeModal(id){ const m = $('#'+id); if(m){ m.classList.remove('show'); m.setAttribute('aria-hidden','true'); } }
+function bindModalClose(){
+  $$('[data-close]').forEach(btn=>{
+    btn.addEventListener('click', ()=> closeModal(btn.getAttribute('data-close')));
   });
-  await api('/api/hours', {method:'POST', body:JSON.stringify({hours:map})});
-  alert('Orari aggiornati');
 }
 
-async function addSpecialDay(){
-  const day = prompt('Data speciale (YYYY-MM-DD)', fmtDateInput(new Date()));
-  if(!day) return;
-  const closed = confirm('Chiudi tutto il giorno? (OK = chiuso)');
-  let windows = '';
-  if(!closed){
-    windows = prompt('Finestre (es. 12:00-15:00, 19:00-22:30)', '');
-  }
-  await api('/api/special-days', {method:'POST', body:JSON.stringify({day,closed,windows})});
-  alert('Giorno speciale salvato');
+/* Reservation modal */
+function openReservationModal(title='Crea prenotazione'){
+  $('#mr-title').textContent = title;
+  // default values
+  fillReservationForm({date:fmtDateInput(new Date()), time:'20:00', people:2, status:'Confermata'});
+  // salva = create
+  $('#mr-save').onclick = async () => {
+    try{
+      const payload = collectReservationForm();
+      if(!payload.name || !payload.date || !payload.time){ alert('Compila data, ora e nome'); return; }
+      await api('/api/reservations', {method:'POST', body:JSON.stringify(payload)});
+      closeModal('modal-reservation');
+      await loadReservations();
+    }catch(e){ alert('Errore: '+e.message); }
+  };
+  openModal('modal-reservation');
 }
+
+/* MENU voci (placeholders che aprono i modals reali già presenti nel progetto) */
+function openWeeklyHours(){ window.showWeeklyHours?.(); }
+function openSpecialDays(){ window.showSpecialDays?.(); }
+function openPrices(){ alert('Impostazioni prezzi in arrivo'); }
+function openDigitalMenu(){ alert('Menu digitale in arrivo'); }
+function openStats(){ alert('Statistiche in arrivo'); }
+
+/* INIT */
+window.ui = {
+  openReservationModal,
+  openWeeklyHours,
+  openSpecialDays,
+  openPrices,
+  openDigitalMenu,
+  openStats
+};
 
 window.addEventListener('DOMContentLoaded', async ()=>{
   initThemeToggle();
+  initSidebar();
+  bindModalClose();
 
-  if ($('#btn-filter')) $('#btn-filter').onclick = loadReservations;
-  if ($('#btn-clear')) $('#btn-clear').onclick  = ()=>{ if($('#flt-q')) $('#flt-q').value=''; if($('#flt-date')) $('#flt-date').value=''; loadReservations(); };
-  if ($('#btn-30d')) $('#btn-30d').onclick = ()=>alert('Storico 30gg — (placeholder UI)');
-  if ($('#btn-today')) $('#btn-today').onclick = ()=>{ if($('#flt-date')) $('#flt-date').value = fmtDateInput(new Date()); loadReservations(); };
-  if ($('#btn-new')) $('#btn-new').onclick = createReservation;
+  // filtri
+  const today = fmtDateInput(new Date());
+  if($('#flt-date')) $('#flt-date').value = today;
 
-  if ($('#flt-date')) $('#flt-date').value = fmtDateInput(new Date());
-  if ($('#list')) await loadReservations();
+  $('#btn-filter')?.addEventListener('click', loadReservations);
+  $('#btn-clear')?.addEventListener('click', ()=>{ if($('#flt-q')) $('#flt-q').value=''; if($('#flt-date')) $('#flt-date').value=''; loadReservations(); });
+  $('#btn-30d')?.addEventListener('click', ()=>alert('Storico 30gg — (placeholder UI)'));
+  $('#btn-today')?.addEventListener('click', ()=>{ if($('#flt-date')) $('#flt-date').value = fmtDateInput(new Date()); loadReservations(); });
+  $('#btn-new')?.addEventListener('click', ()=> openReservationModal());
 
-  // Esportiamo util per eventuali bottoni esterni
-  window.saveWeeklyHours = saveWeeklyHours;
-  window.addSpecialDay = addSpecialDay;
+  // carica lista
+  try { await loadReservations(); } catch(e){ console.warn(e); }
 });

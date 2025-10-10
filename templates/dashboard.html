@@ -4,8 +4,6 @@
 {% block brand_sub %}<span class="brand-sub">— Dashboard ristorante</span>{% endblock %}
 
 {% block body %}
-{% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
-
 <div class="container">
   <div class="grid kpis">
     <div class="card kpi-bar">
@@ -42,24 +40,77 @@
     </div>
   </div>
 
-  <div id="list"></div>
+  <div id="list" class="grid"></div>
 
   <div id="list-empty" class="card empty" style="display:none">
     <div class="empty-title">Nessuna prenotazione trovata</div>
     <div class="muted">Prova a cambiare filtri o aggiungi una nuova prenotazione.</div>
     <button class="pill minus" aria-label="collapse">−</button>
   </div>
+</div>
 
-  <!-- Esempio sezione orari settimanali (se già presente nel tuo HTML, lascia la tua) -->
-  <div class="card" style="padding:16px; display:none">
-    <div class="grid" style="gap:10px">
-      {% for d in days %}
-      <div class="lbl">
-        <label>{{ d }}</label>
-        <input class="input" placeholder="12:00-15:00, 19:00-22:30">
+<!-- Modal Crea/Modifica prenotazione -->
+<div class="modal" id="modal-reservation" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-head">
+      <div class="modal-title" id="mr-title">Crea prenotazione</div>
+      <button class="btn-icon" data-close="modal-reservation">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <label class="lbl">Data
+          <input id="mr-date" class="input" type="date" required>
+        </label>
+        <label class="lbl">Ora
+          <input id="mr-time" class="input" type="time" step="300" required>
+        </label>
       </div>
-      {% endfor %}
+
+      <label class="lbl">Nome
+        <input id="mr-name" class="input" type="text" required>
+      </label>
+
+      <div class="grid-2">
+        <label class="lbl">Telefono
+          <input id="mr-phone" class="input" type="tel">
+        </label>
+        <label class="lbl">Persone
+          <input id="mr-people" class="input" type="number" min="1" value="2" required>
+        </label>
+      </div>
+
+      <label class="lbl">Stato
+        <select id="mr-status" class="input">
+          <option value="Confermata">Confermata</option>
+          <option value="In attesa">In attesa</option>
+          <option value="Annullata">Annullata</option>
+        </select>
+      </label>
+
+      <label class="lbl">Note
+        <input id="mr-note" class="input" type="text" placeholder="Allergie, tavolo, ecc.">
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modal-reservation">Chiudi</button>
+      <button class="btn btn-primary" id="mr-save">Salva prenotazione</button>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Abilita pulsanti sidebar per aprire i modals già esistenti gestiti da main.js
+  document.getElementById('openHours')?.addEventListener('click', () => window.ui?.openWeeklyHours?.());
+  document.getElementById('openSpecial')?.addEventListener('click', () => window.ui?.openSpecialDays?.());
+  document.getElementById('openPrices')?.addEventListener('click', () => window.ui?.openPrices?.());
+  document.getElementById('openMenu')?.addEventListener('click', () => window.ui?.openDigitalMenu?.());
+  document.getElementById('openStats')?.addEventListener('click', () => window.ui?.openStats?.());
+
+  // Nuova prenotazione apre modal
+  document.getElementById('btn-new')?.addEventListener('click', () => {
+    window.ui?.openReservationModal?.();
+  });
+</script>
 {% endblock %}
