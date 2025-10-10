@@ -1,56 +1,36 @@
 <!doctype html>
 <html lang="it" class="h-100">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{% block title %}Ristorante AI{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-  <link rel="icon" href="{{ url_for('static', filename='img/logo_sushi.svg') }}">
+
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='img/logo_sushi.svg') }}" />
   {% block head %}{% endblock %}
 </head>
 <body class="theme-dark">
   <header class="app-header">
-    <div class="left">
-      <button id="menuBtn" class="hamburger" aria-label="apri menu">☰</button>
-      <div class="brand">
-        <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
-        <span class="brand-name">{% block brand %}Ristorante AI{% endblock %}</span>
-        {% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
-      </div>
+    <button class="hamburger" aria-label="menu" onclick="document.getElementById('drawer').classList.add('open')">☰</button>
+
+    <div class="brand">
+      <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo" />
+      <span class="brand-name">{% block brand %}Ristorante AI{% endblock %}</span>
+      {% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
     </div>
 
     <div class="header-actions">
-      <!-- Toggle TEMA (prima) -->
+      {% if current_user.is_authenticated %}
+        <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+      {% endif %}
       <label class="theme-toggle" title="Tema">
-        <input id="themeSwitch" type="checkbox" aria-label="toggle theme">
+        <input id="themeSwitch" type="checkbox" aria-label="toggle theme" />
         <span class="toggle-indicator"></span>
       </label>
-
-      <!-- Logout (pochi fronzoli, rosso) -->
-      {% if current_user.is_authenticated %}
-        <a class="btn btn-logout" href="{{ url_for('logout') }}">Logout</a>
-      {% endif %}
     </div>
   </header>
-
-  <!-- SIDE PANEL (menu a tendina a sinistra) -->
-  <aside id="sidepanel" class="sidepanel">
-    <div class="sp-head">
-      <div class="sp-title">Menu</div>
-      <button id="sideClose" class="sp-close" aria-label="chiudi">×</button>
-    </div>
-    <nav class="sp-body">
-      <!-- Tolti Dashboard e Logout dal menu come richiesto -->
-      <button class="sp-link" id="menu-orari">Orari settimanali</button>
-      <button class="sp-link" id="menu-speciali">Giorni speciali</button>
-      <button class="sp-link" id="menu-prezzi">Prezzi &amp; coperti</button>
-      <button class="sp-link" id="menu-menu">Menu digitale</button>
-      <button class="sp-link" id="menu-stats">Statistiche &amp; report</button>
-    </nav>
-  </aside>
-  <div id="sidepanel-backdrop" class="backdrop"></div>
 
   <main class="app-main">
     {% with messages = get_flashed_messages() %}
@@ -67,6 +47,16 @@
   </main>
 
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script>
+    // Inizializza tema dalla memoria
+    (function(){
+      const saved = localStorage.getItem('theme') || 'dark';
+      document.body.classList.toggle('theme-dark', saved==='dark');
+      document.body.classList.toggle('theme-light', saved==='light');
+      const sw = document.getElementById('themeSwitch');
+      if (sw) sw.checked = (saved==='light');
+    })();
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

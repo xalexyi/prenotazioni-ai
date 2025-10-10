@@ -5,6 +5,22 @@
 
 {% block body %}
 <div class="container">
+
+  <!-- SIDEBAR -->
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <span>Menu</span>
+      <button id="btn-drawer-close" class="btn btn-ghost" aria-label="chiudi">×</button>
+    </div>
+    <nav class="drawer-nav">
+      <button id="nav-hours" class="drawer-link">Orari settimanali</button>
+      <button id="nav-special" class="drawer-link">Giorni speciali</button>
+      <button id="nav-pricing" class="drawer-link">Prezzi &amp; coperti</button>
+      <button id="nav-menu" class="drawer-link">Menu digitale</button>
+      <button id="nav-stats" class="drawer-link">Statistiche &amp; report</button>
+    </nav>
+  </aside>
+
   <!-- KPI -->
   <div class="grid kpis">
     <div class="card kpi-bar">
@@ -23,50 +39,47 @@
     </div>
   </div>
 
-  <!-- Filtri -->
+  <!-- Filtri (Storico 30gg rimosso) -->
   <div class="card filters">
     <div class="filter-row">
       <div class="date-input">
-        <input id="flt-date" class="input" type="text" placeholder="gg/mm/aaaa" aria-label="Data">
+        <input id="flt-date" class="input" type="date" aria-label="Data" />
         <span class="calendar-ico">📅</span>
       </div>
-      <input id="flt-q" class="input grow" type="text" placeholder="Cerca nome / telefono / orario">
+      <input id="flt-q" class="input grow" type="text" placeholder="Cerca nome / telefono / orario" />
       <div class="row-gap"></div>
       <button id="btn-filter" class="btn">Filtra</button>
       <button id="btn-clear" class="btn btn-ghost">Elimina filtri</button>
-      <!-- RIMOSSO Storico 30gg -->
       <button id="btn-today" class="btn btn-ghost">Oggi</button>
       <button id="btn-new" class="btn btn-primary right">+ Nuova prenotazione</button>
     </div>
   </div>
 
-  <!-- Lista/placeholder -->
-  <div id="list-empty" class="card empty">
+  <div id="list" class="grid"></div>
+
+  <div id="list-empty" class="card empty" style="display:none">
     <div class="empty-title">Nessuna prenotazione trovata</div>
     <div class="muted">Prova a cambiare filtri o aggiungi una nuova prenotazione.</div>
     <button class="pill minus" aria-label="collapse">−</button>
   </div>
-  <div id="list"></div>
 </div>
 
 <!-- MODALE: Orari settimanali -->
-<div id="dlgHours" class="modal">
+<div id="dlgHours" class="modal" aria-hidden="true">
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Orari settimanali</div>
-      <button class="modal-close" data-close="dlgHours">×</button>
+      <button class="btn btn-ghost" data-close="dlgHours">×</button>
     </div>
     <div class="modal-body">
-      <div class="muted" style="margin-bottom:10px;">
-        Formato: <strong>HH:MM-HH:MM</strong> (es. <code>12:00-15:00, 19:00-22:30</code>). Giorno vuoto = <strong>CHIUSO</strong>.
-      </div>
-      <div class="grid-2">
+      <div class="muted">Formato: <strong>HH:MM-HH:MM</strong> (es. <code>12:00-15:00, 19:00-22:30</code>). Giorno vuoto = <strong>CHIUSO</strong>.</div>
+      <div class="grid" style="margin-top:12px">
         {% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
         {% for d in days %}
-          <label class="lbl">
-            {{ d }}
-            <input class="input wh" data-dow="{{ loop.index0 }}" type="text" placeholder="12:00-15:00, 19:00-23:00">
-          </label>
+        <label class="lbl">
+          {{ d }}
+          <input class="input" name="wh-{{ loop.index0 }}" placeholder="12:00-15:00, 19:00-23:00" />
+        </label>
         {% endfor %}
       </div>
     </div>
@@ -78,24 +91,24 @@
 </div>
 
 <!-- MODALE: Giorni speciali -->
-<div id="dlgSpecial" class="modal">
+<div id="dlgSpecial" class="modal" aria-hidden="true">
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Giorni speciali</div>
-      <button class="modal-close" data-close="dlgSpecial">×</button>
+      <button class="btn btn-ghost" data-close="dlgSpecial">×</button>
     </div>
     <div class="modal-body">
       <label class="lbl">Data
-        <input id="sp-day" class="input" type="text" placeholder="YYYY-MM-DD">
+        <input id="spc-date" class="input" type="date" />
       </label>
-      <label class="check" style="margin:8px 0 12px">
-        <input id="sp-closed" type="checkbox">
+      <label class="check" style="margin-top:8px">
+        <input id="spc-closed" type="checkbox" />
         <span>Chiudi tutto il giorno</span>
       </label>
-      <label class="lbl">Finestre (se aperto)
-        <input id="sp-windows" class="input" type="text" placeholder="18:00-23:00, 12:00-15:00">
+      <label class="lbl" style="margin-top:8px">Finestre (se aperto)
+        <input id="spc-windows" class="input" placeholder="18:00-23:00, 12:00-15:00" />
       </label>
-      <div class="muted" style="margin-top:6px">Esempio: <code>18:00-23:00, 12:00-15:00</code></div>
+      <div class="muted" style="margin-top:8px">Esempio: 18:00-23:00, 12:00-15:00</div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="dlgSpecial">Chiudi</button>
@@ -104,4 +117,54 @@
     </div>
   </div>
 </div>
+
+<!-- MODALE: Nuova prenotazione -->
+<div id="dlgCreate" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title">Crea prenotazione</div>
+      <button class="btn btn-ghost" data-close="dlgCreate">×</button>
+    </div>
+    <div class="modal-body grid-2">
+      <label class="lbl">Data
+        <input id="cr-date" class="input" type="date" />
+      </label>
+      <label class="lbl">Ora
+        <input id="cr-time" class="input" type="time" value="20:00" />
+      </label>
+      <label class="lbl">Nome
+        <input id="cr-name" class="input" placeholder="Cliente" />
+      </label>
+      <label class="lbl">Telefono
+        <input id="cr-phone" class="input" placeholder="+39..." />
+      </label>
+      <label class="lbl">Persone
+        <input id="cr-people" class="input" type="number" min="1" value="2" />
+      </label>
+      <label class="lbl">Stato
+        <select id="cr-status" class="input">
+          <option>Confermata</option>
+          <option>In attesa</option>
+          <option>Annullata</option>
+        </select>
+      </label>
+      <label class="lbl" style="grid-column:1/3">Note
+        <input id="cr-note" class="input" placeholder="Allergie, tavolo, ecc." />
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="dlgCreate">Chiudi</button>
+      <button id="btn-save-create" class="btn btn-primary">Salva prenotazione</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // chiudi drawer
+  document.getElementById('btn-drawer-close')?.addEventListener('click', ()=> {
+    document.getElementById('drawer')?.classList.remove('open');
+  });
+</script>
 {% endblock %}

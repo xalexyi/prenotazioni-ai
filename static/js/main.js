@@ -1,154 +1,177 @@
-// Helpers
-const $  = (sel, ctx=document) => ctx.querySelector(sel);
-const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+// ---------- helpers ----------
+const $  = (s)=>document.querySelector(s);
+const $$ = (s)=>Array.from(document.querySelectorAll(s));
 
-const api = async (url, opts={}) => {
+const api = async (url, opts={})=>{
   opts.credentials = 'include';
   opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
   const res = await fetch(url, opts);
-  const text = await res.text();
   let data = null;
-  try { data = text ? JSON.parse(text) : {}; } catch(e){ /* non-json */ }
-  if(!res.ok){
+  try { data = await res.json(); } catch(e){ /* no json */ }
+  if (!res.ok || (data && data.ok===false)) {
     const msg = (data && (data.error||data.message)) || res.statusText || 'Errore richiesta';
     throw new Error(msg);
   }
   return data ?? {};
 };
 
-// ---------------- THEME TOGGLE ----------------
-function applyTheme(theme){
-  const body = document.body;
-  if(theme === 'light'){
-    body.classList.add('theme-light');
-    $('#themeSwitch').checked = true;
-  }else{
-    body.classList.remove('theme-light');
-    $('#themeSwitch').checked = false;
-  }
-}
-function initTheme(){
-  const saved = localStorage.getItem('theme') || 'dark';
-  applyTheme(saved);
+// ---------- theme ----------
+(function initTheme(){
   const sw = $('#themeSwitch');
-  if(sw){
-    sw.addEventListener('change', () => {
-      const t = sw.checked ? 'light' : 'dark';
-      localStorage.setItem('theme', t);
-      applyTheme(t);
-    });
-  }
-}
+  if (!sw) return;
+  const apply = (mode)=>{
+    document.body.classList.toggle('theme-dark',  mode==='dark');
+    document.body.classList.toggle('theme-light', mode==='light');
+    sw.checked = (mode==='light');
+    localStorage.setItem('theme', mode);
+  };
+  // init
+  const saved = localStorage.getItem('theme') || 'dark';
+  apply(saved);
+  sw.addEventListener('change', ()=> apply(sw.checked ? 'light' : 'dark'));
+})();
 
-// ---------------- SIDEPANEL ----------------
-function sideOpen(){ $('#sidepanel')?.classList.add('open'); $('#sidepanel-backdrop')?.classList.add('show'); }
-function sideClose(){ $('#sidepanel')?.classList.remove('open'); $('#sidepanel-backdrop')?.classList.remove('show'); }
+// ---------- reservations ----------
+const fmtDateInput = (d)=> d.toISOString().slice(0,10);
 
-function bindSidePanel(){
-  $('#menuBtn')?.addEventListener('click', sideOpen);
-  $('#sideClose')?.addEventListener('click', sideClose);
-  $('#sidepanel-backdrop')?.addEventListener('click', sideClose);
+async function loadReservations(){
+  const d = $('#flt-date')?.value;
+  const q = $('#flt-q')?.value?.trim();
+  const params = new URLSearchParams();
+  if (d) params.set('date', d);
+  if (q) params.set('q', q);
+  const res = await api('/api/reservations?'+params.toString(), {method:'GET'});
+  const list = $('#list'); if (!list) return;
 
-  // voci menu
-  $('#menu-orari')?.addEventListener('click', ()=>{ sideClose(); openModal('dlgHours'); });
-  $('#menu-speciali')?.addEventListener('click', ()=>{ sideClose(); openModal('dlgSpecial'); });
-  $('#menu-prezzi')?.addEventListener('click', ()=>{ sideClose(); alert('Impostazioni prezzi in arrivo'); });
-  $('#menu-menu')?.addEventListener('click', ()=>{ sideClose(); alert('Menu digitale in arrivo'); });
-  $('#menu-stats')?.addEventListener('click', ()=>{ sideClose(); alert('Statistiche e report in arrivo'); });
-}
+  list.innerHTML = '';
+  $('#list-empty').style.display = (res.items && res.items.length) ? 'none' : 'block';
 
-// ---------------- MODALS ----------------
-function openModal(id){ const m = document.getElementById(id); if(m){ m.classList.add('show'); } }
-function closeModal(id){ const m = document.getElementById(id); if(m){ m.classList.remove('show'); } }
-function bindModals(){
-  $$('[data-close]')?.forEach(b=>{
-    b.addEventListener('click', ()=> closeModal(b.getAttribute('data-close')));
+  (res.items||[]).forEach(r=>{
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="row" style="gap:12px;align-items:center;padding:12px">
+        <b>${r.date} ${r.time}</b>
+        <span>${r.name}</span>
+        <span>${r.phone||''}</span>
+        <span>👥 ${r.people}</span>
+        <span class="chip">${r.status||''}</span>
+        <span class="grow"></span>
+        <button class="btn" data-edit="${r.id}">Modifica</button>
+        <button class="btn" data-del="${r.id}">Elimina</button>
+      </div>
+      ${r.note? `<div style="margin:0 12px 12px;color:#9bb1c7">Note: ${r.note}</div>`:''}
+    `;
+    list.appendChild(el);
+  });
+
+  list.querySelectorAll('[data-del]').forEach(b=>{
+    b.onclick = async ()=>{
+      if (!confirm('Eliminare la prenotazione?')) return;
+      await api('/api/reservations/'+b.dataset.del, {method:'DELETE'});
+      await loadReservations();
+    };
+  });
+
+  list.querySelectorAll('[data-edit]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.edit;
+      const date = prompt('Nuova data (YYYY-MM-DD) o vuoto per lasciare', '');
+      const time = prompt('Nuova ora (HH:MM) o vuoto per lasciare', '');
+      const payload = {};
+      if (date) payload.date = date;
+      if (time) payload.time = time;
+      if (!Object.keys(payload).length) return;
+      await api('/api/reservations/'+id, {method:'PUT', body:JSON.stringify(payload)});
+      await loadReservations();
+    };
   });
 }
 
-// ---------------- HOURS / SPECIAL DAYS ----------------
+// ---------- weekly hours ----------
 async function saveWeeklyHours(){
   const hours = {};
-  $$('.wh').forEach(inp => { hours[inp.dataset.dow] = inp.value.trim(); });
-  await api('/api/hours', { method:'POST', body: JSON.stringify({ hours }) });
+  for (let i=0;i<7;i++){
+    hours[i] = $(`input[name="wh-${i}"]`)?.value?.trim() || '';
+  }
+  await api('/api/hours', {method:'POST', body:JSON.stringify({hours})});
   alert('Orari aggiornati');
-  closeModal('dlgHours');
 }
 
+// ---------- special days ----------
 async function saveSpecialDay(){
-  const day = $('#sp-day').value.trim();
-  const closed = $('#sp-closed').checked;
-  const windows = $('#sp-windows').value.trim();
-  if(!day){ alert('Inserisci una data (YYYY-MM-DD)'); return; }
-  await api('/api/special-days', { method:'POST', body: JSON.stringify({ day, closed, windows }) });
+  const day = $('#spc-date').value;
+  if (!day) return alert('Seleziona una data');
+  const closed = $('#spc-closed').checked;
+  const windows = $('#spc-windows').value.trim();
+  await api('/api/special-days', {method:'POST', body:JSON.stringify({day,closed,windows})});
   alert('Giorno speciale salvato');
-  closeModal('dlgSpecial');
 }
-
 async function deleteSpecialDay(){
-  const day = $('#sp-day').value.trim();
-  if(!day){ alert('Inserisci la data da eliminare (YYYY-MM-DD)'); return; }
-  await api('/api/special-days/'+day, { method:'DELETE' });
+  const day = $('#spc-date').value;
+  if (!day) return;
+  await api('/api/special-days/'+day, {method:'DELETE'});
   alert('Giorno speciale eliminato');
-  closeModal('dlgSpecial');
 }
 
-// ---------------- DASHBOARD BIND ONLY IF PRESENT ----------------
-function fmtDateInput(d){
-  const pad = n => String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+// ---------- create reservation (modal) ----------
+function openModal(id){ const el = $('#'+id); if (el) el.setAttribute('aria-hidden','false'); }
+function closeModal(id){ const el = $('#'+id); if (el) el.setAttribute('aria-hidden','true'); }
+$$('[data-close]').forEach(b=> b.addEventListener('click', ()=> closeModal(b.getAttribute('data-close'))));
+$$('.modal').forEach(m=> m.addEventListener('click', (e)=>{ if(e.target===m) m.setAttribute('aria-hidden','true'); }));
+
+async function saveCreate(){
+  const payload = {
+    date:   $('#cr-date').value,
+    time:   $('#cr-time').value,
+    name:   $('#cr-name').value.trim(),
+    phone:  $('#cr-phone').value.trim(),
+    people: parseInt($('#cr-people').value,10)||1,
+    status: $('#cr-status').value,
+    note:   $('#cr-note').value.trim()
+  };
+  if (!payload.date || !payload.time || !payload.name) return alert('Compila data, ora e nome.');
+  await api('/api/reservations', {method:'POST', body:JSON.stringify(payload)});
+  closeModal('dlgCreate');
+  await loadReservations();
 }
 
-async function loadReservations(){ /* placeholder: non tocchiamo backend/UX attuale */ }
+// ---------- init ----------
+window.addEventListener('DOMContentLoaded', async ()=>{
+  // drawer chiudi
+  $('#btn-drawer-close')?.addEventListener('click', ()=> $('#drawer')?.classList.remove('open'));
 
-function bindDashboard(){
-  // Filtri (se esistono nella pagina)
+  // filtri
+  if ($('#flt-date')) $('#flt-date').value = fmtDateInput(new Date());
   $('#btn-filter')?.addEventListener('click', loadReservations);
-  $('#btn-clear')?.addEventListener('click', ()=>{
-    const d = $('#flt-date'); const q = $('#flt-q');
-    if(d) d.value = ''; if(q) q.value = '';
-    loadReservations();
-  });
-  $('#btn-today')?.addEventListener('click', ()=>{
-    const d = $('#flt-date'); if(d) d.value = fmtDateInput(new Date());
-    loadReservations();
-  });
+  $('#btn-clear')?.addEventListener('click', ()=>{ if($('#flt-q')) $('#flt-q').value=''; if($('#flt-date')) $('#flt-date').value=''; loadReservations(); });
+  $('#btn-today')?.addEventListener('click', ()=>{ if($('#flt-date')) $('#flt-date').value=fmtDateInput(new Date()); loadReservations(); });
 
-  // Nuova prenotazione (lasciamo il comportamento attuale – prompt)
-  $('#btn-new')?.addEventListener('click', async ()=>{
-    try{
-      const today = fmtDateInput(new Date());
-      const dateStr = prompt('Data (YYYY-MM-DD)', today);
-      if(!dateStr) return;
-      const timeStr = prompt('Ora (HH:MM)', '20:00'); if(!timeStr) return;
-      const name = prompt('Nome', ''); if(!name) return;
-      const phone = prompt('Telefono', '');
-      const people = parseInt(prompt('Persone','2')||'2',10);
-      const payload = {date:dateStr,time:timeStr,name,phone,people,status:'Confermata',note:''};
-      await api('/api/reservations', {method:'POST', body:JSON.stringify(payload)});
-      alert('Prenotazione creata');
-      loadReservations();
-    }catch(e){
-      alert('Errore: '+e.message);
-    }
+  // nuova prenotazione -> modale
+  $('#btn-new')?.addEventListener('click', ()=>{
+    $('#cr-date').value = $('#flt-date')?.value || fmtDateInput(new Date());
+    $('#cr-time').value = '20:00';
+    $('#cr-name').value = '';
+    $('#cr-phone').value = '';
+    $('#cr-people').value = 2;
+    $('#cr-status').value = 'Confermata';
+    $('#cr-note').value = '';
+    openModal('dlgCreate');
   });
+  $('#btn-save-create')?.addEventListener('click', saveCreate);
 
-  // Bottoni salvataggio modali
-  $('#btn-save-hours')?.addEventListener('click', async ()=>{
-    try{ await saveWeeklyHours(); }catch(e){ alert('Errore: '+e.message); }
-  });
-  $('#btn-save-special')?.addEventListener('click', async ()=>{
-    try{ await saveSpecialDay(); }catch(e){ alert('Errore: '+e.message); }
-  });
-  $('#btn-del-special')?.addEventListener('click', async ()=>{
-    try{ await deleteSpecialDay(); }catch(e){ alert('Errore: '+e.message); }
-  });
-}
+  // menu laterale
+  $('#nav-hours')?.addEventListener('click', ()=> openModal('dlgHours'));
+  $('#nav-special')?.addEventListener('click', ()=> openModal('dlgSpecial'));
+  $('#nav-pricing')?.addEventListener('click', ()=> alert('Impostazioni prezzi in arrivo'));
+  $('#nav-menu')?.addEventListener('click', ()=> alert('Menu digitale in arrivo'));
+  $('#nav-stats')?.addEventListener('click', ()=> alert('Statistiche e report in arrivo'));
 
-// ---------------- INIT ----------------
-window.addEventListener('DOMContentLoaded', ()=>{
-  initTheme();
-  bindSidePanel();
-  bindModals();
-  bindDashboard();
+  // pulsanti modali orari/speciali
+  $('#btn-save-hours')?.addEventListener('click', saveWeeklyHours);
+  $('#btn-save-special')?.addEventListener('click', saveSpecialDay);
+  $('#btn-del-special')?.addEventListener('click', deleteSpecialDay);
+
+  // carica lista
+  await loadReservations();
 });
