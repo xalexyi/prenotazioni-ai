@@ -1,166 +1,71 @@
-# app.py
-from __future__ import annotations
-
 import os
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import date, datetime
+from typing import Optional
 
 from flask import (
-    Flask, render_template, request, redirect, url_for, flash, jsonify, abort
+    Flask, render_template, request, redirect, url_for, jsonify, flash
 )
-from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
-    LoginManager, login_user, logout_user, login_required, current_user
+    LoginManager, login_user, login_required, logout_user, current_user
 )
 from werkzeug.security import check_password_hash
 
-# ---------------------------------------------------------------------
-# SQLAlchemy istanza "globale" (inizializzata dentro create_app)
-# ---------------------------------------------------------------------
-db = SQLAlchemy()
+# I NOSTRI MODELLI vivono in backend/models.py e contengono l'istanza db
+from backend.models import (
+    db, User, Restaurant, Reservation, WeeklyHours, SpecialDay,
+    MenuItem, Settings
+)
 
 
-def _bool(val: Any) -> bool:
-    if isinstance(val, bool):
-        return val
-    s = str(val or "").strip().lower()
-    return s in {"1", "true", "t", "yes", "y", "on"}
+def _boolean(val: str) -> bool:
+    return str(val).lower() in {"1", "true", "t", "yes", "y", "on"}
 
 
 def create_app() -> Flask:
-    app = Flask(
-        __name__,
-        static_folder="static",
-        template_folder="templates",
-        instance_relative_config=True,
+    app = Flask(__name__, static_folder="static", template_folder="templates")
+
+    # ---- Config
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-it")
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+        "DATABASE_URL", "sqlite:///instance/app.db"
     )
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    # -----------------------------------------------------------------
-    # Config di base sicure per locale/Render
-    # -----------------------------------------------------------------
-    app.config.setdefault("SECRET_KEY", os.environ.get("SECRET_KEY", "dev-secret"))
-    app.config.setdefault(
-        "SQLALCHEMY_DATABASE_URI",
-        os.environ.get("DATABASE_URL", f"sqlite:///{os.path.join(app.instance_path, 'app.db')}")
-    )
-    app.config.setdefault("SQLALCHEMY_TRACK_MODIFICATIONS", False)
-    app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
-    app.config.setdefault("REMEMBER_COOKIE_SAMESITE", "Lax")
-
-    # Crea cartella instance se serve
-    os.makedirs(app.instance_path, exist_ok=True)
-
-    # Inizializza DB
+    # ---- DB & Login
     db.init_app(app)
-
-    # -----------------------------------------------------------------
-    # Import robusto dei modelli (funziona sia se models.py è in root
-    # sia se si trova in backend/models.py)
-    # -----------------------------------------------------------------
-    try:
-        import models as _models  # type: ignore
-    except Exception:
-        from backend import models as _models  # type: ignore
-
-    # Aliases dei modelli se esistono
-    User = getattr(_models, "User", None)
-    Restaurant = getattr(_models, "Restaurant", None)
-    Reservation = getattr(_models, "Reservation", None)
-    OpeningHours = getattr(_models, "OpeningHours", None)
-    SpecialDay = getattr(_models, "SpecialDay", None)
-
-    # -----------------------------------------------------------------
-    # Login manager
-    # -----------------------------------------------------------------
     login_manager = LoginManager()
     login_manager.login_view = "login_page"
     login_manager.init_app(app)
 
     @login_manager.user_loader
-    def load_user(user_id: str):
-        """Caricatore utente sicuro: niente transazioni lasciate a metà."""
-        if not User:
-            return None
-        try:
-            return db.session.get(User, int(user_id))
-        except Exception as e:
-            app.logger.error("user_loader error: %s", e)
-            db.session.rollback()
-            return None
+    def load_user(user_id: str) -> Optional[User]:
+        return User.query.get(int(user_id))
 
-    # -----------------------------------------------------------------
-    # Blueprints opzionali: registrali se ci sono (non crashare se mancano)
-    # -----------------------------------------------------------------
-    for dotted, attr in (
-        ("api", "bp_api"),
-        ("backend.api", "bp_api"),
-        ("voice_slots", "bp_voice_slots"),
-        ("backend.voice_slots", "bp_voice_slots"),
-    ):
-        try:
-            mod = __import__(dotted, fromlist=[attr])
-            bp = getattr(mod, attr, None)
-            if bp:
-                app.register_blueprint(bp)
-                app.logger.info("Registrato blueprint %s.%s", dotted, attr)
-        except Exception:
-            pass  # silenzioso: non esiste → nessun problema
+    # ---- Creazione tabelle all’avvio
+    with app.app_context():
+        db.create_all()
 
-    # -----------------------------------------------------------------
-    # Pagine
-    # -----------------------------------------------------------------
+    # ------------------ ROUTES PAGINE ------------------
+
     @app.route("/")
-    def index():
+    def home():
         if current_user.is_authenticated:
             return redirect(url_for("dashboard"))
         return redirect(url_for("login_page"))
 
     @app.route("/login", methods=["GET", "POST"])
     def login_page():
-        if request.method == "GET":
-            if current_user.is_authenticated:
-                return redirect(url_for("dashboard"))
-            return render_template("login.html")
-
-        # POST
-        if not User:
-            flash("Configurazione mancante: tabella utenti non trovata.")
-            return render_template("login.html"), 500
-
-        username = (request.form.get("username") or "").strip()
-        password = request.form.get("password") or ""
-        remember = _bool(request.form.get("remember"))
-
-        if not username or not password:
-            flash("Inserisci username e password.")
-            return render_template("login.html"), 400
-
-        # tollerante a - / _
-        candidates = {username, username.replace("_", "-"), username.replace("-", "_")}
-        try:
-            user = User.query.filter(User.username.in_(list(candidates))).first()
-        except Exception as e:
-            app.logger.error("login query error: %s", e)
-            db.session.rollback()
-            flash("Errore interno. Riprova.")
-            return render_template("login.html"), 500
-
-        if not user:
-            flash("Credenziali non valide.")
-            return render_template("login.html"), 401
-
-        try:
-            ok = check_password_hash(user.password, password)
-        except Exception as e:
-            app.logger.error("check_password_hash error: %s", e)
-            ok = False
-
-        if not ok:
-            flash("Credenziali non valide.")
-            return render_template("login.html"), 401
-
-        login_user(user, remember=remember)
-        return redirect(url_for("dashboard"))
+        if request.method == "POST":
+            username = (request.form.get("username") or "").strip()
+            password = request.form.get("password") or ""
+            remember = bool(request.form.get("remember"))
+            user = User.query.filter_by(username=username).first()
+            if not user or not check_password_hash(user.password_hash, password):
+                flash("Credenziali non valide.", "warn")
+                return render_template("login.html")
+            login_user(user, remember=remember)
+            return redirect(url_for("dashboard"))
+        return render_template("login.html")
 
     @app.route("/logout")
     @login_required
@@ -171,233 +76,286 @@ def create_app() -> Flask:
     @app.route("/dashboard")
     @login_required
     def dashboard():
-        return render_template("dashboard.html")
+        return render_template("dashboard.html", selected_date=date.today().strftime("%d/%m/%Y"))
 
-    # -----------------------------------------------------------------
-    # Helpers
-    # -----------------------------------------------------------------
-    def _require_models(*names: str) -> Optional[tuple]:
-        missing = [n for n in names if locals().get(n) is None]
-        if missing:
-            return None
-        return tuple(locals()[n] for n in names)  # type: ignore
+    # ------------------ API PRENOTAZIONI ------------------
 
-    def _ensure_restaurant_id() -> Optional[int]:
-        """Restituisce l'ID ristorante associato all'utente loggato."""
-        if not current_user.is_authenticated:
-            return None
-        rid = getattr(current_user, "restaurant_id", None)
-        try:
-            return int(rid) if rid is not None else None
-        except Exception:
-            return None
-
-    # -----------------------------------------------------------------
-    # API MINIME — solo se non hai già blueprint che le gestiscono.
-    # Sono in try/except e tornano 501 se il modello non esiste.
-    # -----------------------------------------------------------------
-
-    # Prenotazioni
-    @app.route("/api/reservations", methods=["GET", "POST"])
+    @app.get("/api/reservations")
     @login_required
-    def api_reservations():
-        pair = _require_models("Reservation")
-        if not pair:
-            return jsonify(ok=False, error="Not Implemented"), 501
-        (ReservationModel,) = pair
-        rid = _ensure_restaurant_id()
-        if rid is None:
-            return jsonify(ok=False, error="no_restaurant"), 400
+    def api_list_reservations():
+        """?date=YYYY-MM-DD&q=term"""
+        d = request.args.get("date")
+        q = (request.args.get("q") or "").strip()
 
-        if request.method == "GET":
-            date = request.args.get("date")
-            q = (request.args.get("q") or "").strip().lower()
-            qry = ReservationModel.query.filter_by(restaurant_id=rid)
-            if date:
-                qry = qry.filter(ReservationModel.date == date)
-            items = qry.order_by(ReservationModel.time.asc()).all()
-            out = []
-            for r in items:
-                if q:
-                    blob = " ".join([
-                        r.name or "", r.phone or "", r.time or "", r.date or ""
-                    ]).lower()
-                    if q not in blob:
-                        continue
-                out.append({
-                    "id": r.id,
-                    "date": r.date,
-                    "time": r.time,
-                    "name": r.name,
-                    "phone": r.phone,
-                    "people": r.people,
-                    "status": r.status,
-                    "note": r.note
-                })
-            return jsonify(ok=True, items=out)
+        query = Reservation.query.filter_by(restaurant_id=current_user.restaurant_id)
 
-        # POST: crea
-        data = request.get_json(force=True, silent=True) or {}
-        try:
-            obj = ReservationModel(
-                restaurant_id=rid,
-                date=data.get("date"),
-                time=data.get("time"),
-                name=data.get("name"),
-                phone=data.get("phone"),
-                people=int(data.get("people") or 2),
-                status=data.get("status") or "Confermata",
-                note=data.get("note") or "",
-            )
-            db.session.add(obj)
-            db.session.commit()
-            return jsonify(ok=True, id=obj.id)
-        except Exception as e:
-            db.session.rollback()
-            return jsonify(ok=False, error=str(e)), 400
-
-    @app.route("/api/reservations/<int:res_id>", methods=["PUT", "DELETE"])
-    @login_required
-    def api_reservation_item(res_id: int):
-        pair = _require_models("Reservation")
-        if not pair:
-            return jsonify(ok=False, error="Not Implemented"), 501
-        (ReservationModel,) = pair
-        rid = _ensure_restaurant_id()
-        if rid is None:
-            return jsonify(ok=False, error="no_restaurant"), 400
-
-        obj = ReservationModel.query.filter_by(id=res_id, restaurant_id=rid).first()
-        if not obj:
-            return jsonify(ok=False, error="not_found"), 404
-
-        if request.method == "DELETE":
+        if d:
             try:
-                db.session.delete(obj)
-                db.session.commit()
-                return jsonify(ok=True)
-            except Exception as e:
-                db.session.rollback()
-                return jsonify(ok=False, error=str(e)), 400
+                when = datetime.strptime(d, "%Y-%m-%d").date()
+                query = query.filter(Reservation.date == when)
+            except Exception:
+                pass
 
-        data = request.get_json(force=True, silent=True) or {}
-        try:
-            for k in ("date", "time", "name", "phone", "status", "note"):
-                if k in data:
-                    setattr(obj, k, data[k])
-            if "people" in data:
-                obj.people = int(data["people"])
-            db.session.commit()
-            return jsonify(ok=True)
-        except Exception as e:
-            db.session.rollback()
-            return jsonify(ok=False, error=str(e)), 400
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                (Reservation.name.ilike(like)) |
+                (Reservation.phone.ilike(like)) |
+                (Reservation.time.ilike(like))
+            )
 
-    # Orari settimanali
-    @app.route("/api/hours", methods=["POST"])
+        items = []
+        for r in query.order_by(Reservation.date.asc(), Reservation.time.asc()).all():
+            items.append({
+                "id": r.id,
+                "date": r.date.strftime("%Y-%m-%d"),
+                "time": r.time,
+                "name": r.name,
+                "phone": r.phone or "",
+                "people": r.people,
+                "status": r.status or "",
+                "note": r.note or "",
+                "amount": float(r.amount or 0.0),
+            })
+        return jsonify({"ok": True, "items": items})
+
+    @app.post("/api/reservations")
     @login_required
-    def api_hours():
-        pair = _require_models("OpeningHours")
-        if not pair:
-            return jsonify(ok=False, error="Not Implemented"), 501
-        (HoursModel,) = pair
-        rid = _ensure_restaurant_id()
-        if rid is None:
-            return jsonify(ok=False, error="no_restaurant"), 400
-
-        data = request.get_json(force=True, silent=True) or {}
-        hours: Dict[str, str] = data.get("hours") or {}
+    def api_create_reservation():
+        payload = request.get_json(force=True) or {}
         try:
-            # sovrascrivi tutte le righe per semplicità
-            HoursModel.query.filter_by(restaurant_id=rid).delete()
-            for day_idx, windows in hours.items():
-                h = HoursModel(restaurant_id=rid, weekday=int(day_idx), windows=windows)
-                db.session.add(h)
+            when = datetime.strptime(payload["date"], "%Y-%m-%d").date()
+            res = Reservation(
+                restaurant_id=current_user.restaurant_id,
+                date=when,
+                time=payload.get("time", "20:00"),
+                name=payload.get("name", "").strip(),
+                phone=payload.get("phone"),
+                people=int(payload.get("people", 2)),
+                status=payload.get("status"),
+                note=payload.get("note"),
+                amount=float(payload.get("amount", 0.0)),
+            )
+            db.session.add(res)
             db.session.commit()
-            return jsonify(ok=True)
+            return jsonify({"ok": True, "id": res.id})
         except Exception as e:
             db.session.rollback()
-            return jsonify(ok=False, error=str(e)), 400
+            return jsonify({"ok": False, "error": str(e)}), 400
 
-    # Giorni speciali
-    @app.route("/api/special-days", methods=["POST"])
+    @app.put("/api/reservations/<int:res_id>")
     @login_required
-    def api_special_days():
-        pair = _require_models("SpecialDay")
-        if not pair:
-            return jsonify(ok=False, error="Not Implemented"), 501
-        (SpecialModel,) = pair
-        rid = _ensure_restaurant_id()
-        if rid is None:
-            return jsonify(ok=False, error="no_restaurant"), 400
-
-        data = request.get_json(force=True, silent=True) or {}
-        day = data.get("day")
-        closed = _bool(data.get("closed"))
-        windows = data.get("windows") or ""
-
-        if not day:
-            return jsonify(ok=False, error="missing_day"), 400
-
+    def api_update_reservation(res_id: int):
+        payload = request.get_json(force=True) or {}
+        r = Reservation.query.filter_by(id=res_id, restaurant_id=current_user.restaurant_id).first_or_404()
         try:
-            obj = SpecialModel.query.filter_by(restaurant_id=rid, day=day).first()
-            if not obj:
-                obj = SpecialModel(restaurant_id=rid, day=day, closed=closed, windows=windows)
-                db.session.add(obj)
-            else:
-                obj.closed = closed
-                obj.windows = windows
+            if "date" in payload:
+                r.date = datetime.strptime(payload["date"], "%Y-%m-%d").date()
+            if "time" in payload:
+                r.time = payload["time"]
+            if "name" in payload:
+                r.name = payload["name"].strip()
+            if "phone" in payload:
+                r.phone = payload["phone"]
+            if "people" in payload:
+                r.people = int(payload["people"])
+            if "status" in payload:
+                r.status = payload["status"]
+            if "note" in payload:
+                r.note = payload["note"]
+            if "amount" in payload:
+                r.amount = float(payload["amount"])
             db.session.commit()
-            return jsonify(ok=True)
+            return jsonify({"ok": True})
         except Exception as e:
             db.session.rollback()
-            return jsonify(ok=False, error=str(e)), 400
+            return jsonify({"ok": False, "error": str(e)}), 400
 
-    @app.route("/api/special-days/<day>", methods=["DELETE"])
+    @app.delete("/api/reservations/<int:res_id>")
     @login_required
-    def api_special_days_delete(day: str):
-        pair = _require_models("SpecialDay")
-        if not pair:
-            return jsonify(ok=False, error="Not Implemented"), 501
-        (SpecialModel,) = pair
-        rid = _ensure_restaurant_id()
-        if rid is None:
-            return jsonify(ok=False, error="no_restaurant"), 400
-
+    def api_delete_reservation(res_id: int):
+        r = Reservation.query.filter_by(id=res_id, restaurant_id=current_user.restaurant_id).first_or_404()
         try:
-            SpecialModel.query.filter_by(restaurant_id=rid, day=day).delete()
+            db.session.delete(r)
             db.session.commit()
-            return jsonify(ok=True)
+            return jsonify({"ok": True})
         except Exception as e:
             db.session.rollback()
-            return jsonify(ok=False, error=str(e)), 400
+            return jsonify({"ok": False, "error": str(e)}), 400
 
-    # -----------------------------------------------------------------
-    # Error handlers "puliti"
-    # -----------------------------------------------------------------
-    @app.errorhandler(401)
-    def _401(_e):
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify(ok=False, error="unauthorized"), 401
-        flash("Devi effettuare il login.")
-        return redirect(url_for("login_page"))
+    # ------------------ API ORARI SETTIMANALI ------------------
 
-    @app.errorhandler(404)
-    def _404(_e):
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify(ok=False, error="not_found"), 404
-        return render_template("404.html") if os.path.exists(
-            os.path.join(app.template_folder or "templates", "404.html")
-        ) else ("Pagina non trovata", 404)
+    @app.post("/api/hours")
+    @login_required
+    def api_save_hours():
+        """
+        body: { "hours": { "0":"12:00-15:00, 19:00-23:00", "1":"..." ... "6":"..." } }
+        dove 0=Lun ... 6=Dom. Stringa vuota => CHIUSO.
+        """
+        payload = request.get_json(force=True) or {}
+        hours_map = payload.get("hours") or {}
+        try:
+            # cancella esistenti
+            WeeklyHours.query.filter_by(restaurant_id=current_user.restaurant_id).delete()
+            for k, windows in hours_map.items():
+                wd = int(k)
+                rec = WeeklyHours(
+                    restaurant_id=current_user.restaurant_id,
+                    weekday=wd,
+                    windows=(windows or "").strip()
+                )
+                db.session.add(rec)
+            db.session.commit()
+            return jsonify({"ok": True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    # ------------------ API GIORNI SPECIALI ------------------
+
+    @app.post("/api/special-days")
+    @login_required
+    def api_add_special():
+        """
+        body: { "day":"YYYY-MM-DD", "closed": true/false, "windows":"..." }
+        """
+        payload = request.get_json(force=True) or {}
+        try:
+            the_day = datetime.strptime(payload["day"], "%Y-%m-%d").date()
+            closed = bool(payload.get("closed", False))
+            windows = (payload.get("windows") or "").strip()
+            # upsert
+            rec = SpecialDay.query.filter_by(
+                restaurant_id=current_user.restaurant_id, day=the_day
+            ).first()
+            if not rec:
+                rec = SpecialDay(restaurant_id=current_user.restaurant_id, day=the_day)
+            rec.closed = closed
+            rec.windows = windows
+            db.session.add(rec)
+            db.session.commit()
+            return jsonify({"ok": True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    @app.delete("/api/special-days/<day>")
+    @login_required
+    def api_delete_special(day: str):
+        try:
+            the_day = datetime.strptime(day, "%Y-%m-%d").date()
+            rec = SpecialDay.query.filter_by(
+                restaurant_id=current_user.restaurant_id, day=the_day
+            ).first_or_404()
+            db.session.delete(rec)
+            db.session.commit()
+            return jsonify({"ok": True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    # ------------------ API PREZZI & COPERTI (placeholder) ------------------
+
+    @app.get("/api/settings")
+    @login_required
+    def api_get_settings():
+        s = Settings.query.filter_by(restaurant_id=current_user.restaurant_id).first()
+        data = {
+            "avg_price": float(s.avg_price) if s and s.avg_price is not None else 0.0,
+            "seats_cap": int(s.seats_cap) if s and s.seats_cap is not None else 0,
+        }
+        return jsonify({"ok": True, "settings": data})
+
+    @app.post("/api/settings")
+    @login_required
+    def api_save_settings():
+        payload = request.get_json(force=True) or {}
+        try:
+            s = Settings.query.filter_by(restaurant_id=current_user.restaurant_id).first()
+            if not s:
+                s = Settings(restaurant_id=current_user.restaurant_id)
+            if "avg_price" in payload:
+                s.avg_price = float(payload["avg_price"])
+            if "seats_cap" in payload:
+                s.seats_cap = int(payload["seats_cap"])
+            db.session.add(s)
+            db.session.commit()
+            return jsonify({"ok": True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    # ------------------ API MENU DIGITALE (semplici CRUD) ------------------
+
+    @app.get("/api/menu-items")
+    @login_required
+    def api_menu_list():
+        items = MenuItem.query.filter_by(restaurant_id=current_user.restaurant_id)\
+                              .order_by(MenuItem.category.asc(), MenuItem.name.asc()).all()
+        return jsonify({"ok": True, "items": [
+            {"id": m.id, "name": m.name, "price": float(m.price), "category": m.category or "", "available": bool(m.available)}
+            for m in items
+        ]})
+
+    @app.post("/api/menu-items")
+    @login_required
+    def api_menu_create():
+        payload = request.get_json(force=True) or {}
+        try:
+            m = MenuItem(
+                restaurant_id=current_user.restaurant_id,
+                name=(payload.get("name") or "").strip(),
+                price=float(payload.get("price", 0)),
+                category=(payload.get("category") or "").strip(),
+                available=bool(payload.get("available", True)),
+            )
+            db.session.add(m)
+            db.session.commit()
+            return jsonify({"ok": True, "id": m.id})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    @app.put("/api/menu-items/<int:item_id>")
+    @login_required
+    def api_menu_update(item_id: int):
+        payload = request.get_json(force=True) or {}
+        m = MenuItem.query.filter_by(id=item_id, restaurant_id=current_user.restaurant_id).first_or_404()
+        try:
+            if "name" in payload:
+                m.name = (payload["name"] or "").strip()
+            if "price" in payload:
+                m.price = float(payload["price"])
+            if "category" in payload:
+                m.category = (payload["category"] or "").strip()
+            if "available" in payload:
+                m.available = bool(payload["available"])
+            db.session.commit()
+            return jsonify({"ok": True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    @app.delete("/api/menu-items/<int:item_id>")
+    @login_required
+    def api_menu_delete(item_id: int):
+        m = MenuItem.query.filter_by(id=item_id, restaurant_id=current_user.restaurant_id).first_or_404()
+        try:
+            db.session.delete(m)
+            db.session.commit()
+            return jsonify({"ok": True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    # ------------------ HEALTHCHECK ------------------
+
+    @app.get("/healthz")
+    def healthz():
+        return {"ok": True}
 
     return app
 
 
-# ---------------------------------------------------------------------
-# Avvio locale (python app.py)
-# ---------------------------------------------------------------------
-if __name__ == "__main__":
-    app = create_app()
-    with app.app_context():
-        db.create_all()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+# Necessario per gunicorn (app:app)
+app = create_app()
