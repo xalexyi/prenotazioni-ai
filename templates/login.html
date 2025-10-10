@@ -35,11 +35,10 @@
   </section>
 
   <section class="card form-card">
-    <form method="post" action="{{ url_for('login_page') }}" class="form" novalidate>
+    <form method="post" action="{{ url_for('login_page') }}" class="form">
       <label class="lbl">Username
-        <!-- Default corretto: 'haru-admin' -->
         <input class="input" name="username" autocomplete="username"
-               value="{{ request.form.username or 'haru-admin' }}" required>
+               value="{{ request.form.username or '' }}" required>
       </label>
 
       <label class="lbl">Password
@@ -48,15 +47,11 @@
       </label>
 
       <label class="check">
-        <input type="checkbox" name="remember" {% if request.form.remember is not defined %}checked{% elif request.form.remember %}checked{% endif %}>
+        <input type="checkbox" name="remember" checked>
         <span>Rimani connesso</span>
       </label>
 
       <button class="btn btn-primary" type="submit">Log in</button>
-
-      <div class="demo-note">
-        Demo: <strong>sushitokyo / Password123!</strong> — <strong>pizzerianapoli / Password123!</strong>
-      </div>
     </form>
   </section>
 </div>
