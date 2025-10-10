@@ -4,6 +4,8 @@
 {% block brand_sub %}<span class="brand-sub">— Dashboard ristorante</span>{% endblock %}
 
 {% block body %}
+{% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
+
 <div class="container">
   <div class="grid kpis">
     <div class="card kpi-bar">
@@ -27,167 +29,36 @@
   <div class="card filters">
     <div class="filter-row">
       <div class="date-input">
-        <input class="input" id="flt-date" type="date" aria-label="Data">
+        <input id="flt-date" class="input" type="date" aria-label="Data">
         <span class="calendar-ico">📅</span>
       </div>
-      <input class="input grow" id="flt-q" type="text" placeholder="Cerca nome / telefono / orario">
+      <input id="flt-q" class="input grow" type="text" placeholder="Cerca nome / telefono / orario">
       <div class="row-gap"></div>
-      <button class="btn" id="btn-filter">Filtra</button>
-      <button class="btn btn-ghost" id="btn-clear">Elimina filtri</button>
-      <button class="btn btn-ghost" id="btn-30d">Storico 30gg</button>
-      <button class="btn btn-ghost" id="btn-today">Oggi</button>
-      <button class="btn btn-primary right" id="btn-new">+ Nuova prenotazione</button>
+      <button id="btn-filter" class="btn">Filtra</button>
+      <button id="btn-clear" class="btn btn-ghost">Elimina filtri</button>
+      <button id="btn-30d" class="btn btn-ghost">Storico 30gg</button>
+      <button id="btn-today" class="btn btn-ghost">Oggi</button>
+      <button id="btn-new" class="btn btn-primary right">+ Nuova prenotazione</button>
     </div>
   </div>
 
   <div id="list"></div>
 
-  <div class="card empty" id="list-empty" style="display:none;">
+  <div id="list-empty" class="card empty" style="display:none">
     <div class="empty-title">Nessuna prenotazione trovata</div>
     <div class="muted">Prova a cambiare filtri o aggiungi una nuova prenotazione.</div>
     <button class="pill minus" aria-label="collapse">−</button>
   </div>
-</div>
 
-<!-- DIALOG: Orari settimanali -->
-<div class="modal" id="dlgHours" aria-hidden="true">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>Orari settimanali</div>
-      <button class="icon-btn" data-close="dlgHours">×</button>
-    </div>
-    <div class="muted" style="margin-bottom:10px;">
-      Formato: <b>HH:MM-HH:MM</b> (es. <code>12:00-15:00, 19:00-22:30</code>). Giorno vuoto = <b>CHIUSO</b>.
-    </div>
-
-    {% set days = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"] %}
-    {% for i, d in enumerate(days) %}
-    <label class="lbl">{{ d }}
-      <input class="input hours" id="wh-{{ i }}" placeholder="12:00-15:00, 19:00-23:00">
-    </label>
-    {% endfor %}
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="dlgHours">Chiudi</button>
-      <button class="btn btn-primary" id="btn-save-hours">Salva</button>
-    </div>
-  </div>
-</div>
-
-<!-- DIALOG: Giorni speciali -->
-<div class="modal" id="dlgSpecial" aria-hidden="true">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>Giorni speciali</div>
-      <button class="icon-btn" data-close="dlgSpecial">×</button>
-    </div>
-
-    <label class="lbl">Data
-      <input class="input" id="sp-day" type="date">
-    </label>
-
-    <label class="check">
-      <input type="checkbox" id="sp-closed"> <span>Chiudi tutto il giorno</span>
-    </label>
-
-    <label class="lbl">Finestre (se aperto)
-      <input class="input" id="sp-windows" placeholder="18:00-23:00, 12:00-15:00">
-    </label>
-
-    <div class="muted">Esempio: 18:00-23:00, 12:00-15:00</div>
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="dlgSpecial">Chiudi</button>
-      <button class="btn" id="btn-del-special">Elimina</button>
-      <button class="btn btn-primary" id="btn-save-special">Aggiungi / Aggiorna</button>
-    </div>
-  </div>
-</div>
-
-<!-- DIALOG: Prezzi & coperti -->
-<div class="modal" id="dlgPricing" aria-hidden="true">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>Prezzi &amp; coperti</div>
-      <button class="icon-btn" data-close="dlgPricing">×</button>
-    </div>
-
-    <div class="grid-2">
-      <label class="lbl">Prezzo medio (€)
-        <input class="input" id="pr-avg" type="number" step="0.01" min="0" placeholder="22.50">
-      </label>
-      <label class="lbl">Capienza massima (coperti)
-        <input class="input" id="pr-cap" type="number" min="0" placeholder="60">
-      </label>
-    </div>
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="dlgPricing">Chiudi</button>
-      <button class="btn btn-primary" id="btn-save-pricing">Salva</button>
-    </div>
-  </div>
-</div>
-
-<!-- DIALOG: Menu digitale -->
-<div class="modal" id="dlgMenu" aria-hidden="true">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>Menu digitale</div>
-      <button class="icon-btn" data-close="dlgMenu">×</button>
-    </div>
-
-    <div class="grid-2">
-      <label class="lbl">Nome piatto
-        <input class="input" id="mi-name" placeholder="Sushi misto">
-      </label>
-      <label class="lbl">Prezzo (€)
-        <input class="input" id="mi-price" type="number" step="0.01" min="0" placeholder="14.90">
-      </label>
-    </div>
-    <label class="lbl">Categoria
-      <input class="input" id="mi-cat" placeholder="Antipasti / Sushi / Bevande">
-    </label>
-
-    <div class="modal-foot" style="justify-content:flex-start;">
-      <button class="btn btn-primary" id="btn-add-item">Aggiungi</button>
-      <span class="muted" id="mi-hint" style="margin-left:10px;"></span>
-    </div>
-
-    <div id="menu-list" class="table-list" style="margin-top:10px;"></div>
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="dlgMenu">Chiudi</button>
-    </div>
-  </div>
-</div>
-
-<!-- DIALOG: Statistiche & report -->
-<div class="modal" id="dlgReports" aria-hidden="true">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>Statistiche &amp; report</div>
-      <button class="icon-btn" data-close="dlgReports">×</button>
-    </div>
-
-    <div class="grid-2">
-      <label class="lbl">Dal
-        <input class="input" id="rp-from" type="date">
-      </label>
-      <label class="lbl">Al
-        <input class="input" id="rp-to" type="date">
-      </label>
-    </div>
-
-    <div class="modal-foot" style="justify-content:flex-start;">
-      <button class="btn" id="btn-preview-report">Anteprima</button>
-      <button class="btn btn-primary" id="btn-download-csv">Scarica CSV</button>
-      <span class="muted" id="rp-info" style="margin-left:10px;"></span>
-    </div>
-
-    <div id="rp-preview" class="table-list"></div>
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="dlgReports">Chiudi</button>
+  <!-- Esempio sezione orari settimanali (se già presente nel tuo HTML, lascia la tua) -->
+  <div class="card" style="padding:16px; display:none">
+    <div class="grid" style="gap:10px">
+      {% for d in days %}
+      <div class="lbl">
+        <label>{{ d }}</label>
+        <input class="input" placeholder="12:00-15:00, 19:00-22:30">
+      </div>
+      {% endfor %}
     </div>
   </div>
 </div>
