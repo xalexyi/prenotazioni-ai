@@ -11,28 +11,11 @@
   {% block head %}{% endblock %}
 </head>
 <body class="theme-dark">
-  <!-- Drawer / burger -->
-  <button id="btn-open-drawer" class="burger" aria-label="Apri menu">☰</button>
-  <aside id="drawer" class="drawer">
-    <div class="drawer-head">
-      <div>Menu</div>
-      <button id="btn-close-drawer" class="btn-x" aria-label="Chiudi">×</button>
-    </div>
-    <nav class="drawer-nav">
-      <a href="{{ url_for('dashboard') }}">Dashboard</a>
-      <button type="button" data-action="hours">Orari settimanali</button>
-      <button type="button" data-action="special">Giorni speciali</button>
-      <button type="button" data-action="pricing">Prezzi & coperti</button>
-      <button type="button" data-action="menu">Menu digitale</button>
-      <button type="button" data-action="stats">Statistiche & report</button>
-      {% if current_user.is_authenticated %}
-      <a class="drawer-logout" href="{{ url_for('logout') }}">Logout</a>
-      {% endif %}
-    </nav>
-  </aside>
-  <div id="drawer-overlay" class="drawer-overlay"></div>
-
   <header class="app-header">
+    <button class="icon-btn" id="btn-open-menu" aria-label="Apri menu" title="Menu">
+      ☰
+    </button>
+
     <div class="brand">
       <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
       <span class="brand-name">{% block brand %}Ristorante AI{% endblock %}</span>
@@ -40,17 +23,32 @@
     </div>
 
     <div class="header-actions">
-      <!-- invertiti: prima toggle, poi logout rosso -->
+      {% if current_user.is_authenticated %}
+        <a class="btn btn-danger" href="{{ url_for('logout') }}" style="text-decoration:none;">Logout</a>
+      {% endif %}
+
       <label class="theme-toggle" title="Tema">
         <input id="themeSwitch" type="checkbox" aria-label="toggle theme">
         <span class="toggle-indicator"></span>
       </label>
-
-      {% if current_user.is_authenticated %}
-        <a class="btn btn-logout" href="{{ url_for('logout') }}">Logout</a>
-      {% endif %}
     </div>
   </header>
+
+  <!-- Sidebar -->
+  <aside class="side-overlay" id="side-overlay"></aside>
+  <aside class="side-panel" id="side-panel" aria-hidden="true">
+    <div class="side-head">
+      <strong>Menu</strong>
+      <button class="icon-btn" id="btn-close-menu" aria-label="Chiudi">×</button>
+    </div>
+    <nav class="side-nav">
+      <a href="#" data-open="dlgHours">Orari settimanali</a>
+      <a href="#" data-open="dlgSpecial">Giorni speciali</a>
+      <a href="#" data-open="dlgPricing">Prezzi &amp; coperti</a>
+      <a href="#" data-open="dlgMenu">Menu digitale</a>
+      <a href="#" data-open="dlgReports">Statistiche &amp; report</a>
+    </nav>
+  </aside>
 
   <main class="app-main">
     {% with messages = get_flashed_messages() %}
