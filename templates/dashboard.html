@@ -27,12 +27,12 @@
   <div class="card filters">
     <div class="filter-row">
       <div class="date-input">
-        <!-- ID agganciati al JS -->
         <input id="flt-date" class="input" type="date" aria-label="Data">
         <span class="calendar-ico">📅</span>
       </div>
+
       <input id="flt-q" class="input grow" type="text" placeholder="Cerca nome / telefono / orario">
-      <div class="row-gap"></div>
+
       <button id="btn-filter" class="btn">Filtra</button>
       <button id="btn-clear" class="btn btn-ghost">Elimina filtri</button>
       <button id="btn-30d" class="btn btn-ghost">Storico 30gg</button>
@@ -41,14 +41,157 @@
     </div>
   </div>
 
-  <!-- elenco prenotazioni -->
   <div id="list"></div>
 
-  <!-- stato vuoto -->
-  <div id="list-empty" class="card empty" style="display:none">
+  <div id="list-empty" class="card empty">
     <div class="empty-title">Nessuna prenotazione trovata</div>
     <div class="muted">Prova a cambiare filtri o aggiungi una nuova prenotazione.</div>
     <button class="pill minus" aria-label="collapse">−</button>
+  </div>
+</div>
+
+<!-- Dialog: Nuova/modifica prenotazione -->
+<div id="dlgReservation" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlgReservationTitle">
+  <div class="modal__panel">
+    <div class="modal__header">
+      <div id="dlgReservationTitle">Crea prenotazione</div>
+      <button class="btn-icon" data-close-modal="dlgReservation">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="grid-2">
+        <label class="lbl">
+          <span>Data</span>
+          <input id="res-date" class="input" type="date">
+        </label>
+        <label class="lbl">
+          <span>Ora</span>
+          <input id="res-time" class="input" type="time" step="300">
+        </label>
+      </div>
+
+      <label class="lbl">
+        <span>Nome</span>
+        <input id="res-name" class="input" type="text">
+      </label>
+
+      <div class="grid-2">
+        <label class="lbl">
+          <span>Telefono</span>
+          <input id="res-phone" class="input" type="text" placeholder="+39...">
+        </label>
+        <label class="lbl">
+          <span>Persone</span>
+          <input id="res-people" class="input" type="number" min="1" value="2">
+        </label>
+      </div>
+
+      <label class="lbl">
+        <span>Stato</span>
+        <select id="res-status" class="input">
+          <option value="Confermata">Confermata</option>
+          <option value="In attesa">In attesa</option>
+          <option value="Rifiutata">Rifiutata</option>
+        </select>
+      </label>
+
+      <label class="lbl">
+        <span>Note</span>
+        <input id="res-note" class="input" type="text" placeholder="Allergie, tavolo, ecc.">
+      </label>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-ghost" data-close-modal="dlgReservation">Chiudi</button>
+      <button id="btn-save-reservation" class="btn btn-primary">Salva prenotazione</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dialog: Orari settimanali -->
+<div id="dlgHours" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlgHoursTitle">
+  <div class="modal__panel">
+    <div class="modal__header">
+      <div id="dlgHoursTitle">Orari settimanali</div>
+      <button class="btn-icon" data-close-modal="dlgHours">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="muted" style="margin-bottom:8px">
+        Formato: <b>HH:MM-HH:MM</b> (es. <code>12:00-15:00, 19:00-22:30</code>). Giorno vuoto = <b>CHIUSO</b>.
+      </div>
+      {% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
+      {% for i, d in enumerate(days) %}
+      <label class="lbl">
+        <span>{{ d }}</span>
+        <input class="input wh-input" data-day="{{ i }}" type="text" placeholder="12:00-15:00, 19:00-22:30">
+      </label>
+      {% endfor %}
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-ghost" data-close-modal="dlgHours">Chiudi</button>
+      <button id="btn-save-hours" class="btn btn-primary">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dialog: Giorni speciali -->
+<div id="dlgSpecial" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlgSpecialTitle">
+  <div class="modal__panel">
+    <div class="modal__header">
+      <div id="dlgSpecialTitle">Giorni speciali</div>
+      <button class="btn-icon" data-close-modal="dlgSpecial">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="grid-2">
+        <label class="lbl">
+          <span>Data</span>
+          <input id="sp-date" class="input" type="date">
+        </label>
+        <label class="check">
+          <input id="sp-closed" type="checkbox" style="accent-color:#f87171">
+          <span>Chiudi tutto il giorno</span>
+        </label>
+      </div>
+      <label class="lbl">
+        <span>Finestre (se aperto)</span>
+        <input id="sp-windows" class="input" type="text" placeholder="18:00-23:00, 12:00-15:00">
+      </label>
+      <div id="sp-list" class="muted" style="margin-top:10px"></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-ghost" data-close-modal="dlgSpecial">Chiudi</button>
+      <button id="btn-del-special" class="btn btn-ghost">Elimina</button>
+      <button id="btn-save-special" class="btn btn-primary">Aggiungi / Aggiorna</button>
+    </div>
+  </div>
+</div>
+
+<!-- Placeholder per “Statistiche / Report” e “Menu digitale” -->
+<div id="dlgReports" class="modal" hidden role="dialog" aria-modal="true">
+  <div class="modal__panel">
+    <div class="modal__header">
+      <div>Statistiche / Report</div>
+      <button class="btn-icon" data-close-modal="dlgReports">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="muted">In arrivo: grafici e CSV incassi confermati negli ultimi 30 giorni.</div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-ghost" data-close-modal="dlgReports">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<div id="dlgMenu" class="modal" hidden role="dialog" aria-modal="true">
+  <div class="modal__panel">
+    <div class="modal__header">
+      <div>Menu digitale</div>
+      <button class="btn-icon" data-close-modal="dlgMenu">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="muted">In arrivo: aggiungi/modifica piatti con prezzo e categoria.</div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-ghost" data-close-modal="dlgMenu">Chiudi</button>
+    </div>
   </div>
 </div>
 {% endblock %}
