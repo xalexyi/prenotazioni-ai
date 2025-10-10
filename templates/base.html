@@ -11,49 +11,46 @@
   {% block head %}{% endblock %}
 </head>
 <body class="theme-dark">
-  <!-- Sidebar overlay + drawer -->
-  <aside id="sidebar" class="sidebar">
-    <div class="sidebar-head">
-      <span>Menu</span>
-      <button id="sidebarClose" class="btn-icon" aria-label="Chiudi">×</button>
-    </div>
-    <nav class="sidebar-nav">
-      <a href="{{ url_for('dashboard') }}" class="sidebar-link">Dashboard</a>
-      <button class="sidebar-link" id="openHours">Orari settimanali</button>
-      <button class="sidebar-link" id="openSpecial">Giorni speciali</button>
-      <button class="sidebar-link" id="openPrices">Prezzi &amp; coperti</button>
-      <button class="sidebar-link" id="openMenu">Menu digitale</button>
-      <button class="sidebar-link" id="openStats">Statistiche &amp; report</button>
-    </nav>
-    <div class="sidebar-footer">
-      <form action="{{ url_for('logout') }}" method="post">
-        <button class="btn btn-danger w-100" type="submit">Logout</button>
-      </form>
-    </div>
-  </aside>
-  <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
-
   <header class="app-header">
-    <div class="brand">
-      <button id="sidebarOpen" class="btn-icon" aria-label="Apri menu">☰</button>
-      <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
-      <span class="brand-name">{% block brand %}Ristorante AI{% endblock %}</span>
-      {% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
+    <div class="left">
+      <button id="menuBtn" class="hamburger" aria-label="apri menu">☰</button>
+      <div class="brand">
+        <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
+        <span class="brand-name">{% block brand %}Ristorante AI{% endblock %}</span>
+        {% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
+      </div>
     </div>
 
     <div class="header-actions">
-      {% if current_user.is_authenticated %}
-        <form action="{{ url_for('logout') }}" method="post">
-          <button class="btn btn-danger" type="submit" style="text-decoration:none">Logout</button>
-        </form>
-      {% endif %}
-
+      <!-- Toggle TEMA (prima) -->
       <label class="theme-toggle" title="Tema">
         <input id="themeSwitch" type="checkbox" aria-label="toggle theme">
         <span class="toggle-indicator"></span>
       </label>
+
+      <!-- Logout (pochi fronzoli, rosso) -->
+      {% if current_user.is_authenticated %}
+        <a class="btn btn-logout" href="{{ url_for('logout') }}">Logout</a>
+      {% endif %}
     </div>
   </header>
+
+  <!-- SIDE PANEL (menu a tendina a sinistra) -->
+  <aside id="sidepanel" class="sidepanel">
+    <div class="sp-head">
+      <div class="sp-title">Menu</div>
+      <button id="sideClose" class="sp-close" aria-label="chiudi">×</button>
+    </div>
+    <nav class="sp-body">
+      <!-- Tolti Dashboard e Logout dal menu come richiesto -->
+      <button class="sp-link" id="menu-orari">Orari settimanali</button>
+      <button class="sp-link" id="menu-speciali">Giorni speciali</button>
+      <button class="sp-link" id="menu-prezzi">Prezzi &amp; coperti</button>
+      <button class="sp-link" id="menu-menu">Menu digitale</button>
+      <button class="sp-link" id="menu-stats">Statistiche &amp; report</button>
+    </nav>
+  </aside>
+  <div id="sidepanel-backdrop" class="backdrop"></div>
 
   <main class="app-main">
     {% with messages = get_flashed_messages() %}
@@ -68,9 +65,6 @@
 
     {% block body %}{% endblock %}
   </main>
-
-  <!-- Modals container (riutilizzato dalle pagine) -->
-  <div id="app-modals"></div>
 
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
   {% block scripts %}{% endblock %}

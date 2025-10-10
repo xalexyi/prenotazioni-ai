@@ -5,12 +5,11 @@
 
 {% block body %}
 <div class="container">
+  <!-- KPI -->
   <div class="grid kpis">
     <div class="card kpi-bar">
       <div class="kpi-title">Chiamate attive: <strong id="kpiActiveCalls">0/3</strong></div>
-      <div class="status">
-        <span class="led led-green"></span> Disponibile
-      </div>
+      <div class="status"><span class="led led-green"></span> Disponibile</div>
     </div>
 
     <div class="card kpi-small">
@@ -24,93 +23,85 @@
     </div>
   </div>
 
+  <!-- Filtri -->
   <div class="card filters">
     <div class="filter-row">
       <div class="date-input">
-        <input id="flt-date" class="input" type="date" aria-label="Data">
+        <input id="flt-date" class="input" type="text" placeholder="gg/mm/aaaa" aria-label="Data">
         <span class="calendar-ico">📅</span>
       </div>
       <input id="flt-q" class="input grow" type="text" placeholder="Cerca nome / telefono / orario">
       <div class="row-gap"></div>
       <button id="btn-filter" class="btn">Filtra</button>
       <button id="btn-clear" class="btn btn-ghost">Elimina filtri</button>
-      <button id="btn-30d" class="btn btn-ghost">Storico 30gg</button>
+      <!-- RIMOSSO Storico 30gg -->
       <button id="btn-today" class="btn btn-ghost">Oggi</button>
       <button id="btn-new" class="btn btn-primary right">+ Nuova prenotazione</button>
     </div>
   </div>
 
-  <div id="list" class="grid"></div>
-
-  <div id="list-empty" class="card empty" style="display:none">
+  <!-- Lista/placeholder -->
+  <div id="list-empty" class="card empty">
     <div class="empty-title">Nessuna prenotazione trovata</div>
     <div class="muted">Prova a cambiare filtri o aggiungi una nuova prenotazione.</div>
     <button class="pill minus" aria-label="collapse">−</button>
   </div>
+  <div id="list"></div>
 </div>
 
-<!-- Modal Crea/Modifica prenotazione -->
-<div class="modal" id="modal-reservation" aria-hidden="true">
-  <div class="modal-dialog">
+<!-- MODALE: Orari settimanali -->
+<div id="dlgHours" class="modal">
+  <div class="modal-card">
     <div class="modal-head">
-      <div class="modal-title" id="mr-title">Crea prenotazione</div>
-      <button class="btn-icon" data-close="modal-reservation">×</button>
+      <div class="modal-title">Orari settimanali</div>
+      <button class="modal-close" data-close="dlgHours">×</button>
     </div>
     <div class="modal-body">
-      <div class="grid-2">
-        <label class="lbl">Data
-          <input id="mr-date" class="input" type="date" required>
-        </label>
-        <label class="lbl">Ora
-          <input id="mr-time" class="input" type="time" step="300" required>
-        </label>
+      <div class="muted" style="margin-bottom:10px;">
+        Formato: <strong>HH:MM-HH:MM</strong> (es. <code>12:00-15:00, 19:00-22:30</code>). Giorno vuoto = <strong>CHIUSO</strong>.
       </div>
-
-      <label class="lbl">Nome
-        <input id="mr-name" class="input" type="text" required>
-      </label>
-
       <div class="grid-2">
-        <label class="lbl">Telefono
-          <input id="mr-phone" class="input" type="tel">
-        </label>
-        <label class="lbl">Persone
-          <input id="mr-people" class="input" type="number" min="1" value="2" required>
-        </label>
+        {% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
+        {% for d in days %}
+          <label class="lbl">
+            {{ d }}
+            <input class="input wh" data-dow="{{ loop.index0 }}" type="text" placeholder="12:00-15:00, 19:00-23:00">
+          </label>
+        {% endfor %}
       </div>
-
-      <label class="lbl">Stato
-        <select id="mr-status" class="input">
-          <option value="Confermata">Confermata</option>
-          <option value="In attesa">In attesa</option>
-          <option value="Annullata">Annullata</option>
-        </select>
-      </label>
-
-      <label class="lbl">Note
-        <input id="mr-note" class="input" type="text" placeholder="Allergie, tavolo, ecc.">
-      </label>
     </div>
     <div class="modal-foot">
-      <button class="btn btn-ghost" data-close="modal-reservation">Chiudi</button>
-      <button class="btn btn-primary" id="mr-save">Salva prenotazione</button>
+      <button class="btn btn-ghost" data-close="dlgHours">Chiudi</button>
+      <button id="btn-save-hours" class="btn btn-primary">Salva</button>
     </div>
   </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-  // Abilita pulsanti sidebar per aprire i modals già esistenti gestiti da main.js
-  document.getElementById('openHours')?.addEventListener('click', () => window.ui?.openWeeklyHours?.());
-  document.getElementById('openSpecial')?.addEventListener('click', () => window.ui?.openSpecialDays?.());
-  document.getElementById('openPrices')?.addEventListener('click', () => window.ui?.openPrices?.());
-  document.getElementById('openMenu')?.addEventListener('click', () => window.ui?.openDigitalMenu?.());
-  document.getElementById('openStats')?.addEventListener('click', () => window.ui?.openStats?.());
-
-  // Nuova prenotazione apre modal
-  document.getElementById('btn-new')?.addEventListener('click', () => {
-    window.ui?.openReservationModal?.();
-  });
-</script>
+<!-- MODALE: Giorni speciali -->
+<div id="dlgSpecial" class="modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title">Giorni speciali</div>
+      <button class="modal-close" data-close="dlgSpecial">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="lbl">Data
+        <input id="sp-day" class="input" type="text" placeholder="YYYY-MM-DD">
+      </label>
+      <label class="check" style="margin:8px 0 12px">
+        <input id="sp-closed" type="checkbox">
+        <span>Chiudi tutto il giorno</span>
+      </label>
+      <label class="lbl">Finestre (se aperto)
+        <input id="sp-windows" class="input" type="text" placeholder="18:00-23:00, 12:00-15:00">
+      </label>
+      <div class="muted" style="margin-top:6px">Esempio: <code>18:00-23:00, 12:00-15:00</code></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="dlgSpecial">Chiudi</button>
+      <button id="btn-del-special" class="btn">Elimina</button>
+      <button id="btn-save-special" class="btn btn-primary">Aggiungi / Aggiorna</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
