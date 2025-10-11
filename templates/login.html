@@ -1,90 +1,139 @@
-{% extends "base.html" %}
-{% block title %}Login — Ristorante AI{% endblock %}
-
-{% block body %}
-<header class="topbar">
-  <div class="brand">
-    <span class="dot"></span> Ristorante AI
-    <span class="muted">— Area riservata ristoranti</span>
-  </div>
-  <div class="top-actions">
-    <label class="switch">
-      <input id="theme-toggle" type="checkbox">
-      <span class="slider"></span>
-      <span class="moon">🌙</span>
-      <span class="sun">☀️</span>
-    </label>
-  </div>
-</header>
-
-<main class="container auth-grid">
-  <section class="card hero">
-    <h1>Benvenuto/a <span class="wave">👋</span></h1>
-    <p class="muted">Gestisci prenotazioni e stato chiamate in un click.</p>
-
-    <div class="hint">
-      <div class="hint-title">📋 Istruzioni rapide</div>
-      <div class="hint-grid">
-        <div>
-          <div class="hint-sub">Come entrare</div>
-          <ul>
-            <li>📛 Inserisci <b>username</b> del ristorante</li>
-            <li>🔑 Digita la <b>password</b></li>
-            <li>➡️ Clicca <b>“Log in”</b></li>
-          </ul>
-        </div>
-        <div>
-          <div class="hint-sub">Dopo il login vedrai</div>
-          <ul>
-            <li>🟢 <b>Chiamate attive</b> e stato linea</li>
-            <li>🗓️ <b>Prenotazioni del giorno</b></li>
-            <li>⚡ Azioni rapide: <b>Conferma</b> / <b>Rifiuta</b> / <b>Elimina</b></li>
-          </ul>
-        </div>
-      </div>
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login — Ristorante AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+  <!-- Header snello con toggle -->
+  <header class="header">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>Ristorante AI</span>
+      <span class="text-dim">Area riservata ristoranti</span>
     </div>
-  </section>
 
-  <section class="card auth-card">
-    <form method="POST" autocomplete="off" class="vstack gap-12">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <div class="flash-stack">
-            {% for category, message in messages %}
-              <div class="flash flash-{{category}}">{{ message }}</div>
-            {% endfor %}
+    <!-- toggle tema -->
+    <button id="themeToggle" class="toggle" type="button" aria-label="Tema">
+      <span class="knob"></span>
+    </button>
+  </header>
+
+  <main class="container">
+    <div class="login-grid">
+
+      <!-- Box istruzioni -->
+      <section class="login-card">
+        <div class="card pad" style="background: radial-gradient(1200px 600px at -20% -40%, #16355d 0%, transparent 55%), linear-gradient(180deg, #0e1624 0%, #0c1422 80%);">
+          <h2 class="title">Benvenuto/a <span aria-hidden="true">👋</span></h2>
+
+          <div class="quick-box">
+            <h4 class="text-dim" style="margin:0 0 .6rem 0">Istruzioni rapide</h4>
+            <div class="form-row">
+              <div class="w-100">
+                <ul style="margin:.2rem 0 .8rem 1rem; padding:0; line-height:1.6;">
+                  <li><strong>Inserisci username</strong> del ristorante</li>
+                  <li>Digita la <strong>password</strong></li>
+                  <li>Clicca <strong>“Log in”</strong></li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="w-100">
+                <h4 class="text-dim" style="margin:.6rem 0 .4rem 0">Dopo il login vedrai</h4>
+                <ul style="margin:.2rem 0 0 1rem; padding:0; line-height:1.6;">
+                  <li><span class="badge badge-success">●</span> <strong>Chiamate attive</strong> e stato linea</li>
+                  <li><span class="badge badge-info">📅</span> <strong>Prenotazioni del giorno</strong></li>
+                  <li>⚡ Azioni rapide: <strong>Conferma / Rifiuta / Elimina</strong></li>
+                </ul>
+              </div>
+            </div>
           </div>
-        {% endif %}
-      {% endwith %}
+        </div>
+      </section>
 
-      <div class="field">
-        <label>Username</label>
-        <input type="text" name="username" placeholder="haru-admin" required>
-      </div>
+      <!-- Box form -->
+      <section class="login-card">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="toast" id="flashToast">
+              {% for category, message in messages %}
+                {{ message }}
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
 
-      <div class="field">
-        <label>Password</label>
-        <input type="password" name="password" placeholder="••••••••" required>
-      </div>
+        <form action="{{ url_for('login_page') }}" method="post" class="card pad" autocomplete="on">
+          <div class="form-row">
+            <div>
+              <label for="username">Username</label>
+              <input class="input" id="username" name="username" value="{{ request.form.get('username','') }}" required>
+            </div>
+          </div>
 
-      <label class="checkbox">
-        <input type="checkbox" name="remember">
-        <span>Rimani connesso</span>
-      </label>
+          <div class="form-row">
+            <div>
+              <label for="password">Password</label>
+              <input class="input" id="password" name="password" type="password" required>
+            </div>
+          </div>
 
-      <button class="btn primary" type="submit">Log in</button>
+          <div class="form-row" style="align-items:center; justify-content:space-between;">
+            <label class="text-muted" style="display:flex; align-items:center; gap:.45rem;">
+              <input type="checkbox" name="remember" {% if request.form.get('remember') == 'on' %}checked{% endif %}>
+              Rimani connesso
+            </label>
 
-      <div class="demo muted">
-        Demo: <b>sushitokyo / Password123!</b> — <b>pizzerianapoli / Password123!</b>
-      </div>
-    </form>
-  </section>
-</main>
-{% endblock %}
+            <button class="btn btn-primary" type="submit">Log in</button>
+          </div>
 
-{% block scripts %}
-<script>
-  // inizializza tema
-  setupThemeToggle();
-</script>
-{% endblock %}
+          <p class="demo-note">
+            Demo: <strong>sushitokyo</strong> / <em>Password123!</em> — <strong>pizzerianapoli</strong> / <em>Password123!</em>
+          </p>
+        </form>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Nessuna modale pre-render sulla pagina login -->
+  <script>
+    // Tema persistente
+    (function () {
+      const key = "ui:theme";
+      const btn = document.getElementById("themeToggle");
+      function apply(theme){
+        if (theme === "light") {
+          document.documentElement.style.setProperty('--bg', '#f6f7fb');
+          document.documentElement.style.setProperty('--text', '#0b1320');
+          // (opzionale) adatta altri token per light
+        } else {
+          // reset “light” → i valori di default del CSS sono dark
+          document.documentElement.removeAttribute('style');
+        }
+        btn?.setAttribute('data-state', theme === "light" ? "on" : "off");
+      }
+      const saved = localStorage.getItem(key) || "dark";
+      apply(saved);
+      btn?.addEventListener('click', () => {
+        const now = btn.getAttribute('data-state') === 'on' ? 'dark' : 'light';
+        localStorage.setItem(key, now);
+        apply(now);
+      });
+    })();
+
+    // Focus iniziale e auto-hide flash
+    (function(){
+      const u = document.getElementById('username');
+      const p = document.getElementById('password');
+      (u && !u.value ? u : p)?.focus();
+      const t = document.getElementById('flashToast');
+      if (t) setTimeout(()=> t.remove(), 2600);
+    })();
+  </script>
+</body>
+</html>
