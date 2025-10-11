@@ -33,8 +33,6 @@ def create_app():
     # Create tables if not exist
     with app.app_context():
         db.create_all()
-        # ensure settings row per restaurant
-        # (inserimento on-demand nelle route)
 
     @login_manager.user_loader
     def load_user(user_id: str):
@@ -80,18 +78,25 @@ def create_app():
     @app.route("/dashboard")
     @login_required
     def dashboard():
-        # niente enumerate in jinja → si usa loop.index0
+        # niente enumerate in jinja → usa loop.index0 nei template se serve
         return render_template("dashboard.html")
 
     # -----------------------------------------------------------------------------
-    # API helpers
+    # Helpers
     # -----------------------------------------------------------------------------
     def require_settings_for_restaurant(rest_id: int):
         from backend.models import Settings
         s = Settings.query.filter_by(restaurant_id=rest_id).first()
         if not s:
-            s = Settings(restaurant_id=rest_id, avg_price=25.0, cover=0.0,
-                         seats_cap=None, min_people=None, menu_url=None, menu_desc=None)
+            s = Settings(
+                restaurant_id=rest_id,
+                avg_price=25.0,
+                cover=0.0,
+                seats_cap=None,
+                min_people=None,
+                menu_url=None,
+                menu_desc=None,
+            )
             db.session.add(s)
             db.session.commit()
         return s
@@ -216,6 +221,19 @@ def create_app():
             db.session.rollback()
             return jsonify({"ok": False, "error": str(e)}), 400
 
+    @app.get("/api/weekly-hours")
+    @login_required
+    def api_get_hours():
+        """Ritorna mappa { '0': '12:00-15:00, 19:00-22:30', ... } per il ristorante corrente"""
+        from backend.models import OpeningHours
+        rest_id = current_user.restaurant_id
+        rows = OpeningHours.query.filter_by(restaurant_id=rest_id).all()
+        out = {str(r.day_of_week): (r.windows or "") for r in rows}
+        # garantisco tutte le 7 chiavi
+        for d in range(7):
+            out.setdefault(str(d), "")
+        return jsonify({"ok": True, "hours": out})
+
     @app.post("/api/special-days")
     @login_required
     def api_save_special_day():
@@ -241,6 +259,19 @@ def create_app():
         except Exception as e:
             db.session.rollback()
             return jsonify({"ok": False, "error": str(e)}), 400
+
+    @app.get("/api/special-days")
+    @login_required
+    def api_get_special_days():
+        """Lista giorni speciali per il ristorante corrente."""
+        from backend.models import SpecialDay
+        rest_id = current_user.restaurant_id
+        rows = (SpecialDay.query
+                .filter_by(restaurant_id=rest_id)
+                .order_by(SpecialDay.date.asc())
+                .all())
+        out = [{"date": r.date, "closed": bool(r.closed), "windows": r.windows or ""} for r in rows]
+        return jsonify({"ok": True, "items": out})
 
     # -----------------------------------------------------------------------------
     # API: Pricing (Prezzi & Coperti)  → table: settings
@@ -268,6 +299,19 @@ def create_app():
             db.session.rollback()
             return jsonify({"ok": False, "error": str(e)}), 400
 
+    @app.get("/api/pricing")
+    @login_required
+    def api_get_pricing():
+        """Restituisce settings correnti (avg_price, cover, seats_cap, min_people)."""
+        s = require_settings_for_restaurant(current_user.restaurant_id)
+        return jsonify({
+            "ok": True,
+            "avg_price": float(s.avg_price or 0.0),
+            "cover": float(s.cover or 0.0),
+            "seats_cap": (int(s.seats_cap) if s.seats_cap is not None else None),
+            "min_people": (int(s.min_people) if s.min_people is not None else None),
+        })
+
     # -----------------------------------------------------------------------------
     # API: Menu digitale → table: settings
     # -----------------------------------------------------------------------------
@@ -287,34 +331,21 @@ def create_app():
             db.session.rollback()
             return jsonify({"ok": False, "error": str(e)}), 400
 
-    # -----------------------------------------------------------------------------
-    # API: Stats & report (read-only)
-    # -----------------------------------------------------------------------------
-    @app.get("/api/stats")
+    @app.get("/api/menu")
     @login_required
-    def api_stats():
-        from backend.models import Reservation, Settings
-        rest_id = current_user.restaurant_id
-
-        # filtri opzionali
-        day = request.args.get("date")
-        q = Reservation.query.filter_by(restaurant_id=rest_id)
-        if day:
-            q = q.filter(Reservation.date == day)
-        total = q.count()
-        avg_people = (db.session.query(db.func.avg(Reservation.people))
-                      .filter_by(restaurant_id=rest_id).scalar()) or 0
-
-        s = require_settings_for_restaurant(rest_id)
-        incasso_stimato = (s.avg_price or 0.0) * float(total)
-
+    def api_get_menu():
+        """Restituisce menu_url e menu_desc correnti."""
+        s = require_settings_for_restaurant(current_user.restaurant_id)
         return jsonify({
             "ok": True,
-            "total_reservations": total,
-            "avg_people": float(avg_people),
-            "avg_price": float(s.avg_price or 0.0),
-            "estimated_revenue": float(incasso_stimato),
+            "menu_url": s.menu_url,
+            "menu_desc": s.menu_desc,
         })
+
+    # opzionale healthcheck
+    @app.get("/health")
+    def health():
+        return {"ok": True}
 
     return app
 
