@@ -1,57 +1,15 @@
-<!doctype html>
-<html lang="it" data-theme="dark">
+<!DOCTYPE html>
+<html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{% block title %}Ristorante AI{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ristorante AI</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=12">
 </head>
 <body>
-  <header class="topbar">
-    <button id="open-sidebar" class="icon-btn" aria-label="Apri menu">☰</button>
-    <div class="brand">
-      <span class="dot"></span>
-      <strong>{{ current_user.restaurant.name if current_user.is_authenticated else 'Ristorante' }}</strong>
-      <span class="muted">— Dashboard ristorante</span>
-    </div>
-    <div class="top-actions">
-      <label class="toggle">
-        <input id="theme-toggle" type="checkbox" />
-        <span>🌙</span>
-      </label>
-      <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
-    </div>
-  </header>
-
-  <aside id="sidebar" class="sidebar">
-    <div class="sidebar-header">
-      <div>Menu</div>
-      <button id="close-sidebar" class="icon-btn">✕</button>
-    </div>
-    <nav class="side-nav">
-      <button class="side-link active" data-section="reservations">Prenotazioni</button>
-      <button class="side-link" data-section="pricing">Prezzi & coperti</button>
-      <button class="side-link" data-section="menu">Menu digitale</button>
-      <button class="side-link" data-section="hours">Orari settimanali</button>
-      <button class="side-link" data-section="special">Giorni speciali</button>
-      <button class="side-link" data-section="stats">Statistiche & report</button>
-    </nav>
-  </aside>
-
-  <main id="main">
-    {% block body %}{% endblock %}
-  </main>
-
-  <script>
-    // theme bootstrap (prima dei JS esterni così non sfarfalla)
-    (function () {
-      const saved = localStorage.getItem('theme') || 'dark';
-      document.documentElement.setAttribute('data-theme', saved);
-      const chk = document.getElementById('theme-toggle');
-      if (chk) chk.checked = (saved === 'dark');
-    })();
-  </script>
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  {% block scripts %}{% endblock %}
+  {% block body %}{% endblock %}
+  <script src="{{ url_for('static', filename='js/main.js') }}?v=12"></script>
+  <script src="{{ url_for('static', filename='js/dashboard_app.js') }}?v=12"></script>
 </body>
 </html>
