@@ -57,8 +57,23 @@ def create_app():
                 return d.isoformat()  # YYYY-MM-DD
             except ValueError:
                 continue
-        # Non riconosciuto: ritorno None per evitare dati sporchi
         return None
+
+    def to_time_str(val) -> str | None:
+        """
+        Ritorna l'ora in formato 'HH:MM' per JSON.
+        - se è stringa, la lascia così (già '20:00')
+        - se è time/datetime, fa strftime('%H:%M')
+        - se None, ritorna None
+        """
+        if val is None:
+            return None
+        if isinstance(val, str):
+            return val.strip()
+        try:
+            return val.strftime("%H:%M")
+        except Exception:
+            return str(val)
 
     def require_settings_for_restaurant(rest_id: int):
         from backend.models import Settings
@@ -75,7 +90,6 @@ def create_app():
     # -----------------------------------------------------------------------------
     @app.route("/", methods=["GET", "POST"])
     def login_page():
-        # Se già autenticato → dashboard
         if current_user.is_authenticated:
             return redirect(url_for("dashboard"))
 
@@ -106,7 +120,6 @@ def create_app():
     @app.route("/dashboard")
     @login_required
     def dashboard():
-        # niente enumerate in jinja → si usa loop.index0
         return render_template("dashboard.html")
 
     # -----------------------------------------------------------------------------
@@ -119,7 +132,7 @@ def create_app():
         rest_id = current_user.restaurant_id
         q = (request.args.get("q") or "").strip().lower()
         day_raw = request.args.get("date")
-        day = normalize_day(day_raw)  # <— normalizza filtro
+        day = normalize_day(day_raw)
 
         query = Reservation.query.filter_by(restaurant_id=rest_id)
         if day:
@@ -129,13 +142,13 @@ def create_app():
         out = []
         for r in items:
             if q:
-                blob = f"{r.name} {r.phone} {r.time} {r.status} {r.note or ''}".lower()
+                blob = f"{r.name} {r.phone} {to_time_str(r.time)} {r.status} {r.note or ''}".lower()
                 if q not in blob:
                     continue
             out.append({
                 "id": r.id,
-                "date": r.date,  # già YYYY-MM-DD
-                "time": r.time,
+                "date": r.date,                 # YYYY-MM-DD
+                "time": to_time_str(r.time),    # <-- serializzato sicuro
                 "name": r.name,
                 "phone": r.phone,
                 "people": r.people,
@@ -150,7 +163,7 @@ def create_app():
         from backend.models import Reservation
         data = request.get_json(force=True) or {}
         try:
-            day = normalize_day(data.get("date"))  # <— accetta dd/mm/yyyy
+            day = normalize_day(data.get("date"))
             if not day:
                 return jsonify({"ok": False, "error": "Data non valida"}), 400
 
@@ -161,8 +174,8 @@ def create_app():
                 people=int(data.get("people") or 2),
                 status=(data.get("status") or "Confermata").strip(),
                 note=(data.get("note") or "").strip() or None,
-                date=day,                       # <— salvato ISO
-                time=(data.get("time") or "").strip(),  # es. '20:00'
+                date=day,
+                time=(data.get("time") or "").strip(),  # DB può convertirla a time
             )
             db.session.add(r)
             db.session.commit()
@@ -171,7 +184,7 @@ def create_app():
                 "item": {
                     "id": r.id,
                     "date": r.date,
-                    "time": r.time,
+                    "time": to_time_str(r.time),  # <-- serializzato sicuro
                     "name": r.name,
                     "phone": r.phone,
                     "people": r.people,
@@ -228,7 +241,7 @@ def create_app():
     @app.post("/api/hours")
     @login_required
     def api_save_hours():
-        """Body: {hours:{ "0":"12:00-15:00, 19:00-22:30", ... }}  → opening_hours (day_of_week, windows)"""
+        """Body: {hours:{ "0":"12:00-15:00, 19:00-22:30", ... }}"""
         from backend.models import OpeningHours
         rest_id = current_user.restaurant_id
         data = request.get_json(force=True) or {}
@@ -252,7 +265,7 @@ def create_app():
     @app.post("/api/special-days")
     @login_required
     def api_save_special_day():
-        """Body: {day:'YYYY-MM-DD'| 'DD/MM/YYYY', closed:bool, windows:'..'}  → special_day"""
+        """Body: {day:'YYYY-MM-DD'| 'DD/MM/YYYY', closed:bool, windows:'..'}"""
         from backend.models import SpecialDay
         rest_id = current_user.restaurant_id
         data = request.get_json(force=True) or {}
@@ -279,7 +292,7 @@ def create_app():
             return jsonify({"ok": False, "error": str(e)}), 400
 
     # -----------------------------------------------------------------------------
-    # API: Pricing (Prezzi & Coperti)  → table: settings
+    # API: Pricing (Prezzi & Coperti)
     # -----------------------------------------------------------------------------
     @app.post("/api/pricing")
     @login_required
@@ -305,7 +318,7 @@ def create_app():
             return jsonify({"ok": False, "error": str(e)}), 400
 
     # -----------------------------------------------------------------------------
-    # API: Menu digitale → table: settings
+    # API: Menu digitale
     # -----------------------------------------------------------------------------
     @app.post("/api/menu")
     @login_required
@@ -324,7 +337,7 @@ def create_app():
             return jsonify({"ok": False, "error": str(e)}), 400
 
     # -----------------------------------------------------------------------------
-    # API: Stats & report (read-only)
+    # API: Stats & report
     # -----------------------------------------------------------------------------
     @app.get("/api/stats")
     @login_required
