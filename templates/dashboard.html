@@ -1,164 +1,172 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Ristorante AI{% endblock %}
-{% block brand %}{{ current_user.restaurant.name }}{% endblock %}
-{% block brand_sub %}<span class="brand-sub">— Dashboard ristorante</span>{% endblock %}
 
 {% block body %}
-<div class="container" id="view-reservations">
-  <div class="grid kpis">
-    <div class="card kpi-bar">
-      <div class="kpi-title">Chiamate attive: <strong id="kpiActiveCalls">0/3</strong></div>
-      <div class="status">
-        <span class="led led-green"></span> Disponibile
+<div class="page">
+  <!-- KPI -->
+  <div class="kpi-row">
+    <div class="card">
+      <div class="kpi-title">Chiamate attive: 0/3</div>
+      <div class="kpi-pill green">Disponibile</div>
+    </div>
+    <div class="card">
+      <div class="kpi-title">Prenotazioni oggi</div>
+      <div id="kpi-today" class="kpi-value">0</div>
+    </div>
+    <div class="card">
+      <div class="kpi-title">Incasso stimato</div>
+      <div id="kpi-revenue" class="kpi-value">0.00 €</div>
+    </div>
+  </div>
+
+  <!-- TOOLBAR prenotazioni -->
+  <div class="toolbar" data-for="reservations">
+    <input id="filter-date" type="date" class="input" placeholder="gg/mm/aaaa">
+    <input id="filter-q" class="input" placeholder="Cerca nome / telefono / orario">
+    <button id="btn-filter" class="btn">Filtra</button>
+    <button id="btn-clear" class="btn btn-ghost">Elimina filtri</button>
+    <button id="btn-today" class="btn btn-ghost">Oggi</button>
+    <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
+  </div>
+
+  <!-- SEZIONI -->
+  <section id="section-reservations" class="section visible">
+    <div id="reservations-list" class="card list-empty">
+      Nessuna prenotazione trovata
+    </div>
+  </section>
+
+  <section id="section-pricing" class="section">
+    <div class="card form-grid">
+      <h2>Prezzi & coperti</h2>
+      <label>Prezzo medio prenotazione (€)
+        <input name="avg_price" class="input" placeholder="25">
+      </label>
+      <label>Coperto (€ a persona)
+        <input name="cover" class="input" placeholder="2">
+      </label>
+      <label>Capacità massima (opzionale)
+        <input name="seats_cap" class="input" placeholder="">
+      </label>
+      <label>Minimo persone (opzionale)
+        <input name="min_people" class="input" placeholder="">
+      </label>
+      <div class="row-end">
+        <button class="btn btn-primary" data-action="save-pricing">Salva</button>
       </div>
     </div>
+  </section>
 
-    <div class="card kpi-small">
-      <div class="kpi-sub">Prenotazioni oggi</div>
-      <div class="kpi-value" id="kpiToday">0</div>
-    </div>
-
-    <div class="card kpi-small">
-      <div class="kpi-sub">Incasso stimato</div>
-      <div class="kpi-value" id="kpiRevenue">0 €</div>
-    </div>
-  </div>
-
-  <div class="card filters">
-    <div class="filter-row">
-      <div class="date-input">
-        <input class="input" id="flt-date" type="date" aria-label="Data">
-        <span class="calendar-ico">📅</span>
-      </div>
-      <input class="input grow" id="flt-q" type="text" placeholder="Cerca nome / telefono / orario">
-      <div class="row-gap"></div>
-      <button class="btn" id="btn-filter">Filtra</button>
-      <button class="btn btn-ghost" id="btn-clear">Elimina filtri</button>
-      <button class="btn btn-ghost" id="btn-today">Oggi</button>
-      <button class="btn btn-primary right" id="btn-new">+ Nuova prenotazione</button>
-    </div>
-  </div>
-
-  <div id="list"></div>
-  <div class="card empty" id="list-empty" style="display:none">
-    <div class="empty-title">Nessuna prenotazione trovata</div>
-    <div class="muted">Prova a cambiare filtri o aggiungi una nuova prenotazione.</div>
-    <button class="pill minus" aria-label="collapse">−</button>
-  </div>
-</div>
-
-<!-- Prezzi & Coperti -->
-<div class="container" id="view-pricing" style="display:none">
-  <div class="card form-card">
-    <h2>Prezzi & coperti</h2>
-    <div class="grid-2" style="margin-top:12px">
-      <label class="lbl">Prezzo medio prenotazione (€)
-        <input class="input" id="avg_price" type="number" step="0.01" placeholder="25">
+  <section id="section-menu" class="section">
+    <div class="card form-grid">
+      <h2>Menu digitale</h2>
+      <label>Link al menu (PDF/URL)
+        <input name="menu_url" class="input" placeholder="https://...">
       </label>
-      <label class="lbl">Coperto (€ a persona)
-        <input class="input" id="cover" type="number" step="0.01" placeholder="0">
+      <label>Descrizione breve
+        <input name="menu_desc" class="input" placeholder="Sushi, piatti caldi, bevande">
       </label>
-      <label class="lbl">Capacità massima (opzionale)
-        <input class="input" id="seats_cap" type="number" placeholder="">
-      </label>
-      <label class="lbl">Minimo persone (opzionale)
-        <input class="input" id="min_people" type="number" placeholder="">
-      </label>
-    </div>
-    <div style="margin-top:12px">
-      <button class="btn btn-primary" id="btn-save-pricing">Salva</button>
-    </div>
-  </div>
-</div>
-
-<!-- Menu digitale -->
-<div class="container" id="view-menu" style="display:none">
-  <div class="card form-card">
-    <h2>Menu digitale</h2>
-    <label class="lbl">Link al menu (PDF/URL)
-      <input class="input" id="menu_url" type="url" placeholder="https://...">
-    </label>
-    <label class="lbl">Descrizione breve
-      <input class="input" id="menu_desc" type="text" placeholder="Sushi, piatti caldi, bevande">
-    </label>
-    <div style="margin-top:12px">
-      <button class="btn btn-primary" id="btn-save-menu">Salva</button>
-    </div>
-  </div>
-</div>
-
-<!-- Orari settimanali -->
-<div class="container" id="view-hours" style="display:none">
-  <div class="card form-card">
-    <h2>Orari settimanali</h2>
-    <p class="muted">Inserisci finestre orarie per ogni giorno (es. <em>12:00-15:00, 19:00-22:30</em>)</p>
-    <div class="grid">
-      {% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
-      {% for d in days %}
-      <label class="lbl">{{ d }}
-        <input class="input hour-win" data-dow="{{ loop.index0 }}" type="text" placeholder="12:00-15:00, 19:00-22:30">
-      </label>
-      {% endfor %}
-    </div>
-    <div style="margin-top:12px">
-      <button class="btn btn-primary" id="btn-save-hours">Salva orari</button>
-    </div>
-  </div>
-</div>
-
-<!-- Giorni speciali -->
-<div class="container" id="view-special" style="display:none">
-  <div class="card form-card">
-    <h2>Giorni speciali / chiusure</h2>
-    <div class="grid-2">
-      <label class="lbl">Data (YYYY-MM-DD)
-        <input class="input" id="sp_day" type="date">
-      </label>
-      <label class="lbl">Finestre orarie (vuoto se chiuso tutto il giorno)
-        <input class="input" id="sp_windows" type="text" placeholder="12:00-15:00, 19:00-22:30">
-      </label>
-    </div>
-    <label class="check" style="margin-top:8px">
-      <input type="checkbox" id="sp_closed">
-      <span>Chiuso tutto il giorno</span>
-    </label>
-    <div style="margin-top:12px">
-      <button class="btn btn-primary" id="btn-save-special">Salva giorno speciale</button>
-    </div>
-  </div>
-</div>
-
-<!-- Statistiche & report -->
-<div class="container" id="view-stats" style="display:none">
-  <div class="card form-card">
-    <h2>Statistiche & report</h2>
-    <div class="grid-2" style="margin-top:12px">
-      <label class="lbl">Filtra per data (opzionale)
-        <input class="input" id="st_date" type="date">
-      </label>
-    </div>
-    <div style="margin-top:12px">
-      <button class="btn" id="btn-load-stats">Aggiorna</button>
-    </div>
-
-    <div class="grid" style="margin-top:16px">
-      <div class="card kpi-small">
-        <div class="kpi-sub">Prenotazioni</div>
-        <div class="kpi-value" id="st_total">0</div>
-      </div>
-      <div class="card kpi-small">
-        <div class="kpi-sub">Persone per prenotazione (media)</div>
-        <div class="kpi-value" id="st_avg_people">0</div>
-      </div>
-      <div class="card kpi-small">
-        <div class="kpi-sub">Prezzo medio (impostazioni)</div>
-        <div class="kpi-value" id="st_avg_price">0 €</div>
-      </div>
-      <div class="card kpi-small">
-        <div class="kpi-sub">Incasso stimato</div>
-        <div class="kpi-value" id="st_revenue">0 €</div>
+      <div class="row-end">
+        <button class="btn btn-primary" data-action="save-menu">Salva</button>
       </div>
     </div>
+  </section>
+
+  <section id="section-hours" class="section">
+    <div class="card">
+      <h2>Orari settimanali</h2>
+      <p class="muted">Formato: HH:MM–HH:MM separato da virgola. Giorno vuoto = CHIUSO.</p>
+      <div class="grid-2">
+        {% set days = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'] %}
+        {% for d in range(0,7) %}
+          <label>{{ days[d] }}
+            <input class="input hours" data-day="{{ d }}" placeholder="12:00-15:00, 19:00-22:30">
+          </label>
+        {% endfor %}
+      </div>
+      <div class="row-end">
+        <button class="btn btn-primary" data-action="save-hours">Salva</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="section-special" class="section">
+    <div class="card form-grid">
+      <h2>Giorni speciali / chiusure</h2>
+      <label>Data (YYYY-MM-DD)
+        <input class="input" type="date" name="special-date">
+      </label>
+      <label class="inline">
+        <input type="checkbox" name="special-closed"> Chiuso tutto il giorno
+      </label>
+      <label>Finestre orarie (vuoto se chiuso tutto il giorno)
+        <input class="input" name="special-windows" placeholder="12:00-15:00, 19:00-22:30">
+      </label>
+      <div class="row-end">
+        <button class="btn btn-primary" data-action="save-special">Salva giorno speciale</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="section-stats" class="section">
+    <div class="card">
+      <h2>Statistiche & report</h2>
+      <div class="row">
+        <input id="stats-date" type="date" class="input">
+        <button id="stats-refresh" class="btn">Aggiorna</button>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="lbl">Prenotazioni</div><div id="st-total" class="val">0</div></div>
+        <div class="stat-box"><div class="lbl">Persone per prenotazione (media)</div><div id="st-avgp" class="val">0</div></div>
+        <div class="stat-box"><div class="lbl">Prezzo medio (impostazioni)</div><div id="st-avgprice" class="val">0 €</div></div>
+        <div class="stat-box"><div class="lbl">Incasso stimato</div><div id="st-rev" class="val">0 €</div></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- MODALE NUOVA PRENOTAZIONE -->
+<div id="reservation-modal" class="modal hidden" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Crea prenotazione</h3>
+      <button class="icon-btn" data-modal-close>✕</button>
+    </div>
+    <div class="modal-body form-grid">
+      <label>Data
+        <input type="date" id="res-date" class="input">
+      </label>
+      <label>Ora
+        <input type="time" id="res-time" class="input" step="300">
+      </label>
+      <label>Nome
+        <input type="text" id="res-name" class="input">
+      </label>
+      <label>Telefono
+        <input type="text" id="res-phone" class="input">
+      </label>
+      <label>Persone
+        <input type="number" id="res-people" class="input" min="1" value="2">
+      </label>
+      <label>Stato
+        <select id="res-status" class="input">
+          <option>Confermata</option>
+          <option>In attesa</option>
+          <option>Annullata</option>
+        </select>
+      </label>
+      <label>Note
+        <input type="text" id="res-note" class="input" placeholder="Allergie, tavolo, ecc.">
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-modal-close>Chiudi</button>
+      <button id="res-save" class="btn btn-primary">Salva prenotazione</button>
+    </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
 {% endblock %}

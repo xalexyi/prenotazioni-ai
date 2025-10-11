@@ -1,65 +1,56 @@
 <!doctype html>
-<html lang="it" class="h-100">
+<html lang="it" data-theme="dark">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{% block title %}Ristorante AI{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-  <link rel="icon" href="{{ url_for('static', filename='img/logo_sushi.svg') }}">
-  {% block head %}{% endblock %}
 </head>
 <body>
-  <header class="app-header">
+  <header class="topbar">
+    <button id="open-sidebar" class="icon-btn" aria-label="Apri menu">☰</button>
     <div class="brand">
-      <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
-      <span class="brand-name">{% block brand %}Ristorante AI{% endblock %}</span>
-      {% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
+      <span class="dot"></span>
+      <strong>{{ current_user.restaurant.name if current_user.is_authenticated else 'Ristorante' }}</strong>
+      <span class="muted">— Dashboard ristorante</span>
     </div>
-
-    <div class="header-actions">
-      {% if current_user.is_authenticated %}
-        <a class="btn btn-danger" href="{{ url_for('logout') }}" style="text-decoration:none;">Logout</a>
-      {% endif %}
-
-      <label class="theme-toggle" title="Tema">
-        <input id="themeSwitch" type="checkbox" aria-label="toggle theme">
-        <span class="toggle-indicator"></span>
+    <div class="top-actions">
+      <label class="toggle">
+        <input id="theme-toggle" type="checkbox" />
+        <span>🌙</span>
       </label>
+      <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
     </div>
   </header>
 
-  <div class="layout">
-    {% if current_user.is_authenticated %}
-    <aside class="sidebar">
-      <nav class="side-nav">
-        <!-- niente voce "Dashboard", niente "Logout" -->
-        <button class="side-link" data-view="reservations">Prenotazioni</button>
-        <button class="side-link" data-view="pricing">Prezzi & coperti</button>
-        <button class="side-link" data-view="menu">Menu digitale</button>
-        <button class="side-link" data-view="hours">Orari settimanali</button>
-        <button class="side-link" data-view="special">Giorni speciali</button>
-        <button class="side-link" data-view="stats">Statistiche & report</button>
-      </nav>
-    </aside>
-    {% endif %}
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <div>Menu</div>
+      <button id="close-sidebar" class="icon-btn">✕</button>
+    </div>
+    <nav class="side-nav">
+      <button class="side-link active" data-section="reservations">Prenotazioni</button>
+      <button class="side-link" data-section="pricing">Prezzi & coperti</button>
+      <button class="side-link" data-section="menu">Menu digitale</button>
+      <button class="side-link" data-section="hours">Orari settimanali</button>
+      <button class="side-link" data-section="special">Giorni speciali</button>
+      <button class="side-link" data-section="stats">Statistiche & report</button>
+    </nav>
+  </aside>
 
-    <main class="app-main">
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="flash-stack">
-            {% for m in messages %}
-              <div class="alert alert-warn">{{ m }}</div>
-            {% endfor %}
-          </div>
-        {% endif %}
-      {% endwith %}
+  <main id="main">
+    {% block body %}{% endblock %}
+  </main>
 
-      {% block body %}{% endblock %}
-    </main>
-  </div>
-
+  <script>
+    // theme bootstrap (prima dei JS esterni così non sfarfalla)
+    (function () {
+      const saved = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+      const chk = document.getElementById('theme-toggle');
+      if (chk) chk.checked = (saved === 'dark');
+    })();
+  </script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
