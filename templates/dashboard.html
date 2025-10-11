@@ -1,156 +1,137 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="app">
 
-  <!-- Sidebar -->
+<div class="page">
+  <!-- Sidebar sinistra (rimane com’è) -->
   <aside class="sidebar">
-    <div class="sidebar__header">
-      <div class="brand">🍣 Haru Asian Fusion</div>
+    <div class="brand">
+      <span class="dot dot-green"></span>
+      <span>Haru Asian Fusion</span>
     </div>
-    <nav class="menu">
-      <button class="menu__link is-active" data-section="panel-res">Prenotazioni</button>
-      <button class="menu__link" data-section="panel-price">Prezzi & coperti</button>
-      <button class="menu__link" data-section="panel-menu">Menu digitale</button>
-      <button class="menu__link" data-section="panel-hours">Orari settimanali</button>
-      <button class="menu__link" data-section="panel-special">Giorni speciali</button>
-      <button class="menu__link" data-section="panel-stats">Statistiche & report</button>
+
+    <nav class="nav">
+      <a class="nav-item active" data-section="reservations">Prenotazioni</a>
+      <a class="nav-item" data-section="pricing">Prezzi & coperti</a>
+      <a class="nav-item" data-section="menu">Menu digitale</a>
+      <a class="nav-item" data-section="hours">Orari settimanali</a>
+      <a class="nav-item" data-section="special">Giorni speciali</a>
+      <a class="nav-item" data-section="stats">Statistiche & report</a>
     </nav>
   </aside>
 
-  <!-- Main -->
-  <main class="main">
-    <header class="topbar">
-      <div class="topbar__title">Dashboard ristorante</div>
-      <div class="topbar__actions">
-        <label class="toggle" title="Tema">
-          <input type="checkbox" id="theme-toggle" />
-          <span class="toggle__slider"></span>
-        </label>
-        <a class="btn btn-danger" href="/logout">Logout</a>
+  <!-- Contenuto -->
+  <main class="content">
+    <header class="cards">
+      <div class="card">
+        <div class="card-title">Chiamate attive</div>
+        <div class="card-value">0/3</div>
+        <div class="card-sub"><span class="dot dot-green"></span> Disponibile</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Prenotazioni oggi</div>
+        <div id="card-today" class="card-value">0</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Incasso stimato</div>
+        <div id="card-revenue" class="card-value">0 €</div>
       </div>
     </header>
 
-    <!-- KPI -->
-    <section class="cards">
-      <div class="card kpi"><div class="kpi__title">Chiamate attive</div><div class="kpi__value">0/3</div></div>
-      <div class="card kpi"><div class="kpi__title">Prenotazioni oggi</div><div id="kpi-today" class="kpi__value">0</div></div>
-      <div class="card kpi"><div class="kpi__title">Incasso stimato</div><div id="kpi-rev" class="kpi__value">0 €</div></div>
-    </section>
-
-    <!-- Filtri / Azioni prenotazioni -->
+    <!-- Filtro + azioni rapide -->
     <section class="toolbar">
-      <input id="f-date" class="input" placeholder="gg/mm/aaaa" />
-      <input id="f-q" class="input" placeholder="Cerca nome / telefono / orario" />
+      <input id="flt-date" type="date" class="input" placeholder="gg/mm/aaaa">
+      <input id="flt-q" type="text" class="input" placeholder="Cerca nome / telefono / orario">
       <button id="btn-filter" class="btn">Filtra</button>
       <button id="btn-clear" class="btn btn-ghost">Elimina filtri</button>
       <button id="btn-today" class="btn btn-ghost">Oggi</button>
       <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
     </section>
 
-    <!-- Pannelli -->
-    <section class="panels">
-
-      <!-- Prenotazioni -->
-      <div id="panel-res" class="panel is-active">
-        <div id="res-list" class="list">
-          <div class="empty">Nessuna prenotazione trovata</div>
-        </div>
-      </div>
-
-      <!-- Prezzi & Coperti -->
-      <div id="panel-price" class="panel">
-        <div class="card form">
-          <h3>Prezzi & coperti</h3>
-          <label>Prezzo medio prenotazione (€)</label>
-          <input class="input" name="avg_price" />
-          <label>Coperto (€ a persona)</label>
-          <input class="input" name="cover" />
-          <label>Capacità massima (opzionale)</label>
-          <input class="input" name="seats_cap" />
-          <label>Minimo persone (opzionale)</label>
-          <input class="input" name="min_people" />
-          <button class="btn btn-primary" data-action="save-pricing">Salva</button>
-        </div>
-      </div>
-
-      <!-- Menu digitale -->
-      <div id="panel-menu" class="panel">
-        <div class="card form">
-          <h3>Menu digitale</h3>
-          <label>Link al menu (PDF/URL)</label>
-          <input class="input" name="menu_url" placeholder="https://..." />
-          <label>Descrizione breve</label>
-          <input class="input" name="menu_desc" placeholder="Sushi, piatti caldi, bevande" />
-          <button class="btn btn-primary" data-action="save-menu">Salva</button>
-        </div>
-      </div>
-
-      <!-- Orari settimanali -->
-      <div id="panel-hours" class="panel">
-        <div class="card">
-          <h3>Orari settimanali</h3>
-          <p class="muted">Formato: HH:MM-HH:MM, HH:MM-HH:MM (es. 12:00-15:00, 19:00-22:30). Vuoto = CHIUSO.</p>
-          <div id="hours-grid" class="hours-grid"></div>
-          <button class="btn btn-primary" data-action="save-hours">Salva</button>
-        </div>
-      </div>
-
-      <!-- Giorni speciali -->
-      <div id="panel-special" class="panel">
-        <div class="card form">
-          <h3>Giorni speciali / chiusure</h3>
-          <label>Data (YYYY-MM-DD)</label>
-          <input class="input" name="special-date" placeholder="2025-12-25" />
-          <label>Finestre orarie (vuoto se chiuso tutto il giorno)</label>
-          <input class="input" id="special-windows" placeholder="12:00-15:00, 19:00-22:30" />
-          <label class="check"><input type="checkbox" id="special-closed" /> Chiuso tutto il giorno</label>
-          <button class="btn btn-primary" data-action="save-special">Salva giorno speciale</button>
-          <div id="special-list" class="list mt"></div>
-        </div>
-      </div>
-
-      <!-- Statistiche -->
-      <div id="panel-stats" class="panel">
-        <div class="card">
-          <h3>Statistiche</h3>
-          <div id="stats-box" class="stats"></div>
-          <button id="stats-refresh" class="btn">Aggiorna</button>
-        </div>
-      </div>
-
+    <!-- Lista prenotazioni -->
+    <section id="list" class="list">
+      <div class="empty">Nessuna prenotazione trovata<br><small>Prova a cambiare filtri o aggiungi una nuova prenotazione.</small></div>
     </section>
   </main>
 </div>
 
-<!-- MODALE Prenotazione -->
-<div class="modal" id="res-modal" aria-hidden="true">
-  <div class="modal__overlay" data-close></div>
-  <div class="modal__dialog">
-    <div class="modal__header">
-      <h3>Crea prenotazione</h3>
-      <button class="icon" data-close aria-label="Chiudi">✕</button>
+<!-- Modal Crea/Modifica -->
+<div id="modal-res" class="modal hidden" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div id="modal-title" class="modal-title">Crea prenotazione</div>
+      <button class="icon-btn" data-close="modal-res" aria-label="Chiudi">✖</button>
     </div>
-    <div class="modal__body form">
-      <label>Data</label><input id="m-date" class="input" placeholder="gg/mm/aaaa" />
-      <label>Ora</label><input id="m-time" class="input" placeholder="20:00" />
-      <label>Nome</label><input id="m-name" class="input" />
-      <label>Telefono</label><input id="m-phone" class="input" />
-      <label>Persone</label><input id="m-people" class="input" value="2" />
-      <label>Stato</label>
-      <select id="m-status" class="input">
-        <option>Confermata</option>
-        <option>In attesa</option>
-        <option>Annullata</option>
-      </select>
-      <label>Note</label><input id="m-note" class="input" placeholder="Allergie, tavolo, ecc." />
+
+    <div class="modal-body">
+      <div class="grid">
+        <label class="field">
+          <span>Data</span>
+          <input id="f-date" type="date" class="input">
+        </label>
+        <label class="field">
+          <span>Ora</span>
+          <input id="f-time" type="time" class="input" step="300">
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Nome</span>
+        <input id="f-name" type="text" class="input">
+      </label>
+
+      <label class="field">
+        <span>Telefono</span>
+        <input id="f-phone" type="text" class="input">
+      </label>
+
+      <div class="grid">
+        <label class="field">
+          <span>Persone</span>
+          <input id="f-people" type="number" class="input" min="1" step="1" value="2">
+        </label>
+
+        <label class="field">
+          <span>Stato</span>
+          <select id="f-status" class="input">
+            <option>Confermata</option>
+            <option>In attesa</option>
+            <option>Rifiutata</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Note</span>
+        <input id="f-note" type="text" class="input" placeholder="Allergie, tavolo, ecc.">
+      </label>
     </div>
-    <div class="modal__footer">
-      <button class="btn" data-close>Chiudi</button>
-      <button id="m-save" class="btn btn-primary">Salva prenotazione</button>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modal-res">Chiudi</button>
+      <button id="btn-save-res" class="btn btn-primary">Salva prenotazione</button>
     </div>
   </div>
 </div>
 
-<!-- Toast -->
-<div id="toast" class="toast"></div>
+<!-- Modal Conferma Eliminazione -->
+<div id="modal-confirm" class="modal hidden" aria-hidden="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel small">
+    <div class="modal-head">
+      <div class="modal-title">Eliminare la prenotazione?</div>
+      <button class="icon-btn" data-close="modal-confirm" aria-label="Chiudi">✖</button>
+    </div>
+    <div class="modal-body">
+      <div class="confirm-text">Questa azione non può essere annullata.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="modal-confirm">Annulla</button>
+      <button id="btn-confirm-delete" class="btn btn-danger">Elimina</button>
+    </div>
+  </div>
+</div>
+
+<!-- Script pagina -->
+<script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
 {% endblock %}

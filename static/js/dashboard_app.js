@@ -1,217 +1,320 @@
-// --------- Utilities
-const $ = (s, r=document)=> r.querySelector(s);
-const $$ = (s, r=document)=> [...r.querySelectorAll(s)];
-const j = (url, opts={}) =>
-  fetch(url, Object.assign({headers:{'Content-Type':'application/json'}}, opts)).then(r=>r.json());
+/* Dashboard – Prenotazioni: UX pro con badge, azioni rapide e modal di conferma */
 
-function ymd_from_it(it){ // "gg/mm/aaaa" -> "YYYY-MM-DD"
-  if(!it) return "";
-  const [g,m,a] = it.split("/"); if(!g||!m||!a) return "";
-  return `${a}-${m.padStart(2,"0")}-${g.padStart(2,"0")}`;
-}
-function it_from_ymd(ymd){ // "YYYY-MM-DD" -> "gg/mm/aaaa"
-  if(!ymd) return "";
-  const [a,m,g] = ymd.split("-");
-  return `${g}/${m}/${a}`;
-}
+(() => {
+  // -------------------------
+  // helpers
+  // -------------------------
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-// --------- Prenotazioni
-async function loadReservations(){
-  const q = $("#f-q")?.value?.trim() || "";
-  const dateIt = $("#f-date")?.value?.trim() || "";
-  const date = dateIt ? ymd_from_it(dateIt) : "";
-  const url = `/api/reservations${q || date ? `?${new URLSearchParams({q, date}).toString()}`:""}`;
-  const res = await j(url);
-  const list = $("#res-list");
-  list.innerHTML = "";
-  if(!res.ok || !res.items?.length){
-    list.innerHTML = `<div class="empty">Nessuna prenotazione trovata</div>`;
-    $("#kpi-today").textContent = "0";
-    $("#kpi-rev").textContent = "0 €";
-    return;
-  }
-  res.items.forEach(r=>{
-    const row = document.createElement("div");
-    row.className = "item";
-    row.innerHTML = `
-      <div>${it_from_ymd(r.date)}</div>
-      <div>${r.time}</div>
-      <div>${r.name}</div>
-      <div>${r.phone || "-"}</div>
-      <div>${r.people}</div>
-      <div>${r.status}</div>
-      <div>${r.note || "-"}</div>
-      <div></div>
-      <div><button class="btn btn-ghost" data-id="${r.id}" data-act="del">Elimina</button></div>
+  const api = {
+    async list(params = {}) {
+      const qs = new URLSearchParams(params).toString();
+      const r = await fetch(`/api/reservations?${qs}`, { credentials: "same-origin" });
+      return r.json();
+    },
+    async create(payload) {
+      const r = await fetch("/api/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(payload)
+      });
+      return r.json();
+    },
+    async update(id, payload) {
+      const r = await fetch(`/api/reservations/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(payload)
+      });
+      return r.json();
+    },
+    async remove(id) {
+      const r = await fetch(`/api/reservations/${id}`, {
+        method: "DELETE",
+        credentials: "same-origin"
+      });
+      return r.json();
+    },
+    async stats(params = {}) {
+      const qs = new URLSearchParams(params).toString();
+      const r = await fetch(`/api/stats?${qs}`, { credentials: "same-origin" });
+      return r.json();
+    }
+  };
+
+  const fmt = {
+    dayName(d) {
+      return d.toLocaleDateString("it-IT", { weekday: "short" }); // es: sab
+    },
+    date(d) {
+      return d.toLocaleDateString("it-IT");
+    },
+    time(t24) {
+      return t24; // già HH:MM
+    },
+    statusBadge(status) {
+      const map = {
+        "Confermata": { cls: "badge ok", txt: "✅ Confermata" },
+        "In attesa": { cls: "badge wait", txt: "⏳ In attesa" },
+        "Rifiutata": { cls: "badge ko", txt: "❌ Rifiutata" }
+      };
+      const m = map[status] || map["In attesa"];
+      return `<span class="${m.cls}">${m.txt}</span>`;
+    }
+  };
+
+  // -------------------------
+  // stato UI
+  // -------------------------
+  let state = {
+    filterDate: "",
+    filterQ: "",
+    items: [],
+    editId: null,
+    pendingDeleteId: null
+  };
+
+  // -------------------------
+  // rendering
+  // -------------------------
+  function renderList() {
+    const box = $("#list");
+    box.innerHTML = "";
+
+    if (!state.items.length) {
+      box.innerHTML = `<div class="empty">Nessuna prenotazione trovata<br><small>Prova a cambiare filtri o aggiungi una nuova prenotazione.</small></div>`;
+      return;
+    }
+
+    const table = document.createElement("div");
+    table.className = "res-table";
+
+    // header
+    table.innerHTML = `
+      <div class="res-row head">
+        <div class="c when">Data / Ora</div>
+        <div class="c who">Cliente</div>
+        <div class="c phone">Telefono</div>
+        <div class="c ppl">Pers.</div>
+        <div class="c status">Stato</div>
+        <div class="c note">Note</div>
+        <div class="c actions">Azioni</div>
+      </div>
     `;
-    list.appendChild(row);
+
+    // rows
+    for (const r of state.items) {
+      const d = new Date(`${r.date}T00:00:00`);
+      const row = document.createElement("div");
+      row.className = "res-row";
+      row.dataset.id = r.id;
+
+      row.innerHTML = `
+        <div class="c when">
+          <div class="when-date">${fmt.dayName(d)} ${fmt.date(d)}</div>
+          <div class="when-time">🕒 ${fmt.time(r.time)}</div>
+        </div>
+        <div class="c who">👤 ${escapeHtml(r.name || "—")}</div>
+        <div class="c phone">📞 ${escapeHtml(r.phone || "—")}</div>
+        <div class="c ppl">👥 ${r.people}</div>
+        <div class="c status">${fmt.statusBadge(r.status)}</div>
+        <div class="c note">${escapeHtml(r.note || "—")}</div>
+        <div class="c actions">
+          <button class="chip" data-act="edit">Modifica</button>
+          <button class="chip" data-act="confirm">Conferma</button>
+          <button class="chip" data-act="reject">Rifiuta</button>
+          <button class="chip chip-danger" data-act="delete">Elimina</button>
+        </div>
+      `;
+
+      table.appendChild(row);
+    }
+
+    box.appendChild(table);
+  }
+
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, m => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+    })[m]);
+  }
+
+  async function refresh() {
+    const params = {};
+    if (state.filterDate) params.date = state.filterDate;
+    if (state.filterQ) params.q = state.filterQ;
+
+    const res = await api.list(params);
+    state.items = (res && res.items) || [];
+    renderList();
+
+    const st = await api.stats(params);
+    if (st && st.ok) {
+      $("#card-today").textContent = String(st.total_reservations || 0);
+      $("#card-revenue").textContent = `${(st.estimated_revenue || 0).toFixed(2)} €`;
+    }
+  }
+
+  // -------------------------
+  // Modal helpers
+  // -------------------------
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove("hidden");
+    el.setAttribute("aria-hidden", "false");
+  }
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add("hidden");
+    el.setAttribute("aria-hidden", "true");
+  }
+  $$(".modal").forEach(m => {
+    m.addEventListener("click", e => {
+      if (e.target.classList.contains("modal-backdrop")) {
+        m.classList.add("hidden");
+      }
+    });
   });
-  // small kpi from list size (today filtered)
-  $("#kpi-today").textContent = String(res.items.length);
-  // revenue estimated -> /api/stats for accuracy
-  refreshStatsMini();
-}
+  $$('[data-close]').forEach(btn => {
+    btn.addEventListener("click", () => closeModal(btn.dataset.close));
+  });
 
-async function refreshStatsMini(){
-  const stat = await j("/api/stats");
-  if(stat?.ok){
-    $("#kpi-rev").textContent = `${Number(stat.estimated_revenue||0).toFixed(2)} €`;
+  // -------------------------
+  // Event wiring
+  // -------------------------
+  function wireToolbar() {
+    // Oggi
+    $("#btn-today").addEventListener("click", () => {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      $("#flt-date").value = `${yyyy}-${mm}-${dd}`;
+      state.filterDate = $("#flt-date").value;
+      refresh();
+    });
+
+    // Filtra
+    $("#btn-filter").addEventListener("click", () => {
+      state.filterDate = $("#flt-date").value || "";
+      state.filterQ = $("#flt-q").value.trim();
+      refresh();
+    });
+
+    // Pulisci
+    $("#btn-clear").addEventListener("click", () => {
+      $("#flt-date").value = "";
+      $("#flt-q").value = "";
+      state.filterDate = "";
+      state.filterQ = "";
+      refresh();
+    });
+
+    // Nuova prenotazione
+    $("#btn-new").addEventListener("click", () => {
+      state.editId = null;
+      $("#modal-title").textContent = "Crea prenotazione";
+      $("#f-date").value = $("#flt-date").value || new Date().toISOString().slice(0, 10);
+      $("#f-time").value = "20:00";
+      $("#f-name").value = "";
+      $("#f-phone").value = "";
+      $("#f-people").value = "2";
+      $("#f-status").value = "Confermata";
+      $("#f-note").value = "";
+      openModal("modal-res");
+    });
+
+    // Salva (create o update)
+    $("#btn-save-res").addEventListener("click", async () => {
+      const payload = {
+        date: $("#f-date").value,
+        time: $("#f-time").value,
+        name: $("#f-name").value.trim(),
+        phone: $("#f-phone").value.trim(),
+        people: Number($("#f-people").value || 2),
+        status: $("#f-status").value,
+        note: $("#f-note").value.trim()
+      };
+
+      let out;
+      if (state.editId) out = await api.update(state.editId, payload);
+      else out = await api.create(payload);
+
+      if (out && out.ok) {
+        closeModal("modal-res");
+        await refresh();
+      } else {
+        alert("Errore: " + (out && out.error ? out.error : "impossibile salvare"));
+      }
+    });
   }
-}
 
-async function createReservation(data){
-  const res = await j("/api/reservations", {method:"POST", body: JSON.stringify(data)});
-  if(!res.ok) throw new Error(res.error || "Errore creazione");
-}
+  function wireListActions() {
+    $("#list").addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      const row = e.target.closest(".res-row");
+      if (!row) return;
 
-// --------- Modale prenotazione
-const modal = $("#res-modal");
-function openModal(){ modal.classList.add("is-open"); }
-function closeModal(){ modal.classList.remove("is-open"); }
-$$("[data-close]", modal).forEach(b => b.addEventListener("click", closeModal));
-$(".modal__overlay", modal)?.addEventListener("click", closeModal);
+      const id = Number(row.dataset.id);
+      const act = btn.dataset.act;
 
-$("#btn-new")?.addEventListener("click", ()=>{
-  $("#m-date").value = new Date().toLocaleDateString("it-IT"); // gg/mm/aaaa
-  $("#m-time").value = "20:00";
-  $("#m-name").value = "";
-  $("#m-phone").value = "";
-  $("#m-people").value = "2";
-  $("#m-status").value = "Confermata";
-  $("#m-note").value = "";
-  openModal();
-});
+      if (act === "edit") {
+        const item = state.items.find(x => x.id === id);
+        if (!item) return;
+        state.editId = id;
+        $("#modal-title").textContent = "Modifica prenotazione";
+        $("#f-date").value = item.date;
+        $("#f-time").value = item.time;
+        $("#f-name").value = item.name || "";
+        $("#f-phone").value = item.phone || "";
+        $("#f-people").value = item.people || 2;
+        $("#f-status").value = item.status || "In attesa";
+        $("#f-note").value = item.note || "";
+        openModal("modal-res");
+      }
 
-$("#m-save")?.addEventListener("click", async ()=>{
-  try{
-    const payload = {
-      date: ymd_from_it($("#m-date").value.trim()),
-      time: $("#m-time").value.trim(),
-      name: $("#m-name").value.trim(),
-      phone: $("#m-phone").value.trim(),
-      people: Number($("#m-people").value || 2),
-      status: $("#m-status").value,
-      note: $("#m-note").value.trim(),
-    };
-    if(!payload.date || !payload.time || !payload.name) return toast("Compila data, ora e nome");
-    await createReservation(payload);
-    closeModal();
-    toast("Prenotazione creata");
-    loadReservations();
-  }catch(e){ toast("Errore: " + e.message); }
-});
+      if (act === "confirm") {
+        const out = await api.update(id, { status: "Confermata" });
+        if (out && out.ok) refresh();
+      }
 
-// Delete reservation (delegation)
-$("#res-list")?.addEventListener("click", async (ev)=>{
-  const btn = ev.target.closest("[data-act='del']");
-  if(!btn) return;
-  const id = btn.dataset.id;
-  if(!confirm("Eliminare la prenotazione?")) return;
-  const res = await fetch(`/api/reservations/${id}`, {method:"DELETE"});
-  const js = await res.json();
-  if(js.ok){ toast("Eliminata"); loadReservations(); }
-  else toast(js.error || "Errore eliminazione");
-});
+      if (act === "reject") {
+        const out = await api.update(id, { status: "Rifiutata" });
+        if (out && out.ok) refresh();
+      }
 
-// Filtri
-$("#btn-filter")?.addEventListener("click", loadReservations);
-$("#btn-clear")?.addEventListener("click", ()=>{
-  $("#f-date").value = ""; $("#f-q").value = ""; loadReservations();
-});
-$("#btn-today")?.addEventListener("click", ()=>{
-  $("#f-date").value = new Date().toLocaleDateString("it-IT"); loadReservations();
-});
+      if (act === "delete") {
+        state.pendingDeleteId = id;
+        openModal("modal-confirm");
+      }
+    });
 
-// --------- Orari settimanali
-const DAYS = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
-
-function buildHoursGrid(){
-  const box = $("#hours-grid");
-  box.innerHTML = "";
-  for(let d=0; d<7; d++){
-    const l = document.createElement("div");
-    l.className = "dow";
-    l.textContent = DAYS[d];
-    const inp = document.createElement("input");
-    inp.className = "input win";
-    inp.dataset.day = String(d);
-    inp.placeholder = d<=5 ? "12:00-15:00, 19:00-23:00" : "12:00-15:00, 19:00-23:00";
-    box.appendChild(l); box.appendChild(inp);
+    // conferma eliminazione
+    $("#btn-confirm-delete").addEventListener("click", async () => {
+      const id = state.pendingDeleteId;
+      if (!id) return;
+      const out = await api.remove(id);
+      closeModal("modal-confirm");
+      state.pendingDeleteId = null;
+      if (out && out.ok) refresh();
+      else alert("Impossibile eliminare la prenotazione.");
+    });
   }
-}
-buildHoursGrid();
 
-$("[data-action='save-hours']")?.addEventListener("click", async ()=>{
-  const hours = {};
-  $$(".win").forEach(i=> hours[i.dataset.day] = i.value.trim());
-  const res = await j("/api/hours", {method:"POST", body: JSON.stringify({hours})});
-  if(res.ok) toast("Orari salvati"); else toast(res.error || "Errore orari");
-});
+  // -------------------------
+  // boot
+  // -------------------------
+  function boot() {
+    wireToolbar();
+    wireListActions();
+    refresh();
+  }
 
-// --------- Giorni speciali
-$("[data-action='save-special']")?.addEventListener("click", async ()=>{
-  const day = $("[name='special-date']").value.trim();
-  const closed = $("#special-closed").checked;
-  const windows = $("#special-windows").value.trim();
-  if(!day){ toast("Inserisci una data (YYYY-MM-DD)"); return; }
-  const res = await j("/api/special-days", {method:"POST", body: JSON.stringify({day, closed, windows})});
-  if(res.ok){ toast("Giorno speciale salvato"); renderSpecialRow({day, closed, windows}); }
-  else toast(res.error || "Errore salvataggio");
-});
-
-function renderSpecialRow(r){
-  const list = $("#special-list");
-  const row = document.createElement("div");
-  row.className = "item";
-  row.innerHTML = `
-    <div style="grid-column:1/3"><strong>${r.day}</strong></div>
-    <div>${r.closed ? "Chiuso" : (r.windows||"-")}</div>
-  `;
-  list.prepend(row);
-}
-
-// --------- Prezzi & coperti
-$("[data-action='save-pricing']")?.addEventListener("click", async ()=>{
-  const payload = {
-    avg_price: $("[name='avg_price']").value,
-    cover: $("[name='cover']").value,
-    seats_cap: $("[name='seats_cap']").value,
-    min_people: $("[name='min_people']").value,
-  };
-  const res = await j("/api/pricing", {method:"POST", body: JSON.stringify(payload)});
-  if(res.ok) toast("Impostazioni prezzi salvate");
-  else toast(res.error || "Errore prezzi");
-});
-
-// --------- Menu digitale
-$("[data-action='save-menu']")?.addEventListener("click", async ()=>{
-  const payload = {
-    menu_url: $("[name='menu_url']").value,
-    menu_desc: $("[name='menu_desc']").value,
-  };
-  const res = await j("/api/menu", {method:"POST", body: JSON.stringify(payload)});
-  if(res.ok) toast("Menu salvato");
-  else toast(res.error || "Errore menu");
-});
-
-// --------- Statistiche
-async function loadStats(){
-  const st = await j("/api/stats");
-  const box = $("#stats-box");
-  if(!st.ok){ box.textContent = "Errore caricamento"; return; }
-  box.innerHTML = `
-    <div class="list">
-      <div class="item"><div>Prenotazioni</div><div>${st.total_reservations}</div></div>
-      <div class="item"><div>Persone per prenotazione (media)</div><div>${Number(st.avg_people||0).toFixed(2)}</div></div>
-      <div class="item"><div>Prezzo medio (impostazioni)</div><div>${Number(st.avg_price||0).toFixed(2)} €</div></div>
-      <div class="item"><div>Incasso stimato</div><div>${Number(st.estimated_revenue||0).toFixed(2)} €</div></div>
-    </div>
-  `;
-}
-$("#stats-refresh")?.addEventListener("click", loadStats);
-
-// --------- Bootstrap
-window.addEventListener("DOMContentLoaded", ()=>{
-  loadReservations();
-  loadStats();
-});
+  document.addEventListener("DOMContentLoaded", boot);
+})();
