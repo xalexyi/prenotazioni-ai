@@ -1,354 +1,223 @@
-/* Dashboard – Prenotazioni (fix: data, azioni in riga, toggle tema, menu funzionante) */
+(function () {
+  const $ = (sel, ctx=document) => ctx.querySelector(sel);
+  const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
 
-(() => {
-  // -------------------------
-  // helpers
-  // -------------------------
-  const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  // Router super-semplice: pannelli laterali
+  const panels = {
+    prices: "#panel-prices",
+    menu: "#panel-menu",
+    weekly: "#panel-weekly",
+    special: "#panel-special",
+    stats: "#panel-stats",
+  };
 
-  // ---- robust date parsing (YYYY-MM-DD or DD/MM/YYYY)
-  function parseDateSafe(s) {
-    if (!s) return null;
-    // ISO
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(`${s}T00:00:00`);
-    // DMY
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const [dd, mm, yyyy] = s.split("/");
-      return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-    }
-    // fallback
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? null : d;
+  function showPanel(key){
+    $$(".panel").forEach(p => p.classList.remove("visible"));
+    if(!key){ $("#panel-reservations").classList.add("visible"); return; }
+    const id = panels[key];
+    if(id) $(id).classList.add("visible");
   }
 
-  const api = {
-    async list(params = {}) {
-      const qs = new URLSearchParams(params).toString();
-      const r = await fetch(`/api/reservations?${qs}`, { credentials: "same-origin" });
-      return r.json();
-    },
-    async create(payload) {
-      const r = await fetch("/api/reservations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify(payload)
-      });
-      return r.json();
-    },
-    async update(id, payload) {
-      const r = await fetch(`/api/reservations/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify(payload)
-      });
-      return r.json();
-    },
-    async remove(id) {
-      const r = await fetch(`/api/reservations/${id}`, {
-        method: "DELETE",
-        credentials: "same-origin"
-      });
-      return r.json();
-    },
-    async stats(params = {}) {
-      const qs = new URLSearchParams(params).toString();
-      const r = await fetch(`/api/stats?${qs}`, { credentials: "same-origin" });
-      return r.json();
+  // attiva nav
+  $$(".sidebar [data-panel]").forEach(a=>{
+    a.addEventListener("click", (e)=>{
+      e.preventDefault();
+      showPanel(a.dataset.panel);
+    });
+  });
+
+  // ---------------- Prenotazioni ----------------
+  $("#btn-today").addEventListener("click", ()=>{
+    const d = new Date();
+    const pad = n=>String(n).padStart(2,"0");
+    $("#flt-date").value = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+    loadReservations();
+  });
+
+  $("#btn-clear").addEventListener("click", ()=>{
+    $("#flt-date").value = "";
+    $("#flt-q").value = "";
+    loadReservations();
+  });
+
+  $("#btn-filter").addEventListener("click", loadReservations);
+
+  $("#btn-new").addEventListener("click", ()=>{
+    $("#dlg-new").classList.remove("hidden");
+  });
+  $("#btn-dlg-close").addEventListener("click", ()=> $("#dlg-new").classList.add("hidden"));
+  $("#btn-dlg-save").addEventListener("click", async ()=>{
+    const payload = {
+      date: $("#new-date").value.trim(),
+      time: $("#new-time").value.trim(),
+      name: $("#new-name").value.trim(),
+      phone: $("#new-phone").value.trim(),
+      people: +$("#new-people").value || 2,
+      status: $("#new-status").value,
+      note: $("#new-note").value.trim()
+    };
+    const r = await fetch("/api/reservations", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+    const j = await r.json();
+    if(j.ok){ $("#dlg-new").classList.add("hidden"); loadReservations(); }
+    else alert("Errore salvataggio prenotazione");
+  });
+
+  async function loadReservations(){
+    const params = new URLSearchParams();
+    const v = $("#flt-date").value.trim();
+    if(v){
+      // accetta dd/mm/yyyy e yyyy-mm-dd
+      let d = v;
+      if(v.includes("/")){
+        const [dd,mm,yy] = v.split("/");
+        d = `${yy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;
+      }
+      params.set("date", d);
     }
-  };
-
-  const fmt = {
-    dayName(d) { return d.toLocaleDateString("it-IT", { weekday: "short" }); },
-    date(d) { return d.toLocaleDateString("it-IT"); },
-    statusBadge(status) {
-      const map = {
-        "Confermata": { cls: "badge ok", txt: "✅ Confermata" },
-        "In attesa":   { cls: "badge wait", txt: "⏳ In attesa" },
-        "Rifiutata":   { cls: "badge ko", txt: "❌ Rifiutata" }
-      };
-      const m = map[status] || map["In attesa"];
-      return `<span class="${m.cls}">${m.txt}</span>`;
-    }
-  };
-
-  // -------------------------
-  // stato
-  // -------------------------
-  let state = {
-    filterDate: "",
-    filterQ: "",
-    items: [],
-    editId: null,
-    pendingDeleteId: null
-  };
-
-  // -------------------------
-  // rendering
-  // -------------------------
-  function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, m => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-    })[m]);
-  }
-
-  function renderList() {
-    const box = $("#list");
+    const r = await fetch("/api/reservations?"+params.toString());
+    const rows = await r.json();
+    const box = $("#res-list");
     box.innerHTML = "";
-
-    if (!state.items.length) {
-      box.innerHTML = `<div class="empty">Nessuna prenotazione trovata<br><small>Prova a cambiare filtri o aggiungi una nuova prenotazione.</small></div>`;
+    if(rows.length === 0){
+      box.innerHTML = `<div class="empty">Nessuna prenotazione trovata</div>`;
       return;
     }
+    rows.forEach(item=>{
+      const el = document.createElement("div");
+      el.className = "row";
+      el.innerHTML = `<div><strong>${item.time}</strong> — ${item.name} (${item.people})</div><div class="muted">${item.phone||""}</div>`;
+      box.appendChild(el);
+    });
+  }
 
-    const table = document.createElement("div");
-    table.className = "res-table";
+  // ---------------- Prezzi & coperti (pranzo/cena) ----------------
+  async function pricesLoad(){
+    const j = await (await fetch("/api/settings/prices")).json();
+    $("#price-lunch").value = j.avg_price_lunch || 0;
+    $("#price-dinner").value = j.avg_price_dinner || 0;
+    $("#cover-fee").value = j.cover_fee || 0;
+    $("#seats-cap").value = j.seats_cap || "";
+    $("#min-people").value = j.min_people || "";
+  }
+  $("#btn-prices-save").addEventListener("click", async ()=>{
+    const payload = {
+      avg_price_lunch: +$("#price-lunch").value || 0,
+      avg_price_dinner: +$("#price-dinner").value || 0,
+      cover_fee: +$("#cover-fee").value || 0,
+      seats_cap: $("#seats-cap").value ? +$("#seats-cap").value : null,
+      min_people: $("#min-people").value ? +$("#min-people").value : null
+    };
+    const r = await fetch("/api/settings/prices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const j = await r.json();
+    if(j.ok) alert("Impostazioni salvate");
+    else alert("Errore salvataggio");
+  });
 
-    table.innerHTML = `
-      <div class="res-row head">
-        <div class="c when">Data / Ora</div>
-        <div class="c who">Cliente</div>
-        <div class="c phone">Telefono</div>
-        <div class="c ppl">Pers.</div>
-        <div class="c status">Stato</div>
-        <div class="c note">Note</div>
-        <div class="c actions">Azioni</div>
-      </div>
-    `;
-
-    for (const r of state.items) {
-      const d = parseDateSafe(r.date);
-      const datePart = d ? `${fmt.dayName(d)} ${fmt.date(d)}` : "—";
+  // ---------------- Menu digitale (CRUD semplice) ----------------
+  async function menuLoad(){
+    const items = await (await fetch("/api/menu-items")).json();
+    const box = $("#menu-list");
+    box.innerHTML = "";
+    if(items.length===0){ box.innerHTML = `<div class="empty">Nessun piatto</div>`; return; }
+    items.forEach(it=>{
       const row = document.createElement("div");
-      row.className = "res-row";
-      row.dataset.id = r.id;
-
+      row.className = "row";
       row.innerHTML = `
-        <div class="c when">
-          <div class="when-date">${datePart}</div>
-          <div class="when-time">🕒 ${escapeHtml(r.time || "—")}</div>
-        </div>
-        <div class="c who">👤 ${escapeHtml(r.name || "—")}</div>
-        <div class="c phone">📞 ${escapeHtml(r.phone || "—")}</div>
-        <div class="c ppl">👥 ${r.people}</div>
-        <div class="c status">${fmt.statusBadge(r.status)}</div>
-        <div class="c note">${escapeHtml(r.note || "—")}</div>
-        <div class="c actions actions-inline">
-          <button class="chip" data-act="edit">Modifica</button>
-          <button class="chip" data-act="confirm">Conferma</button>
-          <button class="chip" data-act="reject">Rifiuta</button>
-          <button class="chip chip-danger" data-act="delete">Elimina</button>
-        </div>
+        <div class="grow"><input class="input inline name" value="${it.name}"></div>
+        <div><input class="input inline price" type="number" step="0.01" value="${it.price}"></div>
+        <button class="btn sm save">Salva</button>
+        <button class="btn sm danger del">Elimina</button>
       `;
-
-      table.appendChild(row);
-    }
-
-    box.appendChild(table);
-  }
-
-  async function refresh() {
-    const params = {};
-    if (state.filterDate) params.date = state.filterDate;
-    if (state.filterQ) params.q = state.filterQ;
-
-    const res = await api.list(params);
-    state.items = (res && res.items) || [];
-    renderList();
-
-    const st = await api.stats(params);
-    if (st && st.ok) {
-      $("#card-today").textContent = String(st.total_reservations || 0);
-      $("#card-revenue").textContent = `${(st.estimated_revenue || 0).toFixed(2)} €`;
-    }
-  }
-
-  // -------------------------
-  // Modal helpers
-  // -------------------------
-  function openModal(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.remove("hidden");
-    el.setAttribute("aria-hidden", "false");
-  }
-  function closeModal(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.add("hidden");
-    el.setAttribute("aria-hidden", "true");
-  }
-  $$(".modal").forEach(m => {
-    m.addEventListener("click", e => {
-      if (e.target.classList.contains("modal-backdrop")) {
-        m.classList.add("hidden");
-      }
-    });
-  });
-  $$('[data-close]').forEach(btn => {
-    btn.addEventListener("click", () => closeModal(btn.dataset.close));
-  });
-
-  // -------------------------
-  // wiring
-  // -------------------------
-  function wireToolbar() {
-    $("#btn-today").addEventListener("click", () => {
-      const d = new Date();
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      $("#flt-date").value = `${yyyy}-${mm}-${dd}`;
-      state.filterDate = $("#flt-date").value;
-      refresh();
-    });
-
-    $("#btn-filter").addEventListener("click", () => {
-      state.filterDate = $("#flt-date").value || "";
-      state.filterQ = $("#flt-q").value.trim();
-      refresh();
-    });
-
-    $("#btn-clear").addEventListener("click", () => {
-      $("#flt-date").value = "";
-      $("#flt-q").value = "";
-      state.filterDate = "";
-      state.filterQ = "";
-      refresh();
-    });
-
-    $("#btn-new").addEventListener("click", () => {
-      state.editId = null;
-      $("#modal-title").textContent = "Crea prenotazione";
-      $("#f-date").value = $("#flt-date").value || new Date().toISOString().slice(0, 10);
-      $("#f-time").value = "20:00";
-      $("#f-name").value = "";
-      $("#f-phone").value = "";
-      $("#f-people").value = "2";
-      $("#f-status").value = "Confermata";
-      $("#f-note").value = "";
-      openModal("modal-res");
-    });
-
-    $("#btn-save-res").addEventListener("click", async () => {
-      const payload = {
-        date: $("#f-date").value,
-        time: $("#f-time").value,
-        name: $("#f-name").value.trim(),
-        phone: $("#f-phone").value.trim(),
-        people: Number($("#f-people").value || 2),
-        status: $("#f-status").value,
-        note: $("#f-note").value.trim()
-      };
-      let out;
-      if (state.editId) out = await api.update(state.editId, payload);
-      else out = await api.create(payload);
-
-      if (out && out.ok) {
-        closeModal("modal-res");
-        await refresh();
-      } else {
-        alert("Errore: " + (out && out.error ? out.error : "impossibile salvare"));
-      }
-    });
-  }
-
-  function wireListActions() {
-    $("#list").addEventListener("click", async (e) => {
-      const btn = e.target.closest("[data-act]");
-      if (!btn) return;
-      const row = e.target.closest(".res-row");
-      if (!row) return;
-      const id = Number(row.dataset.id);
-      const act = btn.dataset.act;
-
-      if (act === "edit") {
-        const item = state.items.find(x => x.id === id);
-        if (!item) return;
-        state.editId = id;
-        $("#modal-title").textContent = "Modifica prenotazione";
-        $("#f-date").value = /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : (function(){
-          const d = parseDateSafe(item.date); if(!d) return "";
-          const yyyy = d.getFullYear();
-          const mm = String(d.getMonth()+1).padStart(2,"0");
-          const dd = String(d.getDate()).padStart(2,"0");
-          return `${yyyy}-${mm}-${dd}`;
-        })();
-        $("#f-time").value = item.time || "20:00";
-        $("#f-name").value = item.name || "";
-        $("#f-phone").value = item.phone || "";
-        $("#f-people").value = item.people || 2;
-        $("#f-status").value = item.status || "In attesa";
-        $("#f-note").value = item.note || "";
-        openModal("modal-res");
-      }
-
-      if (act === "confirm") {
-        const out = await api.update(id, { status: "Confermata" });
-        if (out && out.ok) refresh();
-      }
-
-      if (act === "reject") {
-        const out = await api.update(id, { status: "Rifiutata" });
-        if (out && out.ok) refresh();
-      }
-
-      if (act === "delete") {
-        state.pendingDeleteId = id;
-        openModal("modal-confirm");
-      }
-    });
-
-    $("#btn-confirm-delete").addEventListener("click", async () => {
-      const id = state.pendingDeleteId;
-      if (!id) return;
-      const out = await api.remove(id);
-      closeModal("modal-confirm");
-      state.pendingDeleteId = null;
-      if (out && out.ok) refresh();
-      else alert("Impossibile eliminare la prenotazione.");
-    });
-  }
-
-  // --- menu laterale: non rompo logica esistente. Se c'è window.appSwitchSection lo uso,
-  // altrimenti emetto un CustomEvent che eventuale altro script può intercettare.
-  function wireSidebar() {
-    $$(".nav-item").forEach(a => {
-      a.addEventListener("click", () => {
-        $$(".nav-item").forEach(x => x.classList.remove("active"));
-        a.classList.add("active");
-        const sec = a.dataset.section;
-        if (typeof window.appSwitchSection === "function") {
-          window.appSwitchSection(sec);
-        } else {
-          document.dispatchEvent(new CustomEvent("switch-section", { detail: sec }));
-        }
+      row.querySelector(".save").addEventListener("click", async ()=>{
+        const name = row.querySelector(".name").value.trim();
+        const price = +row.querySelector(".price").value || 0;
+        const r = await fetch(`/api/menu-items/${it.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,price})});
+        const j = await r.json();
+        if(!j.ok) alert("Errore salvataggio piatto");
       });
+      row.querySelector(".del").addEventListener("click", async ()=>{
+        if(!confirm("Eliminare questo piatto?")) return;
+        const r = await fetch(`/api/menu-items/${it.id}`, {method:"DELETE"});
+        const j = await r.json();
+        if(j.ok) menuLoad();
+      });
+      $("#menu-list").appendChild(row);
+    });
+  }
+  $("#btn-mi-add").addEventListener("click", async ()=>{
+    const name = $("#mi-name").value.trim();
+    const price = +$("#mi-price").value || 0;
+    if(!name){ alert("Nome piatto obbligatorio"); return; }
+    const r = await fetch("/api/menu-items",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,price})});
+    const j = await r.json();
+    if(j.ok){ $("#mi-name").value=""; $("#mi-price").value=""; menuLoad(); }
+  });
+
+  // ---------------- Orari settimanali ----------------
+  const WEEK = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
+  async function weeklyRender(){
+    const grid = $("#wh-grid");
+    grid.innerHTML = "";
+    const arr = await (await fetch("/api/weekly-hours")).json(); // 7 stringhe
+    WEEK.forEach((name, i)=>{
+      const v = arr[i] || "";
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `
+        <label class="lbl">${name}
+          <input class="input wh" data-i="${i}" value="${v}" placeholder="12:00-15:00, 19:00-22:30">
+        </label>
+      `;
+      grid.appendChild(row);
+    });
+  }
+  $("#btn-wh-save").addEventListener("click", async ()=>{
+    const vals = $$(".wh").map(i=>i.value.trim());
+    const r = await fetch("/api/weekly-hours",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(vals)});
+    const j = await r.json();
+    $("#wh-saved").classList.toggle("hidden", !j.ok);
+    if(j.ok){ setTimeout(()=>$("#wh-saved").classList.add("hidden"), 1500); }
+  });
+
+  // ---------------- Giorni speciali ----------------
+  async function specialLoad(){
+    const items = await (await fetch("/api/special-days")).json();
+    const box = $("#sp-list");
+    box.innerHTML = "";
+    if(items.length===0){ box.innerHTML = `<div class="empty">Nessun giorno speciale</div>`; return; }
+    items.forEach(it=>{
+      const row = document.createElement("div");
+      row.className = "row";
+      const note = it.closed ? "CHIUSO" : (it.windows||"");
+      row.innerHTML = `<div class="grow"><strong>${it.date}</strong> — ${note}</div>
+        <button class="btn sm danger">Elimina</button>`;
+      row.querySelector("button").addEventListener("click", async ()=>{
+        if(!confirm("Eliminare questa data?")) return;
+        const r = await fetch(`/api/special-days/${it.date}`, {method:"DELETE"});
+        const j = await r.json();
+        if(j.ok) specialLoad();
+      });
+      box.appendChild(row);
     });
   }
 
-  // --- theme toggle (persistenza)
-  function wireThemeToggle() {
-    const key = "theme-mode";
-    const saved = localStorage.getItem(key) || "dark";
-    document.body.setAttribute("data-theme", saved);
-    $("#theme-toggle").checked = saved === "light";
-    $("#theme-toggle").addEventListener("change", () => {
-      const next = $("#theme-toggle").checked ? "light" : "dark";
-      document.body.setAttribute("data-theme", next);
-      localStorage.setItem(key, next);
-    });
-  }
+  $("#btn-sp-save").addEventListener("click", async ()=>{
+    const d = $("#sp-date").value.trim();
+    const closed = $("#sp-closed").checked;
+    const win = $("#sp-win").value.trim();
+    if(!d){ alert("Data obbligatoria (YYYY-MM-DD)"); return; }
+    const r = await fetch("/api/special-days",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:d, closed, windows:win})});
+    const j = await r.json();
+    if(j.ok){ $("#sp-date").value=""; $("#sp-closed").checked=false; $("#sp-win").value=""; specialLoad(); }
+  });
 
-  // boot
-  function boot() {
-    wireThemeToggle();
-    wireToolbar();
-    wireListActions();
-    wireSidebar();
-    refresh();
-  }
-  document.addEventListener("DOMContentLoaded", boot);
+  // ---------------- Init ----------------
+  (async function init(){
+    showPanel(null);       // inizia su "Prenotazioni"
+    await loadReservations();
+    await pricesLoad();
+    await menuLoad();
+    await weeklyRender();
+    await specialLoad();
+  })();
 })();

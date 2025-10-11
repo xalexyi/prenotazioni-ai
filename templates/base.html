@@ -1,28 +1,70 @@
 <!doctype html>
 <html lang="it" data-theme="dark">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% block title %}Ristorante AI{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <script>
+    // tema persistente
+    (function(){
+      const s = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', s);
+      window.__setTheme = function(next){
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      }
+    })();
+  </script>
 </head>
 <body>
-  {% block body %}{% endblock %}
-  <div id="toasts"></div>
-
-  <!-- Modale generica -->
-  <div class="modal-backdrop" data-modal="generic" hidden>
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="modal-title">Titolo</h3>
-        <button class="icon-btn" data-modal-close="generic">✕</button>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <div>
+        <div class="brand-title">{% block brand %}Haru Asian Fusion Restaurant{% endblock %}</div>
+        <div class="brand-sub">{% block brand_sub %}Dashboard ristorante{% endblock %}</div>
       </div>
-      <div class="modal-body" id="modal-body"></div>
-      <div class="modal-actions" id="modal-actions"></div>
     </div>
-  </div>
 
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  {% block scripts %}{% endblock %}
+    <div class="top-actions">
+      <label class="toggle">
+        <input id="themeToggle" type="checkbox">
+        <span></span>
+      </label>
+      {% if current_user.is_authenticated %}
+      <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="main">
+    <aside class="sidebar">
+      <nav>
+        <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.path == '/dashboard' %}active{% endif %}">Prenotazioni</a>
+        <a href="#/prices" class="nav-item" data-panel="prices">Prezzi & coperti</a>
+        <a href="#/menu" class="nav-item" data-panel="menu">Menu digitale</a>
+        <a href="#/weekly" class="nav-item" data-panel="weekly">Orari settimanali</a>
+        <a href="#/special" class="nav-item" data-panel="special">Giorni speciali</a>
+        <a href="#/stats" class="nav-item" data-panel="stats">Statistiche & report</a>
+      </nav>
+    </aside>
+    <section class="content">
+      {% block body %}{% endblock %}
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
+  <script>
+    // sync toggle tema
+    (function(){
+      const t = document.getElementById('themeToggle');
+      const cur = document.documentElement.getAttribute('data-theme');
+      t.checked = (cur === 'light');
+      t.addEventListener('change', ()=>{
+        __setTheme(t.checked ? 'light' : 'dark');
+      });
+    })();
+  </script>
 </body>
 </html>
