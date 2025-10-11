@@ -2,7 +2,7 @@
 {% block body %}
 
 <div class="page">
-  <!-- Sidebar sinistra (rimane com’è) -->
+  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="brand">
       <span class="dot dot-green"></span>
@@ -21,6 +21,16 @@
 
   <!-- Contenuto -->
   <main class="content">
+    <!-- Top-right: theme + logout -->
+    <div class="topbar">
+      <label class="switch">
+        <input id="theme-toggle" type="checkbox" />
+        <span class="slider"></span>
+        <span class="switch-label">🌙</span>
+      </label>
+      <a class="btn btn-danger btn-logout" href="/logout">Logout</a>
+    </div>
+
     <header class="cards">
       <div class="card">
         <div class="card-title">Chiamate attive</div>
@@ -37,7 +47,6 @@
       </div>
     </header>
 
-    <!-- Filtro + azioni rapide -->
     <section class="toolbar">
       <input id="flt-date" type="date" class="input" placeholder="gg/mm/aaaa">
       <input id="flt-q" type="text" class="input" placeholder="Cerca nome / telefono / orario">
@@ -47,7 +56,6 @@
       <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
     </section>
 
-    <!-- Lista prenotazioni -->
     <section id="list" class="list">
       <div class="empty">Nessuna prenotazione trovata<br><small>Prova a cambiare filtri o aggiungi una nuova prenotazione.</small></div>
     </section>
@@ -132,6 +140,5 @@
   </div>
 </div>
 
-<!-- Script pagina -->
 <script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
 {% endblock %}
