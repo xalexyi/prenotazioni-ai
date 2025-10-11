@@ -1,15 +1,28 @@
-<!DOCTYPE html>
-<html lang="it">
+<!doctype html>
+<html lang="it" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ristorante AI</title>
-  <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=12">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{% block title %}Ristorante AI{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
   {% block body %}{% endblock %}
-  <script src="{{ url_for('static', filename='js/main.js') }}?v=12"></script>
-  <script src="{{ url_for('static', filename='js/dashboard_app.js') }}?v=12"></script>
+  <div id="toasts"></div>
+
+  <!-- Modale generica -->
+  <div class="modal-backdrop" data-modal="generic" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Titolo</h3>
+        <button class="icon-btn" data-modal-close="generic">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions" id="modal-actions"></div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

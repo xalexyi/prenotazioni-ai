@@ -1,58 +1,90 @@
 {% extends "base.html" %}
-{% block title %}Accedi — Ristorante AI{% endblock %}
-{% block brand %}Ristorante AI{% endblock %}
-{% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
+{% block title %}Login — Ristorante AI{% endblock %}
 
 {% block body %}
-<div class="login-grid">
-  <section class="card welcome-card">
-    <h1 class="welcome-title">Benvenuto/a <span class="wave">👋</span></h1>
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span> Ristorante AI
+    <span class="muted">— Area riservata ristoranti</span>
+  </div>
+  <div class="top-actions">
+    <label class="switch">
+      <input id="theme-toggle" type="checkbox">
+      <span class="slider"></span>
+      <span class="moon">🌙</span>
+      <span class="sun">☀️</span>
+    </label>
+  </div>
+</header>
+
+<main class="container auth-grid">
+  <section class="card hero">
+    <h1>Benvenuto/a <span class="wave">👋</span></h1>
     <p class="muted">Gestisci prenotazioni e stato chiamate in un click.</p>
 
-    <div class="dashed-box">
-      <div class="chunk">
-        <div class="chunk-title">Istruzioni rapide</div>
-      </div>
-      <div class="grid-2">
+    <div class="hint">
+      <div class="hint-title">📋 Istruzioni rapide</div>
+      <div class="hint-grid">
         <div>
-          <div class="chunk-title">Come entrare</div>
-          <ul class="list">
-            <li><span class="dot dot-blue"></span>Inserisci <strong>username</strong> del ristorante</li>
-            <li><span class="dot dot-yellow"></span>Digita la <strong>password</strong></li>
-            <li><span class="dot dot-green"></span>Clicca <strong>“Log in”</strong></li>
+          <div class="hint-sub">Come entrare</div>
+          <ul>
+            <li>📛 Inserisci <b>username</b> del ristorante</li>
+            <li>🔑 Digita la <b>password</b></li>
+            <li>➡️ Clicca <b>“Log in”</b></li>
           </ul>
         </div>
         <div>
-          <div class="chunk-title">Dopo il login vedrai</div>
-          <ul class="list">
-            <li><span class="led led-green"></span><strong>Chiamate attive</strong> e stato linea</li>
-            <li><span class="led led-purple"></span><strong>Prenotazioni del giorno</strong></li>
-            <li><span class="zap">⚡</span>Azioni rapide: <strong>Conferma / Rifiuta / Elimina</strong></li>
+          <div class="hint-sub">Dopo il login vedrai</div>
+          <ul>
+            <li>🟢 <b>Chiamate attive</b> e stato linea</li>
+            <li>🗓️ <b>Prenotazioni del giorno</b></li>
+            <li>⚡ Azioni rapide: <b>Conferma</b> / <b>Rifiuta</b> / <b>Elimina</b></li>
           </ul>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="card form-card">
-    <form method="post" action="{{ url_for('login_page') }}" class="form">
-      <label class="lbl">Username
-        <input class="input" name="username" autocomplete="username"
-               value="{{ request.form.username or '' }}" required>
-      </label>
+  <section class="card auth-card">
+    <form method="POST" autocomplete="off" class="vstack gap-12">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash flash-{{category}}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
 
-      <label class="lbl">Password
-        <input class="input" type="password" name="password" autocomplete="current-password"
-               value="{{ request.form.password or '' }}" required>
-      </label>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" name="username" placeholder="haru-admin" required>
+      </div>
 
-      <label class="check">
-        <input type="checkbox" name="remember" checked>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" placeholder="••••••••" required>
+      </div>
+
+      <label class="checkbox">
+        <input type="checkbox" name="remember">
         <span>Rimani connesso</span>
       </label>
 
-      <button class="btn btn-primary" type="submit">Log in</button>
+      <button class="btn primary" type="submit">Log in</button>
+
+      <div class="demo muted">
+        Demo: <b>sushitokyo / Password123!</b> — <b>pizzerianapoli / Password123!</b>
+      </div>
     </form>
   </section>
-</div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // inizializza tema
+  setupThemeToggle();
+</script>
 {% endblock %}
