@@ -11,23 +11,38 @@ from sqlalchemy import text
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # -----------------------------------------------------------------------------
-# Configurazione principale
+# Inizializzazione componenti base
 # -----------------------------------------------------------------------------
 db = SQLAlchemy()
 login_manager = LoginManager()
 
+# -----------------------------------------------------------------------------
+# Migrazione sicura - garantisce colonne richieste senza crash
+# -----------------------------------------------------------------------------
+def _ensure_columns():
+    stmts = [
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash TEXT',
+    ]
+    for s in stmts:
+        try:
+            db.session.execute(text(s))
+            db.session.commit()
+        except Exception as e:
+            print("⚠️ MIGRATION SKIPPED:", e)
+            db.session.rollback()
 
+# -----------------------------------------------------------------------------
+# Factory principale Flask app
+# -----------------------------------------------------------------------------
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
     CORS(app)
 
-    # Chiave segreta e database
+    # Config base
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
-
     default_sqlite = "sqlite:////opt/render/project/src/data/app.db"
     db_url = os.getenv("DATABASE_URL", default_sqlite)
     db_url = db_url.replace("postgres://", "postgresql://")
-
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -41,9 +56,7 @@ def create_app():
         OpeningHours, SpecialDay, Settings
     )
 
-    # -------------------------------------------------------------------------
-    # Creazione tabelle e colonne mancanti
-    # -------------------------------------------------------------------------
+    # Crea tabelle e colonne mancanti
     with app.app_context():
         db.create_all()
         _ensure_columns()
@@ -56,7 +69,7 @@ def create_app():
             return None
 
     # -------------------------------------------------------------------------
-    # ROUTE: LOGIN / LOGOUT
+    # LOGIN / LOGOUT
     # -------------------------------------------------------------------------
     @app.route("/", methods=["GET", "POST"])
     def login_page():
@@ -84,7 +97,7 @@ def create_app():
         return redirect(url_for("login_page"))
 
     # -------------------------------------------------------------------------
-    # ROUTE: DASHBOARD
+    # DASHBOARD
     # -------------------------------------------------------------------------
     @app.route("/dashboard")
     @login_required
@@ -92,7 +105,7 @@ def create_app():
         return render_template("dashboard.html")
 
     # -------------------------------------------------------------------------
-    # API HELPER: garantisce riga Settings per ogni ristorante
+    # Helper per settings
     # -------------------------------------------------------------------------
     def require_settings_for_restaurant(rest_id: int):
         from backend.models import Settings
@@ -158,8 +171,8 @@ def create_app():
                 people=int(data.get("people") or 2),
                 status=data.get("status") or "Confermata",
                 note=data.get("note") or "",
-                date=data["date"],  # "YYYY-MM-DD"
-                time=data["time"],  # "HH:MM"
+                date=data["date"],
+                time=data["time"],
             )
             db.session.add(r)
             db.session.commit()
@@ -265,7 +278,7 @@ def create_app():
             return jsonify({"ok": False, "error": str(e)}), 400
 
     # -------------------------------------------------------------------------
-    # API: Prezzi & coperti (settings)
+    # API: Prezzi & coperti
     # -------------------------------------------------------------------------
     @app.post("/api/pricing")
     @login_required
@@ -348,24 +361,7 @@ def create_app():
 
 
 # -----------------------------------------------------------------------------
-# Funzione di migrazione sicura (evita crash)
-# -----------------------------------------------------------------------------
-def _ensure_columns():
-    stmts = [
-        # esempio di colonne aggiuntive se mancanti
-        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash TEXT',
-    ]
-    for s in stmts:
-        try:
-            db.session.execute(text(s))
-            db.session.commit()
-        except Exception as e:
-            print("DB MIGRATION SKIPPED:", e)
-            db.session.rollback()
-
-
-# -----------------------------------------------------------------------------
-# Esegui server locale
+# Avvio app
 # -----------------------------------------------------------------------------
 app = create_app()
 
