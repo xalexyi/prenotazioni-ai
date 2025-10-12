@@ -1,144 +1,98 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Ristorante AI{% endblock %}
-
 {% block body %}
-<div id="panel-reservations" class="panel visible">
-  <div class="cards">
-    <div class="card metric">
-      <div>Chiamate attive: 0/3</div>
-      <div class="status ok">Disponibile</div>
-    </div>
-    <div class="card metric">
-      <div>Prenotazioni oggi</div>
-      <div id="m-res-today">0</div>
-    </div>
-    <div class="card metric">
-      <div>Incasso stimato</div>
-      <div id="m-revenue">0.00 €</div>
-    </div>
-  </div>
 
-  <div class="toolbar">
-    <input id="flt-date" placeholder="gg/mm/aaaa" class="input small">
-    <input id="flt-q" placeholder="Cerca nome / telefono / orario" class="input grow">
-    <button id="btn-filter" class="btn">Filtra</button>
-    <button id="btn-clear" class="btn">Elimina filtri</button>
-    <button id="btn-today" class="btn">Oggi</button>
-    <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
-  </div>
+<div class="app">
 
-  <div id="res-list" class="card">
-    <div class="empty">Nessuna prenotazione trovata</div>
-  </div>
-</div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="title">Navigazione</div>
+    <nav class="nav">
+      <a href="#" class="nav-link active" data-panel="reservations">📅 Prenotazioni</a>
+      <a href="#" class="nav-link" data-panel="prices">💰 Prezzi & Coperti</a>
+      <a href="#" class="nav-link" data-panel="menu">🍕 Menu digitale</a>
+      <a href="#" class="nav-link" data-panel="weekly">🕒 Orari settimanali</a>
+      <a href="#" class="nav-link" data-panel="special">🎉 Giorni speciali</a>
+      <a href="#" class="nav-link" data-panel="stats">📊 Statistiche</a>
+    </nav>
+  </aside>
 
-<!-- Prezzi & coperti -->
-<div id="panel-prices" class="panel">
-  <div class="card">
-    <h2>Prezzi & coperti</h2>
-    <div class="grid-2">
-      <label class="lbl">Prezzo medio prenotazione PRANZO (€)
-        <input id="price-lunch" class="input" type="number" step="0.01">
-      </label>
-      <label class="lbl">Prezzo medio prenotazione CENA (€)
-        <input id="price-dinner" class="input" type="number" step="0.01">
-      </label>
-      <label class="lbl">Coperto (€ a persona)
-        <input id="cover-fee" class="input" type="number" step="0.01">
-      </label>
-      <label class="lbl">Capacità massima (opzionale)
-        <input id="seats-cap" class="input" type="number" step="1">
-      </label>
-      <label class="lbl">Minimo persone (opzionale)
-        <input id="min-people" class="input" type="number" step="1">
-      </label>
-    </div>
-    <button id="btn-prices-save" class="btn btn-primary">Salva</button>
-  </div>
-</div>
+  <!-- CONTENUTO PRINCIPALE -->
+  <div>
+    <header class="header">
+      <div class="brand">
+        <span class="dot"></span>
+        <span>Ristorante AI</span>
+        <span class="text-dim">Dashboard</span>
+      </div>
+      <div class="actions">
+        <button id="themeToggle" class="toggle" type="button" aria-label="Tema"><span class="knob"></span></button>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline">Logout</a>
+      </div>
+    </header>
 
-<!-- Menu digitale -->
-<div id="panel-menu" class="panel">
-  <div class="card">
-    <h2>Menu digitale</h2>
-    <div class="grid-2">
-      <input id="mi-name" class="input" placeholder="Nome piatto (es. Pizza Margherita)">
-      <input id="mi-price" class="input" placeholder="Prezzo (es. 7.50)" type="number" step="0.01">
-    </div>
-    <button id="btn-mi-add" class="btn btn-primary">Aggiungi</button>
+    <main class="container">
 
-    <div id="menu-list" class="list mt"></div>
-  </div>
-</div>
+      <!-- KPI -->
+      <div class="kpis">
+        <div class="kpi">
+          <div class="k">Chiamate attive</div>
+          <div class="v">0 / 3</div>
+        </div>
+        <div class="kpi">
+          <div class="k">Prenotazioni oggi</div>
+          <div class="v" id="m-res-today">0</div>
+        </div>
+        <div class="kpi">
+          <div class="k">Incasso stimato</div>
+          <div class="v" id="m-revenue">0.00 €</div>
+        </div>
+      </div>
 
-<!-- Orari settimanali -->
-<div id="panel-weekly" class="panel">
-  <div class="card">
-    <h2>Orari settimanali</h2>
-    <p class="muted">Formato: <code>HH:MM-HH:MM</code> (es. <code>12:00-15:00</code>, <code>19:00-22:30</code>). Giorno vuoto = <strong>CHIUSO</strong>.</p>
-    <div id="wh-grid" class="grid-2"></div>
-    <button id="btn-wh-save" class="btn btn-primary">Salva</button>
-    <div id="wh-saved" class="ok mt hidden">Salvato!</div>
-  </div>
-</div>
+      <!-- FILTRI -->
+      <div class="card pad mb-3">
+        <div class="form-row">
+          <input id="flt-date" placeholder="gg/mm/aaaa" class="input">
+          <input id="flt-q" placeholder="Cerca nome / telefono / orario" class="input">
+          <button id="btn-filter" class="btn">Filtra</button>
+          <button id="btn-clear" class="btn">Elimina filtri</button>
+          <button id="btn-today" class="btn">Oggi</button>
+          <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
+        </div>
+      </div>
 
-<!-- Giorni speciali -->
-<div id="panel-special" class="panel">
-  <div class="card">
-    <h2>Giorni speciali / chiusure</h2>
-    <div class="grid-2">
-      <label class="lbl">Data (YYYY-MM-DD)
-        <input id="sp-date" class="input" placeholder="gg/mm/aaaa">
-      </label>
-      <label class="lbl">Finestre orarie (vuoto se chiuso tutto il giorno)
-        <input id="sp-win" class="input" placeholder="12:00-15:00, 19:00-22:30">
-      </label>
-    </div>
-    <label class="check"><input type="checkbox" id="sp-closed"> <span>Chiuso tutto il giorno</span></label>
-    <div class="mt">
-      <button id="btn-sp-save" class="btn btn-primary">Salva giorno speciale</button>
-    </div>
+      <!-- LISTA PRENOTAZIONI -->
+      <div class="card">
+        <table class="table" id="res-table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Ora</th>
+              <th>Nome</th>
+              <th>Telefono</th>
+              <th>Persone</th>
+              <th>Stato</th>
+              <th class="col-actions">Azioni</th>
+            </tr>
+          </thead>
+          <tbody id="res-tbody">
+            <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">Nessuna prenotazione trovata</td></tr>
+          </tbody>
+        </table>
+      </div>
 
-    <h3 class="mt">Elenco</h3>
-    <div id="sp-list" class="list"></div>
+    </main>
   </div>
 </div>
 
-<!-- Statistiche -->
-<div id="panel-stats" class="panel">
-  <div class="card">
-    <h2>Statistiche & report</h2>
-    <div class="grid-3">
-      <div class="stat">Prenotazioni <span id="st-count">0</span></div>
-      <div class="stat">Persone/booking (media) <span id="st-ppb">0</span></div>
-      <div class="stat">Incasso stimato <span id="st-rev">0 €</span></div>
-    </div>
-  </div>
-</div>
+<script>
+(function(){
+  // Toggle tema
+  const key="ui:theme"; const btn=document.getElementById("themeToggle");
+  function apply(t){document.documentElement.setAttribute("data-theme",t);btn.setAttribute("data-state",t==="light"?"on":"off");}
+  const s=localStorage.getItem(key)||"dark";apply(s);
+  btn.addEventListener("click",()=>{const n=btn.getAttribute("data-state")==="on"?"dark":"light";localStorage.setItem(key,n);apply(n);});
+})();
+</script>
 
-<!-- Modale "Nuova prenotazione" -->
-<div id="dlg-new" class="modal hidden">
-  <div class="modal-box">
-    <h3>Crea prenotazione</h3>
-    <div class="grid-2">
-      <label class="lbl">Data <input id="new-date" class="input" placeholder="YYYY-MM-DD"></label>
-      <label class="lbl">Ora <input id="new-time" class="input" placeholder="HH:MM"></label>
-      <label class="lbl">Nome <input id="new-name" class="input"></label>
-      <label class="lbl">Telefono <input id="new-phone" class="input"></label>
-      <label class="lbl">Persone <input id="new-people" class="input" type="number" value="2"></label>
-      <label class="lbl">Stato
-        <select id="new-status" class="input">
-          <option>Confermata</option>
-          <option>In attesa</option>
-          <option>Annullata</option>
-        </select>
-      </label>
-      <label class="lbl">Note <input id="new-note" class="input"></label>
-    </div>
-    <div class="right mt">
-      <button id="btn-dlg-close" class="btn">Chiudi</button>
-      <button id="btn-dlg-save" class="btn btn-primary">Salva prenotazione</button>
-    </div>
-  </div>
-</div>
 {% endblock %}

@@ -544,3 +544,30 @@ label { color: var(--text-dim); font-size:.9rem; }
   .col-actions { width: 1%; }
   .table .col-actions .btn { min-width: auto; } /* su telefoni lasciare respiro */
 }
+/* =============================================================================
+   DASHBOARD FIX (layout e spacing)
+============================================================================= */
+
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar .nav-link { font-size: .95rem; }
+
+.header .actions {
+  display:flex; align-items:center; gap:.8rem;
+}
+
+.kpis .kpi .v {
+  font-weight:700;
+}
+
+.table td .actions {
+  flex-wrap: nowrap;
+}
+.table td .actions .btn {
+  font-size:.85rem;
+  padding:8px 10px;
+}
