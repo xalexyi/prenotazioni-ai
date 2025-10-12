@@ -3,96 +3,190 @@
 {% block body %}
 
 <div class="app">
-
-  <!-- SIDEBAR -->
+  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="title">Navigazione</div>
-    <nav class="nav">
+    <nav class="nav" id="side-nav">
       <a href="#" class="nav-link active" data-panel="reservations">📅 Prenotazioni</a>
       <a href="#" class="nav-link" data-panel="prices">💰 Prezzi & Coperti</a>
       <a href="#" class="nav-link" data-panel="menu">🍕 Menu digitale</a>
       <a href="#" class="nav-link" data-panel="weekly">🕒 Orari settimanali</a>
       <a href="#" class="nav-link" data-panel="special">🎉 Giorni speciali</a>
-      <a href="#" class="nav-link" data-panel="stats">📊 Statistiche</a>
+      <a href="#" class="nav-link" data-panel="stats">📊 Statistiche & report</a>
     </nav>
   </aside>
 
-  <!-- CONTENUTO PRINCIPALE -->
-  <div>
+  <!-- Colonna principale -->
+  <div class="main-col">
     <header class="header">
       <div class="brand">
         <span class="dot"></span>
         <span>Ristorante AI</span>
         <span class="text-dim">Dashboard</span>
       </div>
+
+      <!-- SOLO qui in alto a destra -->
       <div class="actions">
-        <button id="themeToggle" class="toggle" type="button" aria-label="Tema"><span class="knob"></span></button>
-        <a href="{{ url_for('logout') }}" class="btn btn-outline">Logout</a>
+        <button id="themeToggle" class="toggle" type="button" aria-label="Tema">
+          <span class="knob"></span>
+        </button>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline" id="btn-logout">Logout</a>
       </div>
     </header>
 
     <main class="container">
 
-      <!-- KPI -->
-      <div class="kpis">
-        <div class="kpi">
-          <div class="k">Chiamate attive</div>
-          <div class="v">0 / 3</div>
+      <!-- Pannello PRENOTAZIONI -->
+      <section id="panel-reservations" class="panel card pad" data-panel>
+        <!-- KPI -->
+        <div class="kpis">
+          <div class="kpi">
+            <div class="k">Chiamate attive</div>
+            <div class="v" id="kpi-calls">0 / 3</div>
+          </div>
+          <div class="kpi">
+            <div class="k">Prenotazioni oggi</div>
+            <div class="v" id="kpi-today">0</div>
+          </div>
+          <div class="kpi">
+            <div class="k">Incasso stimato</div>
+            <div class="v" id="kpi-revenue">0.00 €</div>
+          </div>
         </div>
-        <div class="kpi">
-          <div class="k">Prenotazioni oggi</div>
-          <div class="v" id="m-res-today">0</div>
-        </div>
-        <div class="kpi">
-          <div class="k">Incasso stimato</div>
-          <div class="v" id="m-revenue">0.00 €</div>
-        </div>
-      </div>
 
-      <!-- FILTRI -->
-      <div class="card pad mb-3">
+        <!-- Filtri -->
+        <div class="card pad mb-3">
+          <div class="form-row">
+            <input id="flt-date" class="input" placeholder="gg/mm/aaaa" />
+            <input id="flt-q" class="input" placeholder="Cerca nome / telefono / orario" />
+            <button id="btn-filter" class="btn">Filtra</button>
+            <button id="btn-clear" class="btn">Elimina filtri</button>
+            <button id="btn-today" class="btn">Oggi</button>
+            <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
+          </div>
+        </div>
+
+        <!-- Tabella -->
+        <div class="card">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Ora</th>
+                <th>Nome</th>
+                <th>Telefono</th>
+                <th>Persone</th>
+                <th>Stato</th>
+                <th class="col-actions">Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="res-tbody">
+              <tr>
+                <td colspan="7" style="text-align:center;color:var(--text-muted);padding:18px;">
+                  Nessuna prenotazione trovata
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Pannello PREZZI -->
+      <section id="panel-prices" class="panel card pad" data-panel hidden>
+        <h3 class="title">Prezzi & coperti</h3>
         <div class="form-row">
-          <input id="flt-date" placeholder="gg/mm/aaaa" class="input">
-          <input id="flt-q" placeholder="Cerca nome / telefono / orario" class="input">
-          <button id="btn-filter" class="btn">Filtra</button>
-          <button id="btn-clear" class="btn">Elimina filtri</button>
-          <button id="btn-today" class="btn">Oggi</button>
-          <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
+          <input class="input" id="avg_price_lunch" placeholder="Prezzo medio prenotazione PRANZO (€)" />
+          <input class="input" id="avg_price_dinner" placeholder="Prezzo medio prenotazione CENA (€)" />
         </div>
-      </div>
+        <div class="form-row mt-2">
+          <input class="input" id="cover" placeholder="Coperto (€ a persona)" />
+          <input class="input" id="seats_cap" placeholder="Capacità massima (opzionale)" />
+          <input class="input" id="min_people" placeholder="Minimo persone (opzionale)" />
+        </div>
+        <div class="mt-2">
+          <button class="btn btn-primary" id="btn-save-pricing">Salva</button>
+        </div>
+      </section>
 
-      <!-- LISTA PRENOTAZIONI -->
-      <div class="card">
-        <table class="table" id="res-table">
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Ora</th>
-              <th>Nome</th>
-              <th>Telefono</th>
-              <th>Persone</th>
-              <th>Stato</th>
-              <th class="col-actions">Azioni</th>
-            </tr>
-          </thead>
-          <tbody id="res-tbody">
-            <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">Nessuna prenotazione trovata</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <!-- Pannello MENU -->
+      <section id="panel-menu" class="panel card pad" data-panel hidden>
+        <h3 class="title">Menu digitale</h3>
+        <input class="input mb-2" id="menu_url" placeholder="Link al menu (PDF/URL)">
+        <textarea class="input" id="menu_desc" rows="3" placeholder="Descrizione breve"></textarea>
+        <div class="mt-2">
+          <button class="btn btn-primary" id="btn-save-menu">Salva</button>
+        </div>
+      </section>
+
+      <!-- Pannello ORARI -->
+      <section id="panel-weekly" class="panel card pad" data-panel hidden>
+        <h3 class="title">Orari settimanali</h3>
+        <div id="weekly-hours"></div>
+        <div class="mt-2">
+          <button class="btn btn-primary" id="btn-save-hours">Salva orari</button>
+        </div>
+      </section>
+
+      <!-- Pannello GIORNI SPECIALI -->
+      <section id="panel-special" class="panel card pad" data-panel hidden>
+        <h3 class="title">Giorni speciali / chiusure</h3>
+        <div class="form-row">
+          <input class="input" id="special-date" placeholder="Data (YYYY-MM-DD)">
+          <input class="input" id="special-windows" placeholder="Finestre orarie es: 12:00-15:00, 19:00-22:30">
+        </div>
+        <label class="mt-2">
+          <input type="checkbox" id="special-closed"> Chiuso tutto il giorno
+        </label>
+        <div class="mt-2">
+          <button class="btn btn-primary" id="btn-save-special">Salva giorno speciale</button>
+        </div>
+      </section>
+
+      <!-- Pannello STATISTICHE -->
+      <section id="panel-stats" class="panel card pad" data-panel hidden>
+        <h3 class="title">Statistiche & report</h3>
+        <div class="form-row">
+          <input id="stats-date" class="input" placeholder="gg/mm/aaaa (opzionale)">
+          <button class="btn" id="btn-stats-update">Aggiorna</button>
+        </div>
+        <div class="kpis mt-2">
+          <div class="kpi"><div class="k">Prenotazioni</div><div class="v" id="s-total">0</div></div>
+          <div class="kpi"><div class="k">Persone per prenotazione (media)</div><div class="v" id="s-avg-people">0</div></div>
+          <div class="kpi"><div class="k">Prezzo medio (impostazioni)</div><div class="v" id="s-avg-price">0 €</div></div>
+          <div class="kpi"><div class="k">Incasso stimato</div><div class="v" id="s-revenue">0 €</div></div>
+        </div>
+      </section>
 
     </main>
   </div>
 </div>
 
-<script>
-(function(){
-  // Toggle tema
-  const key="ui:theme"; const btn=document.getElementById("themeToggle");
-  function apply(t){document.documentElement.setAttribute("data-theme",t);btn.setAttribute("data-state",t==="light"?"on":"off");}
-  const s=localStorage.getItem(key)||"dark";apply(s);
-  btn.addEventListener("click",()=>{const n=btn.getAttribute("data-state")==="on"?"dark":"light";localStorage.setItem(key,n);apply(n);});
-})();
-</script>
+<!-- Modale Crea/Modifica prenotazione -->
+<div class="modal-backdrop" id="res-modal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="res-modal-title">Crea prenotazione</div>
+      <button class="modal-close" id="res-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input class="input" id="f-date" placeholder="Data (YYYY-MM-DD)">
+      <input class="input" id="f-time" placeholder="Ora (HH:MM)">
+      <input class="input" id="f-name" placeholder="Nome cliente">
+      <input class="input" id="f-phone" placeholder="Telefono">
+      <input class="input" id="f-people" placeholder="Persone" value="2">
+      <select class="input" id="f-status">
+        <option value="Confermata">Confermata</option>
+        <option value="In attesa">In attesa</option>
+        <option value="Rifiutata">Rifiutata</option>
+      </select>
+      <textarea class="input" id="f-note" rows="2" placeholder="Note"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="res-modal-cancel">Chiudi</button>
+      <button class="btn btn-primary" id="res-modal-save">Salva</button>
+    </div>
+  </div>
+</div>
 
+<script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
 {% endblock %}
