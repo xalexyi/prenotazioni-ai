@@ -1,117 +1,45 @@
-<!doctype html>
-<html lang="it" class="page-login">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login — Ristorante AI</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-</head>
+{% extends "base.html" %}
+{% block title %}Accedi — Ristorante AI{% endblock %}
+{% block brand %}Ristorante AI{% endblock %}
+{% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
 
-<body>
-  <!-- Header compatto -->
-  <header class="header">
-    <div class="brand">
-      <span class="dot"></span>
-      <span>Ristorante AI</span>
-      <span class="text-dim">Area riservata</span>
+{% block body %}
+<div class="login-grid">
+  <section class="login-card">
+    <h1 class="title">Benvenuto/a 👋</h1>
+    <p class="text-muted">Accedi per gestire prenotazioni, orari e menu.</p>
+
+    <div class="quick-box mt-2">
+      <strong>Istruzioni rapide</strong>
+      <ul class="list mt-2">
+        <li>• Inserisci <b>username</b> e <b>password</b></li>
+        <li>• Clicca <b>Log in</b></li>
+        <li>• Troverai la <b>Dashboard</b> con prenotazioni e KPI</li>
+      </ul>
     </div>
+  </section>
 
-    <div class="actions">
-      <button id="themeToggle" class="toggle" type="button" aria-label="Tema">
-        <span class="knob"></span>
-      </button>
-    </div>
-  </header>
+  <section class="login-card">
+    <form method="post" action="{{ url_for('login_page') }}" class="form" novalidate>
+      <label>Username
+        <input class="input" name="username" autocomplete="username" required>
+      </label>
 
-  <main class="container">
-    <div class="login-grid">
+      <label>Password
+        <input class="input" type="password" name="password" autocomplete="current-password" required>
+      </label>
 
-      <!-- BOX SINISTRO -->
-      <section class="login-card quick-box">
-        <h2 style="margin-bottom:0.6rem;">Benvenuto/a 👋</h2>
-        <p class="text-muted">Gestisci prenotazioni e stato chiamate in un click.</p>
+      <label class="check mt-1" style="display:flex;gap:.6rem;align-items:center">
+        <input type="checkbox" name="remember" checked>
+        <span class="text-muted">Rimani connesso</span>
+      </label>
 
-        <h3 class="text-dim" style="margin-top:1.2rem;">📋 Istruzioni rapide</h3>
-        <ul style="margin:0.5rem 0 1.2rem 1.2rem; line-height:1.7;">
-          <li>🔹 Inserisci <b>username</b> del ristorante</li>
-          <li>🔸 Digita la <b>password</b></li>
-          <li>🔹 Clicca <b>“Log in”</b></li>
-        </ul>
+      <div class="mt-2">
+        <button class="btn btn-primary w-100" type="submit">Log in</button>
+      </div>
 
-        <h3 class="text-dim">🎯 Dopo il login vedrai</h3>
-        <ul style="margin:0.5rem 0 0 1.2rem; line-height:1.7;">
-          <li>🟢 <b>Chiamate attive</b> e stato linea</li>
-          <li>📅 <b>Prenotazioni del giorno</b></li>
-          <li>⚡ Azioni rapide: <b>Conferma / Rifiuta / Elimina</b></li>
-        </ul>
-      </section>
-
-      <!-- BOX DESTRO LOGIN -->
-      <section class="login-card" style="padding:26px;">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            <div class="toast" id="flashToast">
-              {% for category, message in messages %}
-                {{ message }}
-              {% endfor %}
-            </div>
-          {% endif %}
-        {% endwith %}
-
-        <form method="post" action="{{ url_for('login_page') }}">
-          <label for="username">Username</label>
-          <input id="username" name="username" type="text"
-                 class="input mt-1" required
-                 value="{{ request.form.get('username','') }}"
-                 placeholder="es. sushitokyo">
-
-          <label for="password" class="mt-3">Password</label>
-          <input id="password" name="password" type="password"
-                 class="input mt-1" required placeholder="••••••••">
-
-          <div class="form-row mt-3" style="justify-content:space-between;align-items:center;">
-            <label style="display:flex;align-items:center;gap:.3rem;">
-              <input type="checkbox" name="remember" style="accent-color:#4c82ff;"
-                {% if request.form.get('remember') == 'on' %}checked{% endif %}> Rimani connesso
-            </label>
-            <button type="submit" class="btn btn-primary" style="width:120px;">Log in</button>
-          </div>
-
-          <div class="demo-note mt-3">
-            Demo: <b>sushitokyo</b> / <i>Password123!</i> — <b>pizzerianapoli</b> / <i>Password123!</i>
-          </div>
-        </form>
-      </section>
-
-    </div>
-  </main>
-
-  <script>
-    // Tema persistente
-    (function(){
-      const key = "ui:theme";
-      const btn = document.getElementById("themeToggle");
-      function apply(theme){
-        document.documentElement.setAttribute("data-theme", theme);
-        btn?.setAttribute("data-state", theme === "light" ? "on" : "off");
-      }
-      const saved = localStorage.getItem(key) || "dark";
-      apply(saved);
-      btn?.addEventListener("click", ()=>{
-        const next = btn.getAttribute("data-state")==="on"?"dark":"light";
-        localStorage.setItem(key,next);
-        apply(next);
-      });
-    })();
-
-    // Focus automatico
-    (function(){
-      const u=document.getElementById("username");
-      const p=document.getElementById("password");
-      (u&&!u.value?u:p)?.focus();
-      const t=document.getElementById("flashToast");
-      if(t) setTimeout(()=>t.remove(),2500);
-    })();
-  </script>
-</body>
-</html>
+      <div class="demo-note">Se non ricordi le credenziali, contatta il supporto.</div>
+    </form>
+  </section>
+</div>
+{% endblock %}
