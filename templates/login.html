@@ -1,62 +1,53 @@
 <!doctype html>
-<html lang="it">
+<html lang="it" class="page-login">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Login — Ristorante AI</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
+
 <body>
-  <!-- Header snello con toggle -->
+  <!-- Header compatto -->
   <header class="header">
     <div class="brand">
       <span class="dot"></span>
       <span>Ristorante AI</span>
-      <span class="text-dim">Area riservata ristoranti</span>
+      <span class="text-dim">Area riservata</span>
     </div>
 
-    <!-- toggle tema -->
-    <button id="themeToggle" class="toggle" type="button" aria-label="Tema">
-      <span class="knob"></span>
-    </button>
+    <div class="actions">
+      <button id="themeToggle" class="toggle" type="button" aria-label="Tema">
+        <span class="knob"></span>
+      </button>
+    </div>
   </header>
 
   <main class="container">
     <div class="login-grid">
 
-      <!-- Box istruzioni -->
-      <section class="login-card">
-        <div class="card pad" style="background: radial-gradient(1200px 600px at -20% -40%, #16355d 0%, transparent 55%), linear-gradient(180deg, #0e1624 0%, #0c1422 80%);">
-          <h2 class="title">Benvenuto/a <span aria-hidden="true">👋</span></h2>
+      <!-- BOX SINISTRO -->
+      <section class="login-card quick-box">
+        <h2 style="margin-bottom:0.6rem;">Benvenuto/a 👋</h2>
+        <p class="text-muted">Gestisci prenotazioni e stato chiamate in un click.</p>
 
-          <div class="quick-box">
-            <h4 class="text-dim" style="margin:0 0 .6rem 0">Istruzioni rapide</h4>
-            <div class="form-row">
-              <div class="w-100">
-                <ul style="margin:.2rem 0 .8rem 1rem; padding:0; line-height:1.6;">
-                  <li><strong>Inserisci username</strong> del ristorante</li>
-                  <li>Digita la <strong>password</strong></li>
-                  <li>Clicca <strong>“Log in”</strong></li>
-                </ul>
-              </div>
-            </div>
+        <h3 class="text-dim" style="margin-top:1.2rem;">📋 Istruzioni rapide</h3>
+        <ul style="margin:0.5rem 0 1.2rem 1.2rem; line-height:1.7;">
+          <li>🔹 Inserisci <b>username</b> del ristorante</li>
+          <li>🔸 Digita la <b>password</b></li>
+          <li>🔹 Clicca <b>“Log in”</b></li>
+        </ul>
 
-            <div class="form-row">
-              <div class="w-100">
-                <h4 class="text-dim" style="margin:.6rem 0 .4rem 0">Dopo il login vedrai</h4>
-                <ul style="margin:.2rem 0 0 1rem; padding:0; line-height:1.6;">
-                  <li><span class="badge badge-success">●</span> <strong>Chiamate attive</strong> e stato linea</li>
-                  <li><span class="badge badge-info">📅</span> <strong>Prenotazioni del giorno</strong></li>
-                  <li>⚡ Azioni rapide: <strong>Conferma / Rifiuta / Elimina</strong></li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
+        <h3 class="text-dim">🎯 Dopo il login vedrai</h3>
+        <ul style="margin:0.5rem 0 0 1.2rem; line-height:1.7;">
+          <li>🟢 <b>Chiamate attive</b> e stato linea</li>
+          <li>📅 <b>Prenotazioni del giorno</b></li>
+          <li>⚡ Azioni rapide: <b>Conferma / Rifiuta / Elimina</b></li>
+        </ul>
       </section>
 
-      <!-- Box form -->
-      <section class="login-card">
+      <!-- BOX DESTRO LOGIN -->
+      <section class="login-card" style="padding:26px;">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <div class="toast" id="flashToast">
@@ -67,72 +58,59 @@
           {% endif %}
         {% endwith %}
 
-        <form action="{{ url_for('login_page') }}" method="post" class="card pad" autocomplete="on">
-          <div class="form-row">
-            <div>
-              <label for="username">Username</label>
-              <input class="input" id="username" name="username" value="{{ request.form.get('username','') }}" required>
-            </div>
-          </div>
+        <form method="post" action="{{ url_for('login_page') }}">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text"
+                 class="input mt-1" required
+                 value="{{ request.form.get('username','') }}"
+                 placeholder="es. sushitokyo">
 
-          <div class="form-row">
-            <div>
-              <label for="password">Password</label>
-              <input class="input" id="password" name="password" type="password" required>
-            </div>
-          </div>
+          <label for="password" class="mt-3">Password</label>
+          <input id="password" name="password" type="password"
+                 class="input mt-1" required placeholder="••••••••">
 
-          <div class="form-row" style="align-items:center; justify-content:space-between;">
-            <label class="text-muted" style="display:flex; align-items:center; gap:.45rem;">
-              <input type="checkbox" name="remember" {% if request.form.get('remember') == 'on' %}checked{% endif %}>
-              Rimani connesso
+          <div class="form-row mt-3" style="justify-content:space-between;align-items:center;">
+            <label style="display:flex;align-items:center;gap:.3rem;">
+              <input type="checkbox" name="remember" style="accent-color:#4c82ff;"
+                {% if request.form.get('remember') == 'on' %}checked{% endif %}> Rimani connesso
             </label>
-
-            <button class="btn btn-primary" type="submit">Log in</button>
+            <button type="submit" class="btn btn-primary" style="width:120px;">Log in</button>
           </div>
 
-          <p class="demo-note">
-            Demo: <strong>sushitokyo</strong> / <em>Password123!</em> — <strong>pizzerianapoli</strong> / <em>Password123!</em>
-          </p>
+          <div class="demo-note mt-3">
+            Demo: <b>sushitokyo</b> / <i>Password123!</i> — <b>pizzerianapoli</b> / <i>Password123!</i>
+          </div>
         </form>
       </section>
 
     </div>
   </main>
 
-  <!-- Nessuna modale pre-render sulla pagina login -->
   <script>
     // Tema persistente
-    (function () {
+    (function(){
       const key = "ui:theme";
       const btn = document.getElementById("themeToggle");
       function apply(theme){
-        if (theme === "light") {
-          document.documentElement.style.setProperty('--bg', '#f6f7fb');
-          document.documentElement.style.setProperty('--text', '#0b1320');
-          // (opzionale) adatta altri token per light
-        } else {
-          // reset “light” → i valori di default del CSS sono dark
-          document.documentElement.removeAttribute('style');
-        }
-        btn?.setAttribute('data-state', theme === "light" ? "on" : "off");
+        document.documentElement.setAttribute("data-theme", theme);
+        btn?.setAttribute("data-state", theme === "light" ? "on" : "off");
       }
       const saved = localStorage.getItem(key) || "dark";
       apply(saved);
-      btn?.addEventListener('click', () => {
-        const now = btn.getAttribute('data-state') === 'on' ? 'dark' : 'light';
-        localStorage.setItem(key, now);
-        apply(now);
+      btn?.addEventListener("click", ()=>{
+        const next = btn.getAttribute("data-state")==="on"?"dark":"light";
+        localStorage.setItem(key,next);
+        apply(next);
       });
     })();
 
-    // Focus iniziale e auto-hide flash
+    // Focus automatico
     (function(){
-      const u = document.getElementById('username');
-      const p = document.getElementById('password');
-      (u && !u.value ? u : p)?.focus();
-      const t = document.getElementById('flashToast');
-      if (t) setTimeout(()=> t.remove(), 2600);
+      const u=document.getElementById("username");
+      const p=document.getElementById("password");
+      (u&&!u.value?u:p)?.focus();
+      const t=document.getElementById("flashToast");
+      if(t) setTimeout(()=>t.remove(),2500);
     })();
   </script>
 </body>
