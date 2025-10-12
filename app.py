@@ -2,74 +2,51 @@ import os
 from datetime import datetime
 from flask import Flask, request, render_template, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import (
-    LoginManager, login_user, logout_user, login_required,
-    current_user, UserMixin
-)
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 from flask_cors import CORS
-from sqlalchemy import text
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # -----------------------------------------------------------------------------
-# Inizializzazione componenti base
+# Setup
 # -----------------------------------------------------------------------------
 db = SQLAlchemy()
 login_manager = LoginManager()
 
-# -----------------------------------------------------------------------------
-# Migrazione sicura - garantisce colonne richieste senza crash
-# -----------------------------------------------------------------------------
-def _ensure_columns():
-    stmts = [
-        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash TEXT',
-    ]
-    for s in stmts:
-        try:
-            db.session.execute(text(s))
-            db.session.commit()
-        except Exception as e:
-            print("⚠️ MIGRATION SKIPPED:", e)
-            db.session.rollback()
 
-# -----------------------------------------------------------------------------
-# Factory principale Flask app
-# -----------------------------------------------------------------------------
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
     CORS(app)
 
-    # Config base
+    # Secret & DB
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
-    default_sqlite = "sqlite:////opt/render/project/src/data/app.db"
-    db_url = os.getenv("DATABASE_URL", default_sqlite)
-    db_url = db_url.replace("postgres://", "postgresql://")
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+        "DATABASE_URL", "sqlite:///app.db"
+    ).replace("postgres://", "postgresql://")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = "login_page"
 
-    # Import modelli
+    # Import models dopo l'inizializzazione del db
     from backend.models import (
-        User, Restaurant, Reservation,
-        OpeningHours, SpecialDay, Settings
+        User, Restaurant, Reservation, OpeningHours, SpecialDay, Settings
     )
 
-    # Crea tabelle e colonne mancanti
+    # Crea tabelle se non esistono
     with app.app_context():
         db.create_all()
-        _ensure_columns()
 
     @login_manager.user_loader
     def load_user(user_id: str):
+        from backend.models import User  # local import per evitare cicli
         try:
             return db.session.get(User, int(user_id))
         except Exception:
             return None
 
     # -------------------------------------------------------------------------
-    # LOGIN / LOGOUT
+    # AUTH
     # -------------------------------------------------------------------------
     @app.route("/", methods=["GET", "POST"])
     def login_page():
@@ -77,10 +54,11 @@ def create_app():
             return redirect(url_for("dashboard"))
 
         if request.method == "POST":
+            from backend.models import User
             username = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
-            user = User.query.filter_by(username=username).first()
 
+            user = User.query.filter_by(username=username).first()
             if not user or not check_password_hash(user.password_hash, password):
                 flash("Credenziali non valide", "error")
                 return render_template("login.html")
@@ -97,7 +75,7 @@ def create_app():
         return redirect(url_for("login_page"))
 
     # -------------------------------------------------------------------------
-    # DASHBOARD
+    # PAGES
     # -------------------------------------------------------------------------
     @app.route("/dashboard")
     @login_required
@@ -105,7 +83,7 @@ def create_app():
         return render_template("dashboard.html")
 
     # -------------------------------------------------------------------------
-    # Helper per settings
+    # Helpers
     # -------------------------------------------------------------------------
     def require_settings_for_restaurant(rest_id: int):
         from backend.models import Settings
@@ -118,14 +96,14 @@ def create_app():
                 seats_cap=None,
                 min_people=None,
                 menu_url=None,
-                menu_desc=None
+                menu_desc=None,
             )
             db.session.add(s)
             db.session.commit()
         return s
 
     # -------------------------------------------------------------------------
-    # API: Prenotazioni
+    # API: Reservations
     # -------------------------------------------------------------------------
     @app.get("/api/reservations")
     @login_required
@@ -171,8 +149,8 @@ def create_app():
                 people=int(data.get("people") or 2),
                 status=data.get("status") or "Confermata",
                 note=data.get("note") or "",
-                date=data["date"],
-                time=data["time"],
+                date=data["date"],  # "YYYY-MM-DD"
+                time=data["time"],  # "HH:MM"
             )
             db.session.add(r)
             db.session.commit()
@@ -185,9 +163,7 @@ def create_app():
     @login_required
     def api_update_reservation(rid: int):
         from backend.models import Reservation
-        r = Reservation.query.filter_by(
-            id=rid, restaurant_id=current_user.restaurant_id
-        ).first_or_404()
+        r = Reservation.query.filter_by(id=rid, restaurant_id=current_user.restaurant_id).first_or_404()
         data = request.get_json(force=True) or {}
         for k in ["name", "phone", "status", "note"]:
             if k in data:
@@ -209,9 +185,7 @@ def create_app():
     @login_required
     def api_delete_reservation(rid: int):
         from backend.models import Reservation
-        r = Reservation.query.filter_by(
-            id=rid, restaurant_id=current_user.restaurant_id
-        ).first_or_404()
+        r = Reservation.query.filter_by(id=rid, restaurant_id=current_user.restaurant_id).first_or_404()
         try:
             db.session.delete(r)
             db.session.commit()
@@ -221,25 +195,23 @@ def create_app():
             return jsonify({"ok": False, "error": str(e)}), 400
 
     # -------------------------------------------------------------------------
-    # API: Orari settimanali e giorni speciali
+    # API: Weekly hours & special days
     # -------------------------------------------------------------------------
     @app.post("/api/hours")
     @login_required
     def api_save_hours():
+        """Body: {hours:{ "0":"12:00-15:00, 19:00-22:30", ... }}"""
         from backend.models import OpeningHours
         rest_id = current_user.restaurant_id
         data = request.get_json(force=True) or {}
         hours = data.get("hours") or {}
+
         try:
             for d in range(7):
                 win = hours.get(str(d), "")
-                row = OpeningHours.query.filter_by(
-                    restaurant_id=rest_id, day_of_week=d
-                ).first()
+                row = OpeningHours.query.filter_by(restaurant_id=rest_id, day_of_week=d).first()
                 if not row:
-                    row = OpeningHours(
-                        restaurant_id=rest_id, day_of_week=d, windows=win
-                    )
+                    row = OpeningHours(restaurant_id=rest_id, day_of_week=d, windows=win)
                     db.session.add(row)
                 else:
                     row.windows = win
@@ -252,6 +224,7 @@ def create_app():
     @app.post("/api/special-days")
     @login_required
     def api_save_special_day():
+        """Body: {day:'YYYY-MM-DD', closed:bool, windows:'..'}"""
         from backend.models import SpecialDay
         rest_id = current_user.restaurant_id
         data = request.get_json(force=True) or {}
@@ -259,18 +232,15 @@ def create_app():
             day = data["day"]
             closed = bool(data.get("closed"))
             windows = data.get("windows") or ""
-            row = SpecialDay.query.filter_by(
-                restaurant_id=rest_id, date=day
-            ).first()
+
+            row = SpecialDay.query.filter_by(restaurant_id=rest_id, date=day).first()
             if not row:
-                row = SpecialDay(
-                    restaurant_id=rest_id, date=day,
-                    closed=closed, windows=windows
-                )
+                row = SpecialDay(restaurant_id=rest_id, date=day, closed=closed, windows=windows)
                 db.session.add(row)
             else:
                 row.closed = closed
                 row.windows = windows
+
             db.session.commit()
             return jsonify({"ok": True})
         except Exception as e:
@@ -278,7 +248,7 @@ def create_app():
             return jsonify({"ok": False, "error": str(e)}), 400
 
     # -------------------------------------------------------------------------
-    # API: Prezzi & coperti
+    # API: Pricing & Menu (Settings)
     # -------------------------------------------------------------------------
     @app.post("/api/pricing")
     @login_required
@@ -286,6 +256,7 @@ def create_app():
         from backend.models import Settings
         rest_id = current_user.restaurant_id
         data = request.get_json(force=True) or {}
+
         s = require_settings_for_restaurant(rest_id)
         try:
             if "avg_price" in data and data["avg_price"] != "":
@@ -302,9 +273,6 @@ def create_app():
             db.session.rollback()
             return jsonify({"ok": False, "error": str(e)}), 400
 
-    # -------------------------------------------------------------------------
-    # API: Menu digitale
-    # -------------------------------------------------------------------------
     @app.post("/api/menu")
     @login_required
     def api_save_menu():
@@ -322,26 +290,26 @@ def create_app():
             return jsonify({"ok": False, "error": str(e)}), 400
 
     # -------------------------------------------------------------------------
-    # API: Statistiche
+    # API: Stats
     # -------------------------------------------------------------------------
     @app.get("/api/stats")
     @login_required
     def api_stats():
         from backend.models import Reservation, Settings
         rest_id = current_user.restaurant_id
+
         day = request.args.get("date")
         q = Reservation.query.filter_by(restaurant_id=rest_id)
         if day:
             q = q.filter(Reservation.date == day)
         total = q.count()
-        avg_people = (
-            db.session.query(db.func.avg(Reservation.people))
-            .filter_by(restaurant_id=rest_id)
-            .scalar()
-            or 0
-        )
+
+        avg_people = (db.session.query(db.func.avg(Reservation.people))
+                      .filter_by(restaurant_id=rest_id).scalar()) or 0
+
         s = require_settings_for_restaurant(rest_id)
         incasso_stimato = (s.avg_price or 0.0) * float(total)
+
         return jsonify({
             "ok": True,
             "total_reservations": total,
@@ -350,20 +318,13 @@ def create_app():
             "estimated_revenue": float(incasso_stimato),
         })
 
-    # -------------------------------------------------------------------------
-    # Health check per Render
-    # -------------------------------------------------------------------------
-    @app.get("/healthz")
-    def healthz():
-        return "OK", 200
-
     return app
 
 
-# -----------------------------------------------------------------------------
-# Avvio app
-# -----------------------------------------------------------------------------
+# WSGI
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
+    # Per sviluppo locale
+    port = int(os.getenv("PORT", "5000"))
+    app.run(debug=True, host="0.0.0.0", port=port)
