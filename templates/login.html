@@ -1,44 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Accedi — Ristorante AI{% endblock %}
 {% block brand %}Ristorante AI{% endblock %}
-{% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
+{% block brand_sub %}<span class="text-dim">Area riservata ristoranti</span>{% endblock %}
 
 {% block body %}
 <div class="login-grid">
-  <section class="login-card">
+  <section class="login-card quick-box">
     <h1 class="title">Benvenuto/a 👋</h1>
-    <p class="text-muted">Accedi per gestire prenotazioni, orari e menu.</p>
-
-    <div class="quick-box mt-2">
-      <strong>Istruzioni rapide</strong>
-      <ul class="list mt-2">
-        <li>• Inserisci <b>username</b> e <b>password</b></li>
-        <li>• Clicca <b>Log in</b></li>
-        <li>• Troverai la <b>Dashboard</b> con prenotazioni e KPI</li>
-      </ul>
-    </div>
+    <p class="text-muted">Gestisci prenotazioni e stato chiamate in un click.</p>
+    <ul class="list">
+      <li>• Inserisci <strong>username</strong> del ristorante</li>
+      <li>• Digita la <strong>password</strong></li>
+      <li>• Clicca <strong>“Log in”</strong></li>
+    </ul>
   </section>
 
   <section class="login-card">
-    <form method="post" action="{{ url_for('login_page') }}" class="form" novalidate>
+    <form method="post" action="{{ url_for('login_page') }}" class="form">
       <label>Username
         <input class="input" name="username" autocomplete="username" required>
       </label>
-
       <label>Password
         <input class="input" type="password" name="password" autocomplete="current-password" required>
       </label>
-
-      <label class="check mt-1" style="display:flex;gap:.6rem;align-items:center">
+      <label class="form-row" style="align-items:center;">
         <input type="checkbox" name="remember" checked>
         <span class="text-muted">Rimani connesso</span>
       </label>
-
-      <div class="mt-2">
-        <button class="btn btn-primary w-100" type="submit">Log in</button>
-      </div>
-
-      <div class="demo-note">Se non ricordi le credenziali, contatta il supporto.</div>
+      <button class="btn btn-primary w-100" type="submit">Log in</button>
+      <div class="demo-note">Il tema si salva nel cookie. Hamburger per aprire il menu laterale.</div>
     </form>
   </section>
 </div>

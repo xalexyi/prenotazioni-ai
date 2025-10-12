@@ -1,162 +1,84 @@
-{% extends "base.html" %}
-{% block title %}Dashboard — Ristorante AI{% endblock %}
-{% block brand %}{{ current_user.restaurant.name }}{% endblock %}
-{% block brand_sub %}<span class="brand-sub">— Dashboard ristorante</span>{% endblock %}
+<!DOCTYPE html>
+<html lang="it" data-theme="{{ theme or 'dark' }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard – {{ restaurant.name }}</title>
 
-{% block body %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="{{ url_for('static', filename='main.js') }}"></script>
+</head>
 
-<!-- SECTION: DASHBOARD PRINCIPALE -->
-<section id="section-dashboard" class="dash-section" data-section active>
-  <div class="kpis">
-    <div class="kpi">
-      <div class="k">Chiamate attive</div>
-      <div class="v"><span id="kpiActive">0</span> / 3</div>
+<body>
+  <!-- HEADER -->
+  <header class="header">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>{{ restaurant.name }}</span>
     </div>
-    <div class="kpi">
-      <div class="k">Prenotazioni oggi</div>
-      <div class="v" id="kpiToday">0</div>
+    <div class="actions">
+      <button id="themeToggle" class="btn btn-outline btn-sm" title="Tema">🌓</button>
+      <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">Esci</a>
     </div>
-    <div class="kpi">
-      <div class="k">Incasso stimato</div>
-      <div class="v" id="kpiRevenue">0 €</div>
-    </div>
-  </div>
+  </header>
 
-  <div class="card pad">
-    <div class="form-row">
-      <label class="w-100">Data
-        <input class="input" type="date" id="flt-date">
-      </label>
-      <label class="w-100">Cerca
-        <input class="input" type="text" id="flt-q" placeholder="Nome / telefono / orario">
-      </label>
-      <div class="actions" style="margin-left:auto">
-        <button id="btn-filter" class="btn">Filtra</button>
-        <button id="btn-clear" class="btn btn-outline">Elimina filtri</button>
-        <button id="btn-today" class="btn btn-outline">Oggi</button>
-        <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="sidebar">
+    <nav class="nav">
+      <a href="#" class="nav-link active" data-section="reservations">📅 Prenotazioni</a>
+      <a href="#" class="nav-link" data-section="hours">🕒 Orari</a>
+      <a href="#" class="nav-link" data-section="special-days">📆 Giorni speciali</a>
+      <a href="#" class="nav-link" data-section="settings">💶 Impostazioni</a>
+      <a href="#" class="nav-link" data-section="menu">🍽️ Menu</a>
+      <a href="#" class="nav-link" data-section="stats">📊 Statistiche</a>
+    </nav>
+  </aside>
+
+  <!-- MOBILE TOGGLE -->
+  <button id="sidebarToggle" class="sidebar-toggle">☰</button>
+
+  <!-- MAIN CONTENT -->
+  <main class="main container">
+    <section id="reservations" class="section visible">
+      <h2>Prenotazioni</h2>
+      <div id="reservationsList"></div>
+      <button id="addReservation" class="btn btn-primary mt-2">+ Nuova Prenotazione</button>
+    </section>
+
+    <section id="hours" class="section">
+      <h2>Orari Settimanali</h2>
+      <div id="hoursEditor"></div>
+    </section>
+
+    <section id="special-days" class="section">
+      <h2>Giorni Speciali</h2>
+      <div id="specialDays"></div>
+    </section>
+
+    <section id="settings" class="section">
+      <h2>Impostazioni Prezzi</h2>
+      <div id="settingsBox"></div>
+    </section>
+
+    <section id="menu" class="section">
+      <h2>Menu</h2>
+      <div id="menuList"></div>
+      <button id="addMenuItem" class="btn btn-primary mt-2">+ Aggiungi Piatto</button>
+    </section>
+
+    <section id="stats" class="section">
+      <h2>Statistiche</h2>
+      <div id="statsBox" class="card pad mb-2"></div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <canvas id="chartBookings"></canvas>
+        </div>
+        <div class="chart-card">
+          <canvas id="chartPeople"></canvas>
+        </div>
       </div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:14px;">
-    <table class="table">
-      <thead>
-      <tr>
-        <th class="col-time">Data & Ora</th>
-        <th>Cliente</th>
-        <th>Telefono</th>
-        <th class="col-people">Pers.</th>
-        <th class="col-state">Stato</th>
-        <th>Note</th>
-        <th class="col-actions">Azioni</th>
-      </tr>
-      </thead>
-      <tbody id="res-tbody">
-      <!-- righe iniettate da JS -->
-      </tbody>
-    </table>
-
-    <div id="list-empty" class="pad text-muted" hidden>Nessuna prenotazione trovata.</div>
-  </div>
-</section>
-
-<!-- SECTION: ORARI -->
-<section id="section-hours" class="dash-section" data-section hidden>
-  <div class="card pad">
-    <div class="title">Orari settimanali</div>
-    <p class="text-muted">Inserisci finestre tipo <code>12:00-15:00, 19:00-22:30</code>. Lascia vuoto per <i>chiuso</i>.</p>
-    <div id="hours-grid" class="grid hours-grid">
-      <!-- compilato da JS -->
-    </div>
-    <div class="actions mt-2" style="justify-content:flex-end">
-      <button id="btn-save-hours" class="btn btn-primary">Salva orari</button>
-    </div>
-  </div>
-</section>
-
-<!-- SECTION: GIORNI SPECIALI -->
-<section id="section-special" class="dash-section" data-section hidden>
-  <div class="card pad">
-    <div class="title">Giorni speciali / chiusure</div>
-    <div class="form-row">
-      <label class="w-100">Data
-        <input id="sp-day" type="date" class="input">
-      </label>
-      <label class="w-100">Chiuso tutto il giorno?
-        <select id="sp-closed" class="input">
-          <option value="true">Sì, chiuso</option>
-          <option value="false">No, definisci finestre</option>
-        </select>
-      </label>
-    </div>
-    <label class="mt-2">Finestre (se non chiuso)
-      <input id="sp-windows" type="text" class="input" placeholder="12:00-15:00, 19:00-22:30">
-    </label>
-    <div class="actions mt-2" style="justify-content:flex-end">
-      <button id="btn-save-special" class="btn btn-primary">Salva giorno</button>
-    </div>
-  </div>
-</section>
-
-<!-- SECTION: PREZZI & COPERTI -->
-<section id="section-pricing" class="dash-section" data-section hidden>
-  <div class="card pad">
-    <div class="title">Prezzi & Coperti</div>
-    <div class="form-row">
-      <label class="w-100">Prezzo medio (€)
-        <input id="pr-avg" type="number" step="0.01" class="input" placeholder="25.00">
-      </label>
-      <label class="w-100">Coperto (€)
-        <input id="pr-cover" type="number" step="0.01" class="input" placeholder="0.00">
-      </label>
-      <label class="w-100">Capienza massima
-        <input id="pr-seats" type="number" class="input" placeholder="60">
-      </label>
-      <label class="w-100">Persone minime
-        <input id="pr-min" type="number" class="input" placeholder="1">
-      </label>
-    </div>
-    <div class="actions mt-2" style="justify-content:flex-end">
-      <button id="btn-save-pricing" class="btn btn-primary">Salva</button>
-    </div>
-  </div>
-</section>
-
-<!-- SECTION: MENU DIGITALE -->
-<section id="section-menu" class="dash-section" data-section hidden>
-  <div class="card pad">
-    <div class="title">Menu digitale</div>
-    <label>URL menu (PDF/WEB)
-      <input id="mn-url" type="url" class="input" placeholder="https://...">
-    </label>
-    <label class="mt-2">Descrizione (opzionale)
-      <textarea id="mn-desc" class="input" rows="3" placeholder="Note sul menu, aggiornamenti..."></textarea>
-    </label>
-    <div class="actions mt-2" style="justify-content:flex-end">
-      <button id="btn-save-menu" class="btn btn-primary">Salva</button>
-    </div>
-  </div>
-</section>
-
-<!-- SECTION: STATISTICHE -->
-<section id="section-stats" class="dash-section" data-section hidden>
-  <div class="card pad">
-    <div class="title">Statistiche & report</div>
-    <div class="form-row">
-      <label>Data
-        <input id="st-date" type="date" class="input">
-      </label>
-      <div class="actions" style="align-self:flex-end">
-        <button id="btn-load-stats" class="btn">Aggiorna</button>
-      </div>
-    </div>
-    <div class="grid kpis mt-2" id="stats-box">
-      <div class="kpi"><div class="k">Totale prenotazioni</div><div class="v" id="st-total">0</div></div>
-      <div class="kpi"><div class="k">Persone medie</div><div class="v" id="st-avgp">0</div></div>
-      <div class="kpi"><div class="k">Incasso stimato</div><div class="v" id="st-rev">0 €</div></div>
-    </div>
-  </div>
-</section>
-
-{% endblock %}
+    </section>
+  </main>
+</body>
+</html>

@@ -1,186 +1,68 @@
 <!doctype html>
-<html lang="it" class="h-100">
+<html lang="it" class="h-100" data-theme="{{ request.cookies.get('theme','dark') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% block title %}Ristorante AI{% endblock %}</title>
-
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-  <link rel="icon" href="{{ url_for('static', filename='img/logo_sushi.svg') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-
-  <script>
-    // Tema: applica prima che la pagina dipinga
-    (function() {
-      try {
-        const saved = localStorage.getItem('theme') || 'dark';
-        document.documentElement.dataset.theme = saved; // <html data-theme="dark|light">
-      } catch(e){}
-    })();
-  </script>
-
+  <link rel="icon" href="{{ url_for('static', filename='img/logo_sushi.svg') }}">
   {% block head %}{% endblock %}
 </head>
 <body>
+  <div class="app">
+    <!-- Sidebar (hamburger) -->
+    <aside id="sidebar" class="sidebar" hidden>
+      <div class="title">Menu</div>
+      <nav class="nav">
+        <a class="nav-link" data-nav="dashboard">🏠 Dashboard</a>
+        <a class="nav-link" data-nav="hours">🕒 Orari di apertura</a>
+        <a class="nav-link" data-nav="special">📅 Giorni speciali</a>
+        <a class="nav-link" data-nav="pricing">💶 Prezzi & Coperti</a>
+        <a class="nav-link" data-nav="menu">🍣 Menu digitale</a>
+        <a class="nav-link" data-nav="stats">📊 Statistiche & Report</a>
+      </nav>
+    </aside>
 
-  <!-- Sidebar overlay a scomparsa -->
-  <aside id="sidebar" class="sidebar" hidden>
-    <div class="sb-head">
-      <div class="brand">
-        <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
-        <span class="brand-name">{{ current_user.restaurant.name if current_user.is_authenticated else 'Ristorante AI' }}</span>
-      </div>
-      <button id="btnCloseSidebar" class="icon-btn" aria-label="Chiudi menu">✕</button>
-    </div>
-
-    <div class="title">Prenotazioni</div>
-    <nav class="nav">
-      <a href="#" class="nav-link" data-open="section-dashboard">Dashboard</a>
-      <!-- Storico 30gg rimosso come richiesto -->
-    </nav>
-
-    <div class="title">Impostazioni ristorante</div>
-    <nav class="nav">
-      <a href="#" class="nav-link" data-open="section-hours">Orari di apertura</a>
-      <a href="#" class="nav-link" data-open="section-special">Giorni speciali / chiusure</a>
-      <a href="#" class="nav-link" data-open="section-pricing">Prezzi & coperti</a>
-      <a href="#" class="nav-link" data-open="section-menu">Menu digitale</a>
-    </nav>
-
-    <div class="title">Strumenti</div>
-    <nav class="nav">
-      <a href="#" class="nav-link" data-open="section-stats">Statistiche & report</a>
-    </nav>
-  </aside>
-
-  <!-- backdrop sidebar -->
-  <div id="sidebarBackdrop" class="sidebar-backdrop" hidden></div>
-
-  <!-- Header -->
-  <header class="header">
-    <div class="left">
-      <button id="btnSidebar" class="icon-btn" aria-label="Apri menu">☰</button>
-      <div class="brand small-only">
-        <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
-        <span class="brand-name">{% block brand %}{{ current_user.restaurant.name if current_user.is_authenticated else 'Ristorante AI' }}{% endblock %}</span>
-      </div>
-    </div>
-
-    <div class="center hide-on-mobile">
-      <div class="brand">
-        <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" class="brand-logo">
-        <span class="brand-name">{% block brand_center %}{{ current_user.restaurant.name if current_user.is_authenticated else 'Ristorante AI' }}{% endblock %}</span>
-        {% block brand_sub %}<span class="brand-sub">Area riservata ristoranti</span>{% endblock %}
-      </div>
-    </div>
-
-    <div class="actions">
-      {% if current_user.is_authenticated %}
-      <a class="btn btn-danger btn-sm" href="{{ url_for('logout') }}" id="btnLogout">Logout</a>
-      {% endif %}
-
-      <!-- Toggle tema -->
-      <button id="themeToggle" class="toggle" aria-label="Cambia tema">
-        <span class="knob"></span>
-      </button>
-    </div>
-  </header>
-
-  <!-- Flash -->
-  <div class="container">
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="toast" id="toast">
-          {% for m in messages %}
-            <div>{{ m }}</div>
-          {% endfor %}
+    <section class="main">
+      <header class="header">
+        <div class="left">
+          <button id="btnHamburger" class="btn btn-outline btn-sm">☰</button>
+          <span class="brand">
+            <span class="dot"></span>
+            <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" width="18" height="18">
+            <strong>{% block brand %}{{ current_user.restaurant.name if current_user.is_authenticated else 'Ristorante AI' }}{% endblock %}</strong>
+            {% block brand_sub %}<span class="text-dim">— Area riservata</span>{% endblock %}
+          </span>
         </div>
-      {% endif %}
-    {% endwith %}
+        <div class="actions">
+          <button id="btnTheme" class="toggle" aria-label="Tema">
+            <span class="knob"></span>
+          </button>
+          {% if current_user.is_authenticated %}
+          <a class="btn btn-danger btn-sm" href="{{ url_for('logout') }}">Logout</a>
+          {% endif %}
+        </div>
+      </header>
+
+      <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+          <div id="toast" class="toast">
+            {% for cat, m in messages %}
+              <div>{{ m }}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block body %}{% endblock %}
+      </main>
+    </section>
   </div>
 
-  <!-- Main -->
-  <main class="container">
-    {% block body %}{% endblock %}
-  </main>
-
-  <!-- Modale prenotazione (usata dalla dashboard) -->
-  <div id="modalReservation" class="modal-backdrop" hidden>
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-title">Nuova prenotazione</div>
-        <button class="modal-close" data-close-modal>✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-row">
-          <label class="w-100">Data
-            <input type="date" id="res-date" class="input">
-          </label>
-          <label class="w-100">Ora
-            <input type="time" id="res-time" class="input" value="20:00">
-          </label>
-        </div>
-        <div class="form-row">
-          <label class="w-100">Nome
-            <input type="text" id="res-name" class="input" placeholder="Mario Rossi">
-          </label>
-          <label class="w-100">Telefono
-            <input type="text" id="res-phone" class="input" placeholder="+39 ...">
-          </label>
-        </div>
-        <div class="form-row">
-          <label class="w-100">Persone
-            <input type="number" id="res-people" class="input" min="1" value="2">
-          </label>
-          <label class="w-100">Stato
-            <select id="res-status" class="input">
-              <option value="Confermata">Confermata</option>
-              <option value="In attesa">In attesa</option>
-              <option value="Rifiutata">Rifiutata</option>
-            </select>
-          </label>
-        </div>
-        <label>Note
-          <textarea id="res-note" rows="3" class="input" placeholder="Allergie, richieste..."></textarea>
-        </label>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" data-close-modal>Annulla</button>
-        <button id="btnSaveReservation" class="btn btn-primary">Salva prenotazione</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal conferma generica -->
-  <div id="confirmModal" class="modal-backdrop" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-      <div class="modal-header">
-        <div id="confirmTitle" class="modal-title">Confermi?</div>
-        <button class="modal-close" data-close-confirm>✕</button>
-      </div>
-      <div class="modal-body">
-        <p id="confirmText">Sei sicuro di procedere?</p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" data-close-confirm>Annulla</button>
-        <button class="btn btn-danger" id="confirmOk">Procedi</button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    // Sync stato toggle al primo paint
-    (function(){
-      try{
-        const saved = localStorage.getItem('theme') || 'dark';
-        const tg = document.getElementById('themeToggle');
-        if (tg) tg.dataset.state = (saved === 'light' ? 'on' : 'off');
-      }catch(_){}
-    })();
-  </script>
-  <script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
