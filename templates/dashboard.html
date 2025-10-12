@@ -1,212 +1,157 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Ristorante AI{% endblock %}
+{% block body %}
+<header class="topbar">
+  <button id="btn-menu" aria-label="Apri menu" class="icon">☰</button>
+  <div class="brand-dot"></div>
+  <div class="brand">Haru Asian Fusion Restaurant <span class="muted">— Dashboard ristorante</span></div>
+  <div class="spacer"></div>
+  <button id="btn-theme" class="toggle"></button>
+  <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+</header>
 
-{% block content %}
+<aside id="drawer" hidden>
+  <div class="drawer-head">
+    <div class="brand-dot"></div>
+    <div class="title">Haru Asian Fusion Restaurant</div>
+    <button id="drawer-close" class="icon">✕</button>
+  </div>
+  <div class="drawer-sec">PRENOTAZIONI</div>
+  <a href="#" data-nav="dash" class="drawer-link active">Dashboard</a>
+  <div class="drawer-sec">IMPOSTAZIONI RISTORANTE</div>
+  <a href="#" data-nav="hours" class="drawer-link">Orari di apertura</a>
+  <a href="#" data-nav="special" class="drawer-link">Giorni speciali / chiusure</a>
+  <a href="#" data-nav="prices" class="drawer-link">Prezzi & coperti</a>
+  <a href="#" data-nav="menu" class="drawer-link">Menu digitale</a>
+  <div class="drawer-sec">STRUMENTI</div>
+  <a href="#" data-nav="stats" class="drawer-link">Statistiche & report</a>
+</aside>
 
-<!-- KPI -->
-<div class="kpis">
-  <div class="kpi">
-    <div class="k">Chiamate attive</div>
-    <div id="kpi-calls" class="v">0 / 3</div>
-  </div>
-  <div class="kpi">
-    <div class="k">Prenotazioni oggi</div>
-    <div id="kpi-today" class="v">0</div>
-  </div>
-  <div class="kpi">
-    <div class="k">Incasso stimato</div>
-    <div id="kpi-rev" class="v">0 €</div>
-  </div>
-</div>
+<main class="container">
 
-<!-- Filtri -->
-<div class="card pad">
-  <div class="form-row">
-    <div class="w-40">
-      <label class="label">Data</label>
-      <input id="f-date" class="input" type="text" placeholder="gg/mm/aaaa" />
-    </div>
-    <div class="w-60">
-      <label class="label">Cerca</label>
-      <div class="input-row">
-        <span class="input-ico">🔍</span>
-        <input id="f-query" class="input no-pad-left" placeholder="Nome / telefono / orario" />
-      </div>
-    </div>
-  </div>
-  <div class="actions mt-2">
+  <!-- KPI -->
+  <section class="kpis" id="kpis">
+    <div class="kpi"><div class="k">Chiamate attive</div><div class="v">0 / 3</div></div>
+    <div class="kpi"><div class="k">Prenotazioni oggi</div><div class="v" id="kpi-today">0</div></div>
+    <div class="kpi"><div class="k">Incasso stimato</div><div class="v" id="kpi-revenue">0 €</div></div>
+  </section>
+
+  <!-- Filtri -->
+  <section class="filters">
+    <input id="f-date" placeholder="gg/mm/aaaa" value="{{ (now or none) }}">
+    <input id="f-q" placeholder="Nome / telefono / orario">
     <button id="btn-filter" class="btn">Filtra</button>
     <button id="btn-clear" class="btn btn-outline">Elimina filtri</button>
     <button id="btn-today" class="btn">Oggi</button>
     <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
-  </div>
-</div>
+  </section>
 
-<!-- Tabella -->
-<div class="table-wrap mt-2">
-  <table class="table" id="resTable">
-    <thead>
-      <tr>
-        <th>Data & Ora</th>
-        <th>Cliente</th>
-        <th>Telefono</th>
-        <th>Pers.</th>
-        <th>Stato</th>
-        <th>Note</th>
-        <th class="col-actions">Azioni</th>
-      </tr>
-    </thead>
-    <tbody id="resBody">
-      <tr class="empty">
-        <td colspan="7">Nessuna prenotazione trovata</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
+  <!-- Tabella -->
+  <section class="card">
+    <table class="table" id="tbl-res">
+      <thead>
+        <tr>
+          <th>Data & Ora</th>
+          <th>Cliente</th>
+          <th>Telefono</th>
+          <th>Pers.</th>
+          <th>Stato</th>
+          <th>Note</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody id="res-body"><tr><td colspan="7" class="muted">Nessuna prenotazione trovata.</td></tr></tbody>
+    </table>
+  </section>
 
-<!-- Sezioni impostazioni -->
-<section id="hours" class="card pad mt-3">
-  <h3 class="title">Orari settimanali</h3>
-  <p class="text-muted mb-2">Inserisci finestre tipo <strong>12:00-15:00, 19:00-22:30</strong>. Lascia vuoto per <em>chiuso</em>.</p>
-  <div class="grid-2 gap-2">
-    <input id="d-lun" class="input" placeholder="Lun: 12:00-15:00, 19:00-23:00">
-    <input id="d-mar" class="input" placeholder="Mar: 12:00-15:00, 19:00-23:00">
-    <input id="d-mer" class="input" placeholder="Mer: 12:00-15:00, 19:00-23:00">
-    <input id="d-gio" class="input" placeholder="Gio: 12:00-15:00, 19:00-23:00">
-    <input id="d-ven" class="input" placeholder="Ven: 12:00-15:00, 19:00-23:00">
-    <input id="d-sab" class="input" placeholder="Sab: 12:00-15:00, 19:00-23:00">
-    <input id="d-dom" class="input" placeholder="Dom: 12:00-15:00, 19:00-23:00">
-  </div>
-  <div class="actions mt-2">
-    <button id="btn-hours" class="btn btn-primary">Salva orari</button>
-  </div>
-</section>
+  <!-- Sezioni impostazioni (placeholders, gestite via JS/ API già presenti) -->
+  <section class="card hidden" id="sec-hours">
+    <h3>Orari settimanali</h3>
+    <div class="muted">Inserisci finestre tipo 12:00-15:00, 19:00-23:00. Lascia vuoto per <i>chiuso</i>.</div>
+    <div id="hours-grid" class="grid-2"></div>
+    <button id="btn-save-hours" class="btn btn-primary mt-2">Salva orari</button>
+  </section>
 
-<section id="special" class="card pad mt-3">
-  <h3 class="title">Giorni speciali / chiusure</h3>
-  <div class="form-row">
-    <div class="w-40">
-      <label class="label">Data (YYYY-MM-DD)</label>
-      <input id="sp-date" class="input" placeholder="2025-12-25">
+  <section class="card hidden" id="sec-special">
+    <h3>Giorni speciali / chiusure</h3>
+    <div class="row">
+      <input id="sp-date" placeholder="Data (YYYY-MM-DD)">
+      <select id="sp-closed">
+        <option value="1">Sì, chiuso</option>
+        <option value="0" selected>No, finestre</option>
+      </select>
     </div>
-    <div class="w-60">
-      <label class="label">Finestre orarie (se non chiuso)</label>
-      <input id="sp-slots" class="input" placeholder="12:00-15:00, 19:00-22:30">
+    <input id="sp-windows" placeholder="Finestre orarie es: 12:00-15:00, 19:00-22:30">
+    <button id="btn-save-special" class="btn btn-primary mt-2">Salva giorno</button>
+    <div id="toast" class="toast" hidden>Giorno speciale salvato ✔</div>
+  </section>
+
+  <section class="card hidden" id="sec-prices">
+    <h3>Prezzi & coperti</h3>
+    <div class="grid-4">
+      <input id="price-avg" placeholder="Prezzo medio (€)">
+      <input id="cover-fee" placeholder="Coperto (€)">
+      <input id="cap-max" placeholder="Capienza massima">
+      <input id="min-people" placeholder="Persone minime">
     </div>
-  </div>
-  <label class="check mt-2">
-    <input id="sp-closed" type="checkbox">
-    <span>Chiuso tutto il giorno</span>
-  </label>
-  <div class="actions mt-2">
-    <button id="btn-special" class="btn btn-primary">Salva giorno</button>
-  </div>
-</section>
+    <button id="btn-save-prices" class="btn btn-primary mt-2">Salva</button>
+  </section>
 
-<section id="pricing" class="card pad mt-3">
-  <h3 class="title">Prezzi & coperti</h3>
-  <div class="grid-4 gap-2">
-    <input id="pr-lunch" class="input" placeholder="Prezzo medio (pranzo) €">
-    <input id="pr-dinner" class="input" placeholder="Prezzo medio (cena) €">
-    <input id="pr-cap" class="input" placeholder="Capienza massima">
-    <input id="pr-minp" class="input" placeholder="Persone minime">
-  </div>
-  <div class="actions mt-2">
-    <button id="btn-pricing" class="btn btn-primary">Salva</button>
-  </div>
-</section>
+  <section class="card hidden" id="sec-menu">
+    <h3>Menu digitale</h3>
+    <input id="menu-url" placeholder="https://...">
+    <textarea id="menu-desc" placeholder="Note sul menu, aggiornamenti..."></textarea>
+    <button id="btn-save-menu" class="btn btn-primary mt-2">Salva</button>
+  </section>
 
-<section id="menu" class="card pad mt-3">
-  <h3 class="title">Menu digitale</h3>
-  <input id="menu-url" class="input mb-2" placeholder="URL menu (PDF/WEB)">
-  <textarea id="menu-desc" class="input" rows="4" placeholder="Descrizione (opzionale)"></textarea>
-  <div class="actions mt-2">
-    <button id="btn-menu" class="btn btn-primary">Salva</button>
-  </div>
-</section>
+  <section class="card hidden" id="sec-stats">
+    <h3>Statistiche & report</h3>
+    <div class="grid-3">
+      <div class="kpi"><div class="k">Prenotazioni</div><div class="v" id="st-res">0</div></div>
+      <div class="kpi"><div class="k">Persone / pren. (media)</div><div class="v" id="st-avg">0</div></div>
+      <div class="kpi"><div class="k">Prezzo medio (impostazioni)</div><div class="v" id="st-price">0 €</div></div>
+    </div>
+  </section>
 
-<section id="stats" class="card pad mt-3">
-  <h3 class="title">Statistiche & report</h3>
-  <div class="grid-3 gap-2">
-    <div class="mini kpi"><div class="k">Prenotazioni</div><div id="st-res" class="v">0</div></div>
-    <div class="mini kpi"><div class="k">Persone (media)</div><div id="st-avg" class="v">0</div></div>
-    <div class="mini kpi"><div class="k">Prezzo medio</div><div id="st-price" class="v">0 €</div></div>
-  </div>
-  <div class="actions mt-2">
-    <button id="btn-stats" class="btn">Aggiorna</button>
-  </div>
-</section>
+</main>
 
-<!-- MODAL Nuova Prenotazione -->
-<div class="modal-backdrop" id="newModal" hidden>
+<!-- Modal nuova prenotazione -->
+<div id="modal" class="modal-backdrop" hidden>
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Nuova prenotazione</div>
-      <button class="modal-close" id="mClose">✕</button>
+      <button id="modal-x" class="icon">✕</button>
     </div>
-    <div class="modal-body">
-      <div class="grid-2 gap-2">
-        <div>
-          <label class="label">Data</label>
-          <input id="m-date" class="input" placeholder="YYYY-MM-DD">
-        </div>
-        <div>
-          <label class="label">Ora</label>
-          <input id="m-time" class="input" placeholder="20:00">
-        </div>
+    <div class="modal-body grid-2">
+      <div>
+        <label>Data</label><input id="m-date" placeholder="YYYY-MM-DD">
       </div>
-      <div class="grid-2 gap-2 mt-1">
-        <div>
-          <label class="label">Nome</label>
-          <input id="m-name" class="input" placeholder="Cliente">
-        </div>
-        <div>
-          <label class="label">Telefono</label>
-          <input id="m-phone" class="input" placeholder="+39...">
-        </div>
+      <div>
+        <label>Ora</label><input id="m-time" placeholder="HH:MM">
       </div>
-      <div class="grid-2 gap-2 mt-1">
-        <div>
-          <label class="label">Persone</label>
-          <input id="m-people" class="input" placeholder="2">
-        </div>
-        <div>
-          <label class="label">Stato</label>
-          <select id="m-status" class="input">
-            <option value="pending">In attesa</option>
-            <option value="confirmed" selected>Confermata</option>
-            <option value="cancelled">Annullata</option>
-          </select>
-        </div>
+      <div>
+        <label>Nome</label><input id="m-name">
       </div>
-      <div class="mt-1">
-        <label class="label">Note</label>
-        <textarea id="m-note" class="input" rows="3" placeholder="Allergie, richieste..."></textarea>
+      <div>
+        <label>Telefono</label><input id="m-phone">
+      </div>
+      <div>
+        <label>Persone</label><input id="m-people" value="2">
+      </div>
+      <div>
+        <label>Stato</label>
+        <select id="m-status">
+          <option>PENDING</option><option>CONFERMATA</option><option>RIFIUTATA</option>
+        </select>
+      </div>
+      <div class="col-span-2">
+        <label>Note</label><textarea id="m-note" placeholder="Allergie, richieste..."></textarea>
       </div>
     </div>
     <div class="modal-footer">
-      <button id="mCancel" class="btn">Annulla</button>
-      <button id="mSave" class="btn btn-primary">Salva prenotazione</button>
+      <button id="modal-cancel" class="btn btn-outline">Annulla</button>
+      <button id="modal-save" class="btn btn-primary">Salva prenotazione</button>
     </div>
   </div>
 </div>
-
-{% endblock %}
-
-{% block extra_js %}
-<script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
-<script>
-  // Avvio dashboard
-  window.Dashboard.init({
-    endpoints: {
-      list:  "{{ url_for('api_list_reservations') }}",
-      create:"{{ url_for('api_create_reservation') }}",
-      hours: "{{ url_for('api_save_hours') }}",
-      special:"{{ url_for('api_save_special_day') }}",
-      pricing:"{{ url_for('api_save_pricing') }}",
-      menu:  "{{ url_for('api_save_menu') }}",
-      stats: "{{ url_for('api_stats') }}"
-    }
-  });
-</script>
 {% endblock %}

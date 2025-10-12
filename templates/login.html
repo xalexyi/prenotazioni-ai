@@ -1,49 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Login — Ristorante AI{% endblock %}
-
-{% block content %}
-<div class="login-grid">
-  <section class="quick-box">
-    <h2 class="mb-2">Benvenuto/a 👋</h2>
-    <p class="text-muted mb-3">Gestisci prenotazioni e stato chiamate in un click.</p>
-
-    <div class="dashed card pad">
-      <div class="mb-2" style="font-weight:600;">Istruzioni rapide</div>
-      <ul class="bullets">
-        <li>Inserisci <strong>username</strong> del ristorante</li>
-        <li>Digita la <strong>password</strong></li>
-        <li>Clicca <strong>“Log in”</strong></li>
-      </ul>
-      <div class="mt-2">
-        <div class="mb-1" style="font-weight:600;">Dopo il login vedrai</div>
-        <ul class="bullets">
-          <li>🔴 <strong>Chiamate attive</strong> e stato linea</li>
-          <li>📅 <strong>Prenotazioni del giorno</strong></li>
-          <li>⚡ Azioni rapide: <strong>Conferma / Rifiuta / Elimina</strong></li>
-        </ul>
-      </div>
+{% block body %}
+<div class="login-wrap">
+  <div class="login-card info">
+    <h2>Benvenuto/a 👋</h2>
+    <ul class="bullets">
+      <li>Inserisci <b>username</b> del ristorante</li>
+      <li>Digita la <b>password</b></li>
+      <li>Clicca <b>“Log in”</b></li>
+    </ul>
+    <div class="after-login">
+      <div>🔔 Chiamate attive e stato linea</div>
+      <div>📅 Prenotazioni del giorno</div>
+      <div>⚡ Azioni rapide: Conferma / Rifiuta / Elimina</div>
     </div>
-  </section>
+  </div>
 
-  <section class="login-card">
-    <form method="post" action="{{ url_for('login') }}" class="vstack gap-3">
-      <div>
-        <label class="label">Username</label>
-        <input name="username" class="input" placeholder="username" required value="haru-admin" />
-      </div>
-      <div>
-        <label class="label">Password</label>
-        <input type="password" name="password" class="input" placeholder="Password123!" required />
-      </div>
-      <label class="check mt-1">
-        <input type="checkbox" name="remember" checked />
-        <span>Rimani connesso</span>
-      </label>
-      <button class="btn btn-primary w-100">Log in</button>
-      <div class="demo-note">
-        Demo: <strong>sushitokyo / Password123!</strong> — <strong>pizzerianapoli / Password123!</strong>
-      </div>
-    </form>
-  </section>
+  <form class="login-card form" method="post">
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+    <label>Username</label>
+    <input name="username" required value="haru-admin">
+    <label>Password</label>
+    <input name="password" type="password" required value="Password123!">
+    <div class="row">
+      <label class="checkbox"><input type="checkbox" name="remember" checked> Rimani connesso</label>
+      <button class="btn btn-primary" type="submit">Log in</button>
+    </div>
+    <div class="demo-note">Demo: sushitokyo / Password123! — pizzerianapoli / Password123!</div>
+  </form>
 </div>
 {% endblock %}
