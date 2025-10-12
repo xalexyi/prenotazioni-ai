@@ -1,68 +1,121 @@
 <!doctype html>
-<html lang="it" class="h-100" data-theme="{{ request.cookies.get('theme','dark') }}">
+<html lang="it" data-theme="dark">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{% block title %}Ristorante AI{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-  <link rel="icon" href="{{ url_for('static', filename='img/logo_sushi.svg') }}">
+  <script>
+    // === tema da cookie all'avvio (prima del paint) ===
+    (function() {
+      const m = document.cookie.match(/(?:^|;)\s*theme=([^;]+)/);
+      const theme = m ? decodeURIComponent(m[1]) : 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
   {% block head %}{% endblock %}
 </head>
 <body>
-  <div class="app">
-    <!-- Sidebar (hamburger) -->
-    <aside id="sidebar" class="sidebar" hidden>
-      <div class="title">Menu</div>
-      <nav class="nav">
-        <a class="nav-link" data-nav="dashboard">🏠 Dashboard</a>
-        <a class="nav-link" data-nav="hours">🕒 Orari di apertura</a>
-        <a class="nav-link" data-nav="special">📅 Giorni speciali</a>
-        <a class="nav-link" data-nav="pricing">💶 Prezzi & Coperti</a>
-        <a class="nav-link" data-nav="menu">🍣 Menu digitale</a>
-        <a class="nav-link" data-nav="stats">📊 Statistiche & Report</a>
-      </nav>
-    </aside>
+  <!-- Drawer -->
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div class="brand-row">
+        <span class="brand-dot"></span>
+        <div class="brand-name">{{ g.restaurant_name or 'Ristorante' }}</div>
+      </div>
+      <button class="icon-btn" id="drawerClose" aria-label="Chiudi menu">✕</button>
+    </div>
+    <nav class="drawer-nav">
+      <div class="nav-section">Prenotazioni</div>
+      <a class="nav-item" href="{{ url_for('dashboard') }}">Dashboard</a>
 
-    <section class="main">
-      <header class="header">
-        <div class="left">
-          <button id="btnHamburger" class="btn btn-outline btn-sm">☰</button>
-          <span class="brand">
-            <span class="dot"></span>
-            <img src="{{ url_for('static', filename='img/logo_sushi.svg') }}" alt="" width="18" height="18">
-            <strong>{% block brand %}{{ current_user.restaurant.name if current_user.is_authenticated else 'Ristorante AI' }}{% endblock %}</strong>
-            {% block brand_sub %}<span class="text-dim">— Area riservata</span>{% endblock %}
-          </span>
-        </div>
-        <div class="actions">
-          <button id="btnTheme" class="toggle" aria-label="Tema">
-            <span class="knob"></span>
-          </button>
-          {% if current_user.is_authenticated %}
-          <a class="btn btn-danger btn-sm" href="{{ url_for('logout') }}">Logout</a>
-          {% endif %}
-        </div>
-      </header>
+      <div class="nav-section">Impostazioni ristorante</div>
+      <a class="nav-item" href="{{ url_for('dashboard') }}#hours">Orari di apertura</a>
+      <a class="nav-item" href="{{ url_for('dashboard') }}#special">Giorni speciali / chiusure</a>
+      <a class="nav-item" href="{{ url_for('dashboard') }}#pricing">Prezzi & coperti</a>
+      <a class="nav-item" href="{{ url_for('dashboard') }}#menu">Menu digitale</a>
 
-      <main class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-          <div id="toast" class="toast">
-            {% for cat, m in messages %}
-              <div>{{ m }}</div>
-            {% endfor %}
-          </div>
-          {% endif %}
-        {% endwith %}
+      <div class="nav-section">Strumenti</div>
+      <a class="nav-item" href="{{ url_for('dashboard') }}#stats">Statistiche & report</a>
+    </nav>
+  </aside>
+  <div id="drawerBackdrop" class="drawer-backdrop" aria-hidden="true"></div>
 
-        {% block body %}{% endblock %}
-      </main>
-    </section>
-  </div>
+  <!-- Header -->
+  <header class="app-header">
+    <button id="hamburger" class="icon-btn" aria-label="Apri menu" aria-haspopup="true">☰</button>
+    <div class="header-center">
+      <span class="brand-dot"></span>
+      <span class="brand-title">{{ g.restaurant_name or 'Haru Asian Fusion Restaurant' }}</span>
+      <span class="sep">—</span>
+      <span class="brand-sub">Dashboard ristorante</span>
+    </div>
+    <div class="header-actions">
+      <label class="toggle" id="themeToggle" title="Tema">
+        <input type="checkbox" aria-label="Tema chiaro/scuro">
+        <span class="knob"></span>
+      </label>
+      <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+    </div>
+  </header>
 
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  {% block scripts %}{% endblock %}
+  <main class="app-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Toasts -->
+  <div id="toastArea" class="toast-area"></div>
+
+  <script>
+    // === drawer ===
+    (function(){
+      const drawer = document.getElementById('drawer');
+      const backdrop = document.getElementById('drawerBackdrop');
+      const openBtn = document.getElementById('hamburger');
+      const closeBtn = document.getElementById('drawerClose');
+      function open() {
+        drawer.setAttribute('data-open','');
+        backdrop.setAttribute('data-open','');
+      }
+      function close() {
+        drawer.removeAttribute('data-open');
+        backdrop.removeAttribute('data-open');
+      }
+      openBtn?.addEventListener('click', open);
+      closeBtn?.addEventListener('click', close);
+      backdrop?.addEventListener('click', close);
+      window.addEventListener('keydown', (e)=>{ if(e.key==='Escape') close(); });
+    })();
+
+    // === tema cookie ===
+    (function(){
+      const toggle = document.querySelector('#themeToggle input');
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      if (toggle) toggle.checked = (current === 'light');
+      function setTheme(t){
+        document.documentElement.setAttribute('data-theme', t);
+        const exp = new Date(Date.now() + 365*24*60*60*1000).toUTCString();
+        document.cookie = "theme="+encodeURIComponent(t)+"; path=/; expires="+exp;
+      }
+      toggle?.addEventListener('change', (e)=>{
+        setTheme(e.target.checked ? 'light' : 'dark');
+      });
+    })();
+
+    // === toast helper globale ===
+    window.showToast = function(msg, type='info', persistent=false){
+      const box = document.createElement('div');
+      box.className = `toast ${type}`;
+      box.innerHTML = `<div>${msg}</div><button class="toast-x" aria-label="Chiudi">✕</button>`;
+      document.getElementById('toastArea').appendChild(box);
+      const remove=()=>{box.classList.add('hide'); setTimeout(()=>box.remove(),200)};
+      box.querySelector('.toast-x').onclick = remove;
+      if(!persistent) setTimeout(remove, 3500);
+    };
+  </script>
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

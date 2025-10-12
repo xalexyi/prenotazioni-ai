@@ -1,84 +1,212 @@
-<!DOCTYPE html>
-<html lang="it" data-theme="{{ theme or 'dark' }}">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard – {{ restaurant.name }}</title>
+{% extends "base.html" %}
+{% block title %}Dashboard — Ristorante AI{% endblock %}
 
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script defer src="{{ url_for('static', filename='main.js') }}"></script>
-</head>
+{% block content %}
 
-<body>
-  <!-- HEADER -->
-  <header class="header">
-    <div class="brand">
-      <span class="dot"></span>
-      <span>{{ restaurant.name }}</span>
+<!-- KPI -->
+<div class="kpis">
+  <div class="kpi">
+    <div class="k">Chiamate attive</div>
+    <div id="kpi-calls" class="v">0 / 3</div>
+  </div>
+  <div class="kpi">
+    <div class="k">Prenotazioni oggi</div>
+    <div id="kpi-today" class="v">0</div>
+  </div>
+  <div class="kpi">
+    <div class="k">Incasso stimato</div>
+    <div id="kpi-rev" class="v">0 €</div>
+  </div>
+</div>
+
+<!-- Filtri -->
+<div class="card pad">
+  <div class="form-row">
+    <div class="w-40">
+      <label class="label">Data</label>
+      <input id="f-date" class="input" type="text" placeholder="gg/mm/aaaa" />
     </div>
-    <div class="actions">
-      <button id="themeToggle" class="btn btn-outline btn-sm" title="Tema">🌓</button>
-      <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">Esci</a>
+    <div class="w-60">
+      <label class="label">Cerca</label>
+      <div class="input-row">
+        <span class="input-ico">🔍</span>
+        <input id="f-query" class="input no-pad-left" placeholder="Nome / telefono / orario" />
+      </div>
     </div>
-  </header>
+  </div>
+  <div class="actions mt-2">
+    <button id="btn-filter" class="btn">Filtra</button>
+    <button id="btn-clear" class="btn btn-outline">Elimina filtri</button>
+    <button id="btn-today" class="btn">Oggi</button>
+    <button id="btn-new" class="btn btn-primary">+ Nuova prenotazione</button>
+  </div>
+</div>
 
-  <!-- SIDEBAR -->
-  <aside id="sidebar" class="sidebar">
-    <nav class="nav">
-      <a href="#" class="nav-link active" data-section="reservations">📅 Prenotazioni</a>
-      <a href="#" class="nav-link" data-section="hours">🕒 Orari</a>
-      <a href="#" class="nav-link" data-section="special-days">📆 Giorni speciali</a>
-      <a href="#" class="nav-link" data-section="settings">💶 Impostazioni</a>
-      <a href="#" class="nav-link" data-section="menu">🍽️ Menu</a>
-      <a href="#" class="nav-link" data-section="stats">📊 Statistiche</a>
-    </nav>
-  </aside>
+<!-- Tabella -->
+<div class="table-wrap mt-2">
+  <table class="table" id="resTable">
+    <thead>
+      <tr>
+        <th>Data & Ora</th>
+        <th>Cliente</th>
+        <th>Telefono</th>
+        <th>Pers.</th>
+        <th>Stato</th>
+        <th>Note</th>
+        <th class="col-actions">Azioni</th>
+      </tr>
+    </thead>
+    <tbody id="resBody">
+      <tr class="empty">
+        <td colspan="7">Nessuna prenotazione trovata</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
-  <!-- MOBILE TOGGLE -->
-  <button id="sidebarToggle" class="sidebar-toggle">☰</button>
+<!-- Sezioni impostazioni -->
+<section id="hours" class="card pad mt-3">
+  <h3 class="title">Orari settimanali</h3>
+  <p class="text-muted mb-2">Inserisci finestre tipo <strong>12:00-15:00, 19:00-22:30</strong>. Lascia vuoto per <em>chiuso</em>.</p>
+  <div class="grid-2 gap-2">
+    <input id="d-lun" class="input" placeholder="Lun: 12:00-15:00, 19:00-23:00">
+    <input id="d-mar" class="input" placeholder="Mar: 12:00-15:00, 19:00-23:00">
+    <input id="d-mer" class="input" placeholder="Mer: 12:00-15:00, 19:00-23:00">
+    <input id="d-gio" class="input" placeholder="Gio: 12:00-15:00, 19:00-23:00">
+    <input id="d-ven" class="input" placeholder="Ven: 12:00-15:00, 19:00-23:00">
+    <input id="d-sab" class="input" placeholder="Sab: 12:00-15:00, 19:00-23:00">
+    <input id="d-dom" class="input" placeholder="Dom: 12:00-15:00, 19:00-23:00">
+  </div>
+  <div class="actions mt-2">
+    <button id="btn-hours" class="btn btn-primary">Salva orari</button>
+  </div>
+</section>
 
-  <!-- MAIN CONTENT -->
-  <main class="main container">
-    <section id="reservations" class="section visible">
-      <h2>Prenotazioni</h2>
-      <div id="reservationsList"></div>
-      <button id="addReservation" class="btn btn-primary mt-2">+ Nuova Prenotazione</button>
-    </section>
+<section id="special" class="card pad mt-3">
+  <h3 class="title">Giorni speciali / chiusure</h3>
+  <div class="form-row">
+    <div class="w-40">
+      <label class="label">Data (YYYY-MM-DD)</label>
+      <input id="sp-date" class="input" placeholder="2025-12-25">
+    </div>
+    <div class="w-60">
+      <label class="label">Finestre orarie (se non chiuso)</label>
+      <input id="sp-slots" class="input" placeholder="12:00-15:00, 19:00-22:30">
+    </div>
+  </div>
+  <label class="check mt-2">
+    <input id="sp-closed" type="checkbox">
+    <span>Chiuso tutto il giorno</span>
+  </label>
+  <div class="actions mt-2">
+    <button id="btn-special" class="btn btn-primary">Salva giorno</button>
+  </div>
+</section>
 
-    <section id="hours" class="section">
-      <h2>Orari Settimanali</h2>
-      <div id="hoursEditor"></div>
-    </section>
+<section id="pricing" class="card pad mt-3">
+  <h3 class="title">Prezzi & coperti</h3>
+  <div class="grid-4 gap-2">
+    <input id="pr-lunch" class="input" placeholder="Prezzo medio (pranzo) €">
+    <input id="pr-dinner" class="input" placeholder="Prezzo medio (cena) €">
+    <input id="pr-cap" class="input" placeholder="Capienza massima">
+    <input id="pr-minp" class="input" placeholder="Persone minime">
+  </div>
+  <div class="actions mt-2">
+    <button id="btn-pricing" class="btn btn-primary">Salva</button>
+  </div>
+</section>
 
-    <section id="special-days" class="section">
-      <h2>Giorni Speciali</h2>
-      <div id="specialDays"></div>
-    </section>
+<section id="menu" class="card pad mt-3">
+  <h3 class="title">Menu digitale</h3>
+  <input id="menu-url" class="input mb-2" placeholder="URL menu (PDF/WEB)">
+  <textarea id="menu-desc" class="input" rows="4" placeholder="Descrizione (opzionale)"></textarea>
+  <div class="actions mt-2">
+    <button id="btn-menu" class="btn btn-primary">Salva</button>
+  </div>
+</section>
 
-    <section id="settings" class="section">
-      <h2>Impostazioni Prezzi</h2>
-      <div id="settingsBox"></div>
-    </section>
+<section id="stats" class="card pad mt-3">
+  <h3 class="title">Statistiche & report</h3>
+  <div class="grid-3 gap-2">
+    <div class="mini kpi"><div class="k">Prenotazioni</div><div id="st-res" class="v">0</div></div>
+    <div class="mini kpi"><div class="k">Persone (media)</div><div id="st-avg" class="v">0</div></div>
+    <div class="mini kpi"><div class="k">Prezzo medio</div><div id="st-price" class="v">0 €</div></div>
+  </div>
+  <div class="actions mt-2">
+    <button id="btn-stats" class="btn">Aggiorna</button>
+  </div>
+</section>
 
-    <section id="menu" class="section">
-      <h2>Menu</h2>
-      <div id="menuList"></div>
-      <button id="addMenuItem" class="btn btn-primary mt-2">+ Aggiungi Piatto</button>
-    </section>
-
-    <section id="stats" class="section">
-      <h2>Statistiche</h2>
-      <div id="statsBox" class="card pad mb-2"></div>
-      <div class="charts-grid">
-        <div class="chart-card">
-          <canvas id="chartBookings"></canvas>
+<!-- MODAL Nuova Prenotazione -->
+<div class="modal-backdrop" id="newModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Nuova prenotazione</div>
+      <button class="modal-close" id="mClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2 gap-2">
+        <div>
+          <label class="label">Data</label>
+          <input id="m-date" class="input" placeholder="YYYY-MM-DD">
         </div>
-        <div class="chart-card">
-          <canvas id="chartPeople"></canvas>
+        <div>
+          <label class="label">Ora</label>
+          <input id="m-time" class="input" placeholder="20:00">
         </div>
       </div>
-    </section>
-  </main>
-</body>
-</html>
+      <div class="grid-2 gap-2 mt-1">
+        <div>
+          <label class="label">Nome</label>
+          <input id="m-name" class="input" placeholder="Cliente">
+        </div>
+        <div>
+          <label class="label">Telefono</label>
+          <input id="m-phone" class="input" placeholder="+39...">
+        </div>
+      </div>
+      <div class="grid-2 gap-2 mt-1">
+        <div>
+          <label class="label">Persone</label>
+          <input id="m-people" class="input" placeholder="2">
+        </div>
+        <div>
+          <label class="label">Stato</label>
+          <select id="m-status" class="input">
+            <option value="pending">In attesa</option>
+            <option value="confirmed" selected>Confermata</option>
+            <option value="cancelled">Annullata</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-1">
+        <label class="label">Note</label>
+        <textarea id="m-note" class="input" rows="3" placeholder="Allergie, richieste..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="mCancel" class="btn">Annulla</button>
+      <button id="mSave" class="btn btn-primary">Salva prenotazione</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
+<script>
+  // Avvio dashboard
+  window.Dashboard.init({
+    endpoints: {
+      list:  "{{ url_for('api_list_reservations') }}",
+      create:"{{ url_for('api_create_reservation') }}",
+      hours: "{{ url_for('api_save_hours') }}",
+      special:"{{ url_for('api_save_special_day') }}",
+      pricing:"{{ url_for('api_save_pricing') }}",
+      menu:  "{{ url_for('api_save_menu') }}",
+      stats: "{{ url_for('api_stats') }}"
+    }
+  });
+</script>
+{% endblock %}

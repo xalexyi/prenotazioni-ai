@@ -1,14 +1,18 @@
 """
-Prenotazioni-AI — Backend Flask completo.
-Gestisce login, dashboard API, orari, prenotazioni e impostazioni.
-Compatibile con Render (Gunicorn) e PostgreSQL.
+Prenotazioni-AI — Backend Flask completo aggiornato.
+Compatibile con i nuovi template e JS (2025-10).
 """
 
 from __future__ import annotations
 import os
-from flask import Flask, render_template, request, redirect, url_for, jsonify, session, make_response
+from flask import (
+    Flask, render_template, request, redirect, url_for, jsonify,
+    session, make_response, g
+)
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from flask_login import (
+    LoginManager, login_user, logout_user, login_required, current_user
+)
 from werkzeug.security import check_password_hash
 from datetime import datetime
 from flask_cors import CORS
@@ -16,20 +20,17 @@ from flask_cors import CORS
 # -----------------------------------------------------------------------------
 # Configurazione globale
 # -----------------------------------------------------------------------------
-
 db = SQLAlchemy()
 login_manager = LoginManager()
 
 
 def create_app():
     app = Flask(__name__, static_folder="static", template_folder="templates")
-
     app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 
     # Database
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-        "DATABASE_URL",
-        "sqlite:///local.db"
+        "DATABASE_URL", "sqlite:///local.db"
     ).replace("postgres://", "postgresql://")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)
@@ -43,7 +44,6 @@ def create_app():
 
     # Import modelli
     from backend import models
-
     with app.app_context():
         db.create_all()
 
@@ -56,8 +56,8 @@ def create_app():
 # -----------------------------------------------------------------------------
 # LOGIN HANDLER
 # -----------------------------------------------------------------------------
-
 from backend.models import User, Restaurant
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -67,8 +67,16 @@ def load_user(user_id):
 # -----------------------------------------------------------------------------
 # ROUTES FRONTEND (login / dashboard)
 # -----------------------------------------------------------------------------
-
 def register_routes(app: Flask):
+
+    @app.before_request
+    def set_restaurant_name():
+        """Imposta il nome ristorante globalmente."""
+        if current_user.is_authenticated:
+            r = Restaurant.query.get(current_user.restaurant_id)
+            g.restaurant_name = r.name if r else "Ristorante"
+        else:
+            g.restaurant_name = "Ristorante"
 
     @app.route("/")
     def index():
@@ -101,27 +109,29 @@ def register_routes(app: Flask):
     def dashboard():
         restaurant = Restaurant.query.get(current_user.restaurant_id)
         theme = request.cookies.get("theme", "dark")
-        return render_template("dashboard.html", user=current_user, restaurant=restaurant, theme=theme)
-
+        return render_template(
+            "dashboard.html",
+            user=current_user,
+            restaurant=restaurant,
+            theme=theme
+        )
 
     # -------------------------------------------------------------------------
     # API BACKEND (JSON)
     # -------------------------------------------------------------------------
-
     from backend.monolith import (
         list_reservations, create_reservation, update_reservation, delete_reservation,
-        upsert_opening_hours, upsert_special_day,
-        upsert_pricing, compute_stats, require_settings_for_restaurant
+        upsert_opening_hours, upsert_special_day, upsert_pricing,
+        compute_stats, require_settings_for_restaurant
     )
     from backend.models import OpeningHours, SpecialDay, Settings, MenuItem
 
     # ---- Prenotazioni -------------------------------------------------------
-
     @app.route("/api/reservations", methods=["GET"])
     @login_required
     def api_get_reservations():
-        q = request.args.get("q", "")
-        day = request.args.get("day")
+        q = request.args.get("query", "") or request.args.get("q", "")
+        day = request.args.get("date") or request.args.get("day")
         data = list_reservations(current_user.restaurant_id, day, q)
         return jsonify(data)
 
@@ -146,18 +156,18 @@ def register_routes(app: Flask):
         return jsonify({"success": True})
 
     # ---- Orari --------------------------------------------------------------
-
     @app.route("/api/hours", methods=["GET", "POST"])
     @login_required
     def api_hours():
         if request.method == "POST":
             upsert_opening_hours(current_user.restaurant_id, request.json)
             return jsonify({"success": True})
-        rows = OpeningHours.query.filter_by(restaurant_id=current_user.restaurant_id).all()
+        rows = OpeningHours.query.filter_by(
+            restaurant_id=current_user.restaurant_id
+        ).all()
         return jsonify({str(r.day_of_week): r.windows for r in rows})
 
     # ---- Giorni speciali ----------------------------------------------------
-
     @app.route("/api/special-days", methods=["GET", "POST"])
     @login_required
     def api_special_days():
@@ -165,37 +175,35 @@ def register_routes(app: Flask):
             d = request.json
             upsert_special_day(
                 current_user.restaurant_id,
-                d["date"],
+                d.get("date"),
                 d.get("closed", False),
-                d.get("windows", "")
+                d.get("slots", "")
             )
             return jsonify({"success": True})
-        rows = SpecialDay.query.filter_by(restaurant_id=current_user.restaurant_id).all()
+        rows = SpecialDay.query.filter_by(
+            restaurant_id=current_user.restaurant_id
+        ).all()
         return jsonify([
-            {"date": r.date, "closed": r.closed, "windows": r.windows}
+            {"date": str(r.date), "closed": r.closed, "windows": r.windows}
             for r in rows
         ])
 
     # ---- Prezzi / Impostazioni ---------------------------------------------
-
-    @app.route("/api/settings", methods=["GET", "POST"])
+    @app.route("/api/pricing", methods=["GET", "POST"])
     @login_required
-    def api_settings():
+    def api_pricing():
         if request.method == "POST":
             upsert_pricing(current_user.restaurant_id, request.json)
             return jsonify({"success": True})
         s = require_settings_for_restaurant(current_user.restaurant_id)
         return jsonify({
-            "avg_price": s.avg_price,
-            "cover": s.cover,
-            "seats_cap": s.seats_cap,
+            "avg_lunch": s.avg_price,
+            "avg_dinner": s.avg_price_dinner if hasattr(s, "avg_price_dinner") else None,
+            "capacity": s.seats_cap,
             "min_people": s.min_people,
-            "menu_url": s.menu_url,
-            "menu_desc": s.menu_desc,
         })
 
     # ---- Menu dinamico ------------------------------------------------------
-
     @app.route("/api/menu", methods=["GET", "POST", "DELETE"])
     @login_required
     def api_menu():
@@ -221,7 +229,6 @@ def register_routes(app: Flask):
         return jsonify([{"id": r.id, "name": r.name, "price": r.price} for r in rows])
 
     # ---- Statistiche --------------------------------------------------------
-
     @app.route("/api/stats", methods=["GET"])
     @login_required
     def api_stats():
@@ -230,7 +237,6 @@ def register_routes(app: Flask):
         return jsonify(stats)
 
     # ---- Tema (dark/light toggle) ------------------------------------------
-
     @app.route("/api/theme", methods=["POST"])
     def api_theme():
         theme = request.json.get("theme", "dark")
@@ -240,9 +246,8 @@ def register_routes(app: Flask):
 
 
 # -----------------------------------------------------------------------------
-# ENTRYPOINT PER GUNICORN
+# ENTRYPOINT PER GUNICORN / DEBUG
 # -----------------------------------------------------------------------------
-
 app = create_app()
 
 if __name__ == "__main__":
