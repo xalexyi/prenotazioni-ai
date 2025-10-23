@@ -1,33 +1,18 @@
 import os
-import logging
 from datetime import datetime, date, time as dtime
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional
 
-from flask import (
-    Flask, render_template, request, redirect, url_for, jsonify, session
-)
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from sqlalchemy import text, inspect
-from sqlalchemy.exc import ProgrammingError, OperationalError, IntegrityError
-from flask_cors import CORS
-from flask_login import (
-    LoginManager, login_user, login_required, logout_user,
-    current_user, UserMixin
-)
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# -------------------------------------------------
-# Config base
-# -------------------------------------------------
-def _bool(v: Optional[str], default=False) -> bool:
-    if v is None:
-        return default
-    return str(v).lower().strip() in {"1", "true", "yes", "y", "on"}
-
-APP_ENV = os.getenv("FLASK_ENV", "production")
-DEBUG = _bool(os.getenv("DEBUG"), APP_ENV != "production")
-
-app = Flask(__name__, static_folder="static", template_folder="templates")
-app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
+# -----------------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------------
+app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "change-me")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -37,165 +22,187 @@ app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
-CORS(app, supports_credentials=True)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
-logging.basicConfig(level=logging.INFO if not DEBUG else logging.DEBUG)
-log = logging.getLogger("prenotazioni")
+# -----------------------------------------------------------------------------
+# MODELS (basati sullo schema che hai su Render)
+# -----------------------------------------------------------------------------
 
-# -------------------------------------------------
-# Modelli
-# -------------------------------------------------
 class Restaurant(db.Model):
     __tablename__ = "restaurant"
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False, unique=True)
-    # impostazioni condivise
-    avg_price = db.Column(db.Numeric(10, 2), nullable=True)
-    cover_price = db.Column(db.Numeric(10, 2), nullable=True)
-    capacity_max = db.Column(db.Integer, nullable=True)
-    min_people = db.Column(db.Integer, nullable=True)
+    name = db.Column(db.String(120), nullable=False)
+    logo_path = db.Column(db.String(255), nullable=False)
+    weekly_hours_json = db.Column(db.Text)
+
 
 class User(UserMixin, db.Model):
     __tablename__ = "user"
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), nullable=False, unique=True)
-    password_hash = db.Column(db.String(255), nullable=False)
+    username = db.Column(db.String(80), unique=True, index=True, nullable=False)
+    password = db.Column(db.String(255), nullable=False)  # legacy plain text (verrà rimosso alla prima login)
     restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
-    restaurant = db.relationship(Restaurant)
+    password_hash = db.Column(db.String(255))  # nuovo
+
+    # Flask-Login
+    def get_id(self):
+        return str(self.id)
+
 
 class Reservation(db.Model):
     __tablename__ = "reservation"
     id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False, index=True)
-    date = db.Column(db.Date, nullable=False, index=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
+    date = db.Column(db.Date, nullable=False)
     time = db.Column(db.Time, nullable=False)
-    name = db.Column(db.String(160), nullable=False)
-    phone = db.Column(db.String(40), nullable=True)
+    name = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(40))
     people = db.Column(db.Integer, nullable=False, default=2)
-    status = db.Column(db.String(20), nullable=False, default="PENDING")  # PENDING/CONFIRMED/CANCELLED
-    note = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, server_default=text("NOW()"), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="PENDING")
+    note = db.Column(db.Text)
+    created_at = db.Column(db.DateTime)  # può mancare nel DB vecchio (bootstrap sotto)
 
-class OpeningHour(db.Model):
-    __tablename__ = "opening_hour"
-    id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False, index=True)
-    weekday = db.Column(db.Integer, nullable=False)  # 0=Mon .. 6=Sun
-    windows = db.Column(db.String(255), nullable=True)  # es "12:00-15:00, 19:00-22:30"
 
 class SpecialDay(db.Model):
     __tablename__ = "special_day"
     id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False, index=True)
-    thedate = db.Column(db.Date, nullable=False, index=True)
-    is_closed = db.Column(db.Boolean, nullable=False, default=False)
-    windows = db.Column(db.String(255), nullable=True)  # se non chiuso
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    closed = db.Column(db.Boolean, nullable=False, default=False)
+    windows = db.Column(db.Text)  # es: "12:00-15:00, 19:00-22:30"
 
-class MenuItem(db.Model):
-    __tablename__ = "menu_item"
+
+class Settings(db.Model):
+    __tablename__ = "settings"
     id = db.Column(db.Integer, primary_key=True)
-    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False, index=True)
-    name = db.Column(db.String(160), nullable=False)
-    price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False, unique=True)
+    avg_price_lunch = db.Column(db.Numeric(asdecimal=False))
+    avg_price_dinner = db.Column(db.Numeric(asdecimal=False))
+    cover_price = db.Column(db.Numeric(asdecimal=False))
+    capacity_max = db.Column(db.Integer)
+    min_people = db.Column(db.Integer)
 
-# -------------------------------------------------
-# Helpers
-# -------------------------------------------------
-@login_manager.user_loader
-def load_user(user_id):
-    try:
-        return User.query.get(int(user_id))
-    except Exception:
-        return None
 
-def _ensure_schema() -> None:
-    """
-    Bootstrap idempotente che aggiunge colonne mancate senza rompere nulla.
-    """
-    try:
-        engine = db.get_engine()
-        insp = inspect(engine)
+class OpeningHour(db.Model):
+    __tablename__ = "opening_hour"
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey("restaurant.id"), nullable=False)
+    weekday = db.Column(db.Integer, nullable=False)  # 1=Lun ... 7=Dom
+    windows = db.Column(db.Text)  # "12:00-15:00, 19:00-23:00"
 
-        # 1) reservation.created_at
-        cols = [c["name"] for c in insp.get_columns("reservation")]
-        if "created_at" not in cols:
+
+# -----------------------------------------------------------------------------
+# Bootstrap schema idempotente (non rompe nulla)
+# -----------------------------------------------------------------------------
+
+def _ensure_schema():
+    engine = db.get_engine()
+    insp = inspect(engine)
+
+    # Aggiungi colonna created_at su reservation se manca
+    cols = [c["name"] for c in insp.get_columns("reservation")]
+    if "created_at" not in cols:
+        try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE reservation ADD COLUMN created_at TIMESTAMP DEFAULT NOW()"))
-                conn.commit()
+        except Exception:
+            # già aggiunta altrove o race condition: ignora
+            pass
 
-    except ProgrammingError:
-        # table non ancora create => primo avvio: ok
-        pass
-    except Exception as e:
-        log.warning("ensure_schema warning: %s", e)
 
-def _parse_date(s: str) -> date:
-    try:
-        return datetime.strptime(s.strip(), "%Y-%m-%d").date()
-    except ValueError:
-        # consentiamo anche formati tipo 11/10/2025 (it-IT)
+@app.before_first_request
+def _on_boot():
+    _ensure_schema()
+
+
+# -----------------------------------------------------------------------------
+# Helpers parsing e mapping
+# -----------------------------------------------------------------------------
+
+def _parse_date(value: str) -> date:
+    value = (value or "").strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
         try:
-            return datetime.strptime(s.strip(), "%d/%m/%Y").date()
+            return datetime.strptime(value, fmt).date()
         except ValueError:
-            raise ValueError("Formato data non valido. Usa YYYY-MM-DD oppure DD/MM/YYYY")
+            continue
+    raise ValueError("Data non valida")
 
-def _parse_time(s: str) -> dtime:
-    try:
-        return datetime.strptime(s.strip(), "%H:%M").time()
-    except ValueError:
-        raise ValueError("Formato ora non valido. Usa HH:MM")
+def _parse_time(value: str) -> dtime:
+    value = (value or "").strip()
+    for fmt in ("%H:%M",):
+        try:
+            return datetime.strptime(value, fmt).time()
+        except ValueError:
+            continue
+    raise ValueError("Orario non valido")
 
-def _ok(data: Dict[str, Any] = None, code=200):
-    if data is None:
-        data = {}
-    return jsonify({"ok": True, **data}), code
-
-def _err(msg: str, code=400):
-    return jsonify({"ok": False, "error": msg}), code
-
-def _restaurant_id() -> int:
-    if not current_user.is_authenticated:
-        raise RuntimeError("Non autenticato")
-    return current_user.restaurant_id
-
-def _reservation_to_json(r: Reservation) -> Dict[str, Any]:
-    return {
-        "id": r.id,
-        "date": r.date.isoformat(),
-        "time": r.time.strftime("%H:%M"),
-        "name": r.name,
-        "phone": r.phone or "",
-        "people": r.people,
-        "status": r.status,
-        "note": r.note or "",
-        "created_at": r.created_at.isoformat() if r.created_at else None,
+def _map_status(value: str) -> str:
+    v = (value or "").strip().upper()
+    aliases = {
+        "PENDING": "PENDING",
+        "ATTESA": "PENDING",
+        "IN ATTESA": "PENDING",
+        "CONFIRMED": "CONFIRMED",
+        "CONFERMATA": "CONFIRMED",
+        "CANCELLATA": "CANCELLED",
+        "CANCELLED": "CANCELLED",
+        "ANNULLATA": "CANCELLED",
     }
+    return aliases.get(v, "PENDING")
 
-# -------------------------------------------------
-# Routes HTML
-# -------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Auth
+# -----------------------------------------------------------------------------
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
 @app.route("/", methods=["GET", "POST"])
 def login():
-    _ensure_schema()
-    if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
-        password = (request.form.get("password") or "").strip()
+    if request.method == "GET":
+        return render_template("login.html")
 
-        if not username or not password:
-            return render_template("login.html", error="Inserisci username e password")
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    remember = bool(request.form.get("remember"))
 
-        user = User.query.filter_by(username=username).first()
-        if not user or user.password_hash != password:
-            # Nota: se usi hash reali, sostituisci con check_password_hash()
-            return render_template("login.html", error="Credenziali errate")
+    if not username or not password:
+        flash("Inserisci username e password", "error")
+        return redirect(url_for("login"))
 
-        login_user(user, remember=bool(request.form.get("remember") == "on"))
-        return redirect(url_for("dashboard"))
+    user = User.query.filter_by(username=username).first()
 
-    return render_template("login.html")
+    # Se non c'è l'utente: errore
+    if not user:
+        flash("Credenziali errate", "error")
+        return redirect(url_for("login"))
+
+    ok = False
+
+    # 1) se esiste hash -> verifica con hash
+    if user.password_hash:
+        ok = check_password_hash(user.password_hash, password)
+
+    # 2) altrimenti confronta il campo legacy in chiaro e, se matcha, migra ad hash
+    if not ok and user.password:
+        if user.password == password:
+            ok = True
+            user.password_hash = generate_password_hash(password)
+            # opzionale: svuoto la password legacy
+            user.password = ""
+            db.session.commit()
+
+    if not ok:
+        flash("Credenziali errate", "error")
+        return redirect(url_for("login"))
+
+    login_user(user, remember=remember)
+    return redirect(url_for("dashboard"))
 
 @app.route("/logout")
 @login_required
@@ -203,245 +210,200 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+
+# -----------------------------------------------------------------------------
+# Views
+# -----------------------------------------------------------------------------
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template("dashboard.html")
+    # Info breadcrumb e toggle
+    rest = Restaurant.query.get(current_user.restaurant_id)
+    settings = Settings.query.filter_by(restaurant_id=current_user.restaurant_id).first()
+    return render_template(
+        "dashboard.html",
+        restaurant=rest,
+        settings=settings,
+    )
 
-# -------------------------------------------------
-# API — Prenotazioni
-# -------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# API
+# -----------------------------------------------------------------------------
+
 @app.route("/api/reservations", methods=["GET"])
 @login_required
-def api_list_reservations():
+def api_reservations_list():
+    d = request.args.get("date")
     try:
-        rid = _restaurant_id()
-
-        qdate_str = request.args.get("date")
-        if not qdate_str:
-            return _err("Parametro 'date' mancante")
-
-        d = _parse_date(qdate_str)
-
-        qs = (
-            Reservation.query
-            .filter(Reservation.restaurant_id == rid, Reservation.date == d)
-            .order_by(Reservation.date.asc(), Reservation.time.asc())
-        )
-        items = [_reservation_to_json(x) for x in qs.all()]
-        return _ok({"items": items})
+        the_date = _parse_date(d) if d else date.today()
     except Exception as e:
-        log.exception("Errore /api/reservations GET")
-        return _err(str(e), 500)
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    q = (Reservation.query
+         .filter_by(restaurant_id=current_user.restaurant_id, date=the_date)
+         .order_by(Reservation.date.asc(), Reservation.time.asc()))
+    items = [{
+        "id": r.id,
+        "date": r.date.isoformat(),
+        "time": r.time.strftime("%H:%M"),
+        "name": r.name,
+        "phone": r.phone,
+        "people": r.people,
+        "status": r.status,
+        "note": r.note or ""
+    } for r in q.all()]
+    return jsonify({"ok": True, "items": items})
 
 @app.route("/api/reservations", methods=["POST"])
 @login_required
-def api_create_reservation():
+def api_reservations_create():
+    data = request.get_json(silent=True) or {}
+
     try:
-        rid = _restaurant_id()
-        data = request.get_json(force=True, silent=False) or {}
-
-        date_str = (data.get("date") or "").strip()
-        time_str = (data.get("time") or "").strip()
-        name = (data.get("name") or "").strip()
-        phone = (data.get("phone") or "").strip()
-        status = (data.get("status") or "PENDING").strip().upper()
-        note = (data.get("note") or "").strip()
-        people = int(data.get("people") or 2)
-
-        if not date_str or not time_str or not name:
-            return _err("Campi obbligatori: data, ora, nome")
-
-        d = _parse_date(date_str)
-        t = _parse_time(time_str)
-
         r = Reservation(
-            restaurant_id=rid, date=d, time=t, name=name,
-            phone=phone, people=people, status=status, note=note,
+            restaurant_id=current_user.restaurant_id,
+            date=_parse_date(data.get("date")),
+            time=_parse_time(data.get("time")),
+            name=(data.get("name") or "").strip(),
+            phone=(data.get("phone") or "").strip(),
+            people=int(data.get("people") or 2),
+            status=_map_status(data.get("status")),
+            note=(data.get("note") or "").strip(),
         )
+        if not r.name:
+            raise ValueError("Nome richiesto")
         db.session.add(r)
         db.session.commit()
-        return _ok({"item": _reservation_to_json(r)}, 201)
-
-    except (ValueError, AssertionError) as ve:
-        return _err(str(ve), 400)
-    except IntegrityError as ie:
-        db.session.rollback()
-        return _err("Errore integrità dati: " + str(ie.orig)), 400
+        return jsonify({"ok": True, "id": r.id})
     except Exception as e:
         db.session.rollback()
-        log.exception("Errore /api/reservations POST")
-        return _err("Errore server: " + str(e), 500)
-
-@app.route("/api/reservations/<int:res_id>", methods=["DELETE"])
-@login_required
-def api_delete_reservation(res_id: int):
-    try:
-        rid = _restaurant_id()
-        r = Reservation.query.filter_by(id=res_id, restaurant_id=rid).first()
-        if not r:
-            return _err("Prenotazione non trovata", 404)
-        db.session.delete(r)
-        db.session.commit()
-        return _ok()
-    except Exception as e:
-        db.session.rollback()
-        log.exception("Errore DELETE reservation")
-        return _err(str(e), 500)
-
-# -------------------------------------------------
-# API — Orari settimanali
-# -------------------------------------------------
-@app.route("/api/hours", methods=["GET"])
-@login_required
-def api_get_hours():
-    rid = _restaurant_id()
-    items = OpeningHour.query.filter_by(restaurant_id=rid).order_by(OpeningHour.weekday.asc()).all()
-    payload = [{"weekday": x.weekday, "windows": x.windows or ""} for x in items]
-    return _ok({"items": payload})
+        return jsonify({"ok": False, "error": str(e)}), 400
 
 @app.route("/api/hours", methods=["POST"])
 @login_required
-def api_save_hours():
+def api_hours_save():
+    """
+    Body atteso:
+    {
+      "1": "12:00-15:00, 19:00-23:00",
+      "2": "...",
+      ...
+      "7": "..."
+    }
+    """
+    payload = request.get_json(silent=True) or {}
     try:
-        rid = _restaurant_id()
-        data = request.get_json(force=True) or {}
-        items = data.get("items") or []
-        if not isinstance(items, list):
-            return _err("Formato non valido: items dev'essere lista")
-
-        # upsert 7 righe (0..6). Se non c'è, la creo
-        exists = {x.weekday: x for x in OpeningHour.query.filter_by(restaurant_id=rid).all()}
-        for raw in items:
-            wd = int(raw.get("weekday"))
-            windows = (raw.get("windows") or "").strip()
-            rec = exists.get(wd)
-            if not rec:
-                rec = OpeningHour(restaurant_id=rid, weekday=wd, windows=windows)
-                db.session.add(rec)
+        rid = current_user.restaurant_id
+        # sovrascrivo/setto uno per uno
+        for wd_str, windows in payload.items():
+            try:
+                wd = int(wd_str)
+            except:
+                continue
+            oh = OpeningHour.query.filter_by(restaurant_id=rid, weekday=wd).first()
+            if not oh:
+                oh = OpeningHour(restaurant_id=rid, weekday=wd, windows=(windows or "").strip())
+                db.session.add(oh)
             else:
-                rec.windows = windows
-
+                oh.windows = (windows or "").strip()
         db.session.commit()
-        return _ok()
+        return jsonify({"ok": True})
     except Exception as e:
         db.session.rollback()
-        log.exception("Errore salvataggio orari")
-        return _err(str(e), 500)
+        return jsonify({"ok": False, "error": str(e)}), 400
 
-# -------------------------------------------------
-# API — Giorni speciali
-# -------------------------------------------------
 @app.route("/api/special-days", methods=["POST"])
 @login_required
-def api_save_special_day():
+def api_special_days_save():
+    """
+    Body atteso:
+    {
+      "date": "YYYY-MM-DD" o "DD/MM/YYYY",
+      "closed": true/false,
+      "windows": "12:00-15:00, 19:00-22:30"
+    }
+    """
+    data = request.get_json(silent=True) or {}
     try:
-        rid = _restaurant_id()
-        data = request.get_json(force=True) or {}
-        date_str = (data.get("date") or "").strip()
-        is_closed = bool(data.get("is_closed"))
+        rid = current_user.restaurant_id
+        d = _parse_date(data.get("date"))
+        closed = bool(data.get("closed"))
         windows = (data.get("windows") or "").strip()
 
-        d = _parse_date(date_str)
-
-        rec = SpecialDay.query.filter_by(restaurant_id=rid, thedate=d).first()
-        if not rec:
-            rec = SpecialDay(restaurant_id=rid, thedate=d)
-            db.session.add(rec)
-
-        rec.is_closed = is_closed
-        rec.windows = "" if is_closed else windows
-
+        sd = SpecialDay.query.filter_by(restaurant_id=rid, date=d).first()
+        if not sd:
+            sd = SpecialDay(restaurant_id=rid, date=d, closed=closed, windows=windows)
+            db.session.add(sd)
+        else:
+            sd.closed = closed
+            sd.windows = windows
         db.session.commit()
-        return _ok()
+        return jsonify({"ok": True})
     except Exception as e:
         db.session.rollback()
-        log.exception("Errore salvataggio giorno speciale")
-        return _err(str(e), 500)
+        return jsonify({"ok": False, "error": str(e)}), 400
 
-# -------------------------------------------------
-# API — Prezzi base ristorante
-# -------------------------------------------------
-@app.route("/api/prices", methods=["GET"])
+@app.route("/api/settings", methods=["POST"])
 @login_required
-def api_prices_get():
-    rid = _restaurant_id()
-    r = Restaurant.query.get(rid)
-    if not r:
-        return _err("Ristorante non trovato", 404)
-    return _ok({
-        "avg_price": float(r.avg_price) if r.avg_price is not None else None,
-        "cover_price": float(r.cover_price) if r.cover_price is not None else None,
-        "capacity_max": r.capacity_max,
-        "min_people": r.min_people
-    })
-
-@app.route("/api/prices", methods=["POST"])
-@login_required
-def api_prices_save():
+def api_settings_save():
+    """
+    Body atteso:
+    {
+      "avg_price_lunch": "25.0",
+      "avg_price_dinner": "30.0",
+      "cover_price": "2.5",
+      "capacity_max": 60,
+      "min_people": 1
+    }
+    """
+    data = request.get_json(silent=True) or {}
     try:
-        rid = _restaurant_id()
-        r = Restaurant.query.get(rid)
-        if not r:
-            return _err("Ristorante non trovato", 404)
-
-        data = request.get_json(force=True) or {}
+        rid = current_user.restaurant_id
+        s = Settings.query.filter_by(restaurant_id=rid).first()
+        if not s:
+            s = Settings(restaurant_id=rid)
+            db.session.add(s)
+        # parse numeri in modo safe
         def _num(x): 
-            if x in (None, "", "null"): 
-                return None
-            return float(x)
+            if x is None or str(x).strip() == "": return None
+            return float(str(x).replace(",", "."))
+        def _int(x):
+            if x is None or str(x).strip() == "": return None
+            return int(x)
 
-        r.avg_price = _num(data.get("avg_price"))
-        r.cover_price = _num(data.get("cover_price"))
-        r.capacity_max = int(data.get("capacity_max") or 0) or None
-        r.min_people = int(data.get("min_people") or 0) or None
+        s.avg_price_lunch = _num(data.get("avg_price_lunch"))
+        s.avg_price_dinner = _num(data.get("avg_price_dinner"))
+        s.cover_price = _num(data.get("cover_price"))
+        s.capacity_max = _int(data.get("capacity_max"))
+        s.min_people = _int(data.get("min_people"))
+
         db.session.commit()
-        return _ok()
+        return jsonify({"ok": True})
     except Exception as e:
         db.session.rollback()
-        log.exception("Errore salvataggio prezzi")
-        return _err(str(e), 500)
+        return jsonify({"ok": False, "error": str(e)}), 400
 
-# -------------------------------------------------
-# API — Menu (lista semplice voce-prezzo)
-# -------------------------------------------------
-@app.route("/api/menu", methods=["GET"])
-@login_required
-def api_menu_get():
-    rid = _restaurant_id()
-    rows = MenuItem.query.filter_by(restaurant_id=rid).order_by(MenuItem.id.asc()).all()
-    return _ok({"items": [{"id": x.id, "name": x.name, "price": float(x.price)} for x in rows]})
 
-@app.route("/api/menu", methods=["POST"])
-@login_required
-def api_menu_save():
-    try:
-        rid = _restaurant_id()
-        data = request.get_json(force=True) or {}
-        items = data.get("items") or []
-        if not isinstance(items, list):
-            return _err("Formato non valido: items dev'essere lista")
+# -----------------------------------------------------------------------------
+# Error helpers (JSON comodi per debug front)
+# -----------------------------------------------------------------------------
 
-        # Politica semplice: wipe & replace
-        MenuItem.query.filter_by(restaurant_id=rid).delete()
-        for it in items:
-            name = (it.get("name") or "").strip()
-            price = float(it.get("price") or 0)
-            if name:
-                db.session.add(MenuItem(restaurant_id=rid, name=name, price=price))
-        db.session.commit()
-        return _ok()
-    except Exception as e:
-        db.session.rollback()
-        log.exception("Errore salvataggio menu")
-        return _err(str(e), 500)
+@app.errorhandler(400)
+def bad_request(e):
+    return jsonify({"ok": False, "error": "bad_request"}), 400
 
-# -------------------------------------------------
-# Avvio
-# -------------------------------------------------
-with app.app_context():
-    db.create_all()
-    _ensure_schema()
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"ok": False, "error": "server_error"}), 500
+
+
+# -----------------------------------------------------------------------------
+# Main (utile in locale)
+# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=DEBUG)
+    with app.app_context():
+        _ensure_schema()
+    app.run(host="0.0.0.0", port=5000, debug=True)

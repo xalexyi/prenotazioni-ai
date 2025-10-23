@@ -1,126 +1,102 @@
-<!-- templates/dashboard.html -->
-<!doctype html>
-<html lang="it">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Dashboard — Ristorante AI</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
-</head>
-<body class="theme-dark">
-  <header class="topbar">
-    <div class="brand">🔴 {{ restaurant_name }} — <span class="muted">Dashboard ristorante</span></div>
-    <div class="top-actions">
-      <a class="btn danger" href="{{ url_for('logout') }}">Logout</a>
-      <button id="theme-toggle" class="toggle"></button>
+{% extends "base.html" %}
+{% block title %}Dashboard — Ristorante AI{% endblock %}
+{% block brand %}
+  {{ restaurant.name }} <span class="muted">— Dashboard ristorante</span>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button id="sidebarBtn" class="icon-btn">☰</button>
+  <div class="stats">
+    <div class="stat"><div class="label">Chiamate attive</div><div id="statCalls">0 / 3</div></div>
+    <div class="stat"><div class="label">Prenotazioni oggi</div><div id="statBookings">0</div></div>
+    <div class="stat"><div class="label">Incasso stimato</div><div id="statRevenue">0 €</div></div>
+  </div>
+</div>
+
+<div class="filters">
+  <label>Data
+    <input type="text" id="fDate" placeholder="DD/MM/YYYY" />
+  </label>
+  <label>Cerca
+    <input type="text" id="fSearch" placeholder="Nome / telefono / orario" />
+  </label>
+  <button id="btnFilter" class="btn">Filtra</button>
+  <button id="btnClear" class="btn">Elimina filtri</button>
+  <button id="btnToday" class="btn">Oggi</button>
+  <button id="btnNew" class="btn btn-primary">+ Nuova prenotazione</button>
+</div>
+
+<div class="table">
+  <div class="thead">
+    <div>Data & Ora</div><div>Cliente</div><div>Telefono</div><div>Pers.</div><div>Stato</div><div>Note</div><div>Azioni</div>
+  </div>
+  <div id="rows" class="tbody"></div>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal hidden" role="dialog">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Nuova prenotazione</h3>
+      <button id="modalClose" class="icon-btn">✕</button>
     </div>
-  </header>
-
-  <main class="container">
-    <section class="grid-3">
-      <div class="card metric">
-        <div class="label">Chiamate attive</div>
-        <div class="value">0 / 3</div>
-      </div>
-      <div class="card metric">
-        <div class="label">Prenotazioni oggi</div>
-        <div class="value">0</div>
-      </div>
-      <div class="card metric">
-        <div class="label">Incasso stimato</div>
-        <div class="value">0 €</div>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="row">
-        <div class="col">
-          <label>Data</label>
-          <input id="filter-date" type="text" placeholder="gg/mm/aaaa" />
-        </div>
-        <div class="col grow">
-          <label>Cerca</label>
-          <input type="text" placeholder="Nome / telefono / orario" />
-        </div>
-        <div class="col right">
-          <button id="btn-new-reservation" class="btn primary">+ Nuova prenotazione</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="card table">
-      <table>
-        <thead>
-          <tr>
-            <th>Data & Ora</th>
-            <th>Cliente</th>
-            <th>Telefono</th>
-            <th>Pers.</th>
-            <th>Stato</th>
-            <th>Note</th>
-            <th>Azioni</th>
-          </tr>
-        </thead>
-        <tbody id="reservations-body"></tbody>
-      </table>
-    </section>
-  </main>
-
-  <!-- MODALE: nuova prenotazione -->
-  <div id="modal-new-reservation" class="modal">
-    <div class="modal-body">
-      <div class="modal-header">
-        <h3>Nuova prenotazione</h3>
-        <button class="btn icon btn-close">✖</button>
-      </div>
-      <div class="grid-2">
-        <div class="col">
-          <label>Data</label>
-          <input name="date" type="text" placeholder="DD/MM/YYYY" />
-        </div>
-        <div class="col">
-          <label>Ora</label>
-          <input name="time" type="text" placeholder="HH:MM" />
-        </div>
-        <div class="col">
-          <label>Nome</label>
-          <input name="name" type="text" />
-        </div>
-        <div class="col">
-          <label>Telefono</label>
-          <input name="phone" type="text" />
-        </div>
-        <div class="col">
-          <label>Persone</label>
-          <input name="people" type="number" min="1" value="2" />
-        </div>
-        <div class="col">
-          <label>Stato</label>
-          <select name="status">
-            <option>CONFERMATA</option>
-            <option>PENDING</option>
-            <option>ANNULLATA</option>
-          </select>
-        </div>
-        <div class="col span-2">
-          <label>Note</label>
-          <textarea name="note" placeholder="Allergie, richieste..."></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" onclick="document.getElementById('modal-new-reservation').classList.remove('open')">Annulla</button>
-        <button class="btn primary btn-save">Salva prenotazione</button>
-      </div>
+    <div class="modal-body grid2">
+      <label>Data
+        <input id="mDate" type="text" placeholder="YYYY-MM-DD" />
+      </label>
+      <label>Ora
+        <input id="mTime" type="text" placeholder="HH:MM" />
+      </label>
+      <label>Nome
+        <input id="mName" type="text" />
+      </label>
+      <label>Telefono
+        <input id="mPhone" type="text" />
+      </label>
+      <label>Persone
+        <input id="mPeople" type="number" min="1" value="2" />
+      </label>
+      <label>Stato
+        <select id="mStatus">
+          <option value="PENDING">PENDING</option>
+          <option value="CONFIRMED">CONFERMATA</option>
+          <option value="CANCELLED">CANCELLATA</option>
+        </select>
+      </label>
+      <label class="col2">Note
+        <textarea id="mNote" placeholder="Allergie, richieste..."></textarea>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="modalCancel" class="btn">Annulla</button>
+      <button id="modalSave" class="btn btn-primary">Salva prenotazione</button>
     </div>
   </div>
+</div>
 
-  <script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
-  <script>
-    // toggle tema
-    const key='theme', btn=document.getElementById('theme-toggle');
-    const apply=(t)=>document.body.classList.toggle('theme-dark', t==='dark');
-    apply(localStorage.getItem(key)||'dark');
-    btn.addEventListener('click',()=>{const t=document.body.classList.contains('theme-dark')?'light':'dark';localStorage.setItem(key,t);apply(t);});
-  </script>
-</body>
-</html>
+<!-- Sidebar drawer -->
+<aside id="drawer" class="drawer hidden">
+  <div class="drawer-head">
+    <div class="title">{{ restaurant.name }}</div>
+    <button id="drawerClose" class="icon-btn">✕</button>
+  </div>
+  <nav class="drawer-nav">
+    <div class="group">PRENOTAZIONI</div>
+    <a href="{{ url_for('dashboard') }}">Dashboard</a>
+
+    <div class="group">IMPOSTAZIONI RISTORANTE</div>
+    <a id="navHours" href="#">Orari di apertura</a>
+    <a id="navSpecial" href="#">Giorni speciali / chiusure</a>
+    <a id="navPrices" href="#">Prezzi & coperti</a>
+    <a id="navMenu" href="#">Menu digitale</a>
+
+    <div class="group">STRUMENTI</div>
+    <a id="navStats" href="#">Statistiche & report</a>
+  </nav>
+</aside>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
+{% endblock %}

@@ -1,142 +1,118 @@
-// static/js/dashboard_app.js
-
 (function () {
-  const $ = (sel, root) => (root || document).querySelector(sel);
-  const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+  const $ = (q) => document.querySelector(q);
+  const fmtIT = (d) => {
+    const [y, m, day] = d.split("-");
+    return `${day}/${m}/${y}`;
+  };
 
-  // ---------------------------
-  // Helpers
-  // ---------------------------
-  function itDateToISO(value) {
-    // accetta "YYYY-MM-DD" oppure "DD/MM/YYYY"
-    if (!value) return "";
-    const v = value.trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-    const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (m) {
-      const [, d, mth, y] = m;
-      return `${y}-${mth}-${d}`;
+  // Drawer
+  const drawer = $("#drawer");
+  $("#sidebarBtn")?.addEventListener("click", () => drawer.classList.remove("hidden"));
+  $("#drawerClose")?.addEventListener("click", () => drawer.classList.add("hidden"));
+
+  // Modal
+  const modal = $("#modal");
+  const openModal = () => modal.classList.remove("hidden");
+  const closeModal = () => modal.classList.add("hidden");
+  $("#btnNew")?.addEventListener("click", () => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    $("#mDate").value = `${y}-${m}-${d}`;
+    $("#mTime").value = "20:00";
+    $("#mName").value = "";
+    $("#mPhone").value = "";
+    $("#mPeople").value = 2;
+    $("#mStatus").value = "PENDING";
+    $("#mNote").value = "";
+    openModal();
+  });
+  $("#modalClose")?.addEventListener("click", closeModal);
+  $("#modalCancel")?.addEventListener("click", closeModal);
+
+  // Filtri
+  const inputDate = $("#fDate");
+  const rows = $("#rows");
+
+  const todayStr = () => {
+    const t = new Date();
+    return `${String(t.getDate()).padStart(2, "0")}/${String(t.getMonth() + 1).padStart(2, "0")}/${t.getFullYear()}`;
+  };
+  inputDate.value = todayStr();
+
+  $("#btnToday")?.addEventListener("click", () => {
+    inputDate.value = todayStr();
+    load();
+  });
+  $("#btnClear")?.addEventListener("click", () => {
+    $("#fSearch").value = "";
+    inputDate.value = todayStr();
+    load();
+  });
+  $("#btnFilter")?.addEventListener("click", load);
+
+  // Load prenotazioni
+  async function load() {
+    const v = inputDate.value.trim();
+    const ddmmyyyy = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    let param = v;
+    if (ddmmyyyy) {
+      param = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
     }
-    return v; // lascio stare, backend valida comunque
-  }
-
-  function mapStatusToDB(v) {
-    if (!v) return "PENDING";
-    const s = v.toString().trim().toUpperCase();
-    if (["CONFERMATA", "CONFERMATO", "CONFIRMED"].includes(s)) return "CONFIRMED";
-    if (["ANNULLATA", "ANNULLATO", "RIFIUTATA", "RIFIUTA", "CANCELLED"].includes(s)) return "CANCELLED";
-    return "PENDING";
-  }
-
-  async function jsonFetch(url, opts = {}) {
-    const res = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      ...opts,
+    const res = await fetch(`/api/reservations?date=${encodeURIComponent(param)}`);
+    const js = await res.json();
+    rows.innerHTML = "";
+    if (!js.ok) {
+      rows.innerHTML = `<div class="tr"><div class="td col2">Errore caricamento</div></div>`;
+      return;
+    }
+    js.items.forEach((r) => {
+      const tr = document.createElement("div");
+      tr.className = "tr";
+      tr.innerHTML = `
+        <div class="td">${fmtIT(r.date)} ${r.time}</div>
+        <div class="td">${r.name}</div>
+        <div class="td">${r.phone || ""}</div>
+        <div class="td">${r.people}</div>
+        <div class="td">${r.status}</div>
+        <div class="td">${r.note || ""}</div>
+        <div class="td">
+          <button class="btn btn-xs">Conferma</button>
+          <button class="btn btn-xs btn-danger">Elimina</button>
+        </div>`;
+      rows.appendChild(tr);
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) {
-      const msg = data.error || `HTTP ${res.status}`;
-      throw new Error(msg);
-    }
-    return data;
+    // contatori semplici
+    $("#statBookings").textContent = js.items.length;
   }
 
-  // ---------------------------
-  // UI: Modale nuova prenotazione
-  // ---------------------------
-  function openNewReservationModal() {
-    const modal = $("#modal-new-reservation");
-    if (!modal) return;
-    modal.classList.add("open");
-    $("input[name=date]", modal).focus();
-  }
+  load();
 
-  function closeNewReservationModal() {
-    const modal = $("#modal-new-reservation");
-    if (!modal) return;
-    modal.classList.remove("open");
-  }
-
-  function serializeReservationForm(modal) {
-    return {
-      date: itDateToISO($("input[name=date]", modal).value),
-      time: $("input[name=time]", modal).value.trim(), // HH:MM
-      name: $("input[name=name]", modal).value.trim(),
-      phone: $("input[name=phone]", modal).value.trim(),
-      people: parseInt($("input[name=people]", modal).value || "2", 10),
-      status: mapStatusToDB($("select[name=status]", modal).value),
-      note: $("textarea[name=note]", modal).value.trim(),
+  // Salvataggio nuova prenotazione
+  $("#modalSave")?.addEventListener("click", async () => {
+    const payload = {
+      date: $("#mDate").value.trim(),
+      time: $("#mTime").value.trim(),
+      name: $("#mName").value.trim(),
+      phone: $("#mPhone").value.trim(),
+      people: $("#mPeople").value.trim(),
+      status: $("#mStatus").value.trim(),
+      note: $("#mNote").value.trim(),
     };
-  }
-
-  async function saveReservation() {
-    const modal = $("#modal-new-reservation");
     try {
-      const payload = serializeReservationForm(modal);
-      const data = await jsonFetch("/api/reservations", {
+      const res = await fetch("/api/reservations", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      closeNewReservationModal();
-      alert("Prenotazione salvata ✅");
-      // TODO: ricarica lista
-      loadReservations();
+      const js = await res.json();
+      if (!js.ok) throw new Error(js.error || "Errore salvataggio prenotazione");
+      closeModal();
+      alert("Prenotazione salvata");
+      load();
     } catch (e) {
-      alert("Errore salvataggio prenotazione: " + e.message);
+      alert(e.message);
     }
-  }
-
-  async function loadReservations() {
-    try {
-      const dayInput = $("#filter-date");
-      const day = itDateToISO(dayInput ? dayInput.value : "");
-      const qs = day ? `?date=${encodeURIComponent(day)}` : "";
-      const data = await jsonFetch(`/api/reservations${qs}`);
-      const list = data.items || [];
-      renderReservations(list);
-    } catch (e) {
-      console.warn("Errore caricamento prenotazioni:", e);
-    }
-  }
-
-  function renderReservations(items) {
-    const body = $("#reservations-body");
-    if (!body) return;
-    body.innerHTML = items
-      .map(
-        (r) => `
-      <tr>
-        <td>${r.date} ${r.time}</td>
-        <td>${r.name || ""}</td>
-        <td>${r.phone || ""}</td>
-        <td>${r.people || "-"}</td>
-        <td>${r.status || "-"}</td>
-        <td>${r.note || "-"}</td>
-        <td><!-- azioni --></td>
-      </tr>`
-      )
-      .join("");
-  }
-
-  // ---------------------------
-  // Bind
-  // ---------------------------
-  function bind() {
-    const btnNew = $("#btn-new-reservation");
-    if (btnNew) btnNew.addEventListener("click", openNewReservationModal);
-
-    const btnClose = $("#modal-new-reservation .btn-close");
-    if (btnClose) btnClose.addEventListener("click", closeNewReservationModal);
-
-    const btnSave = $("#modal-new-reservation .btn-save");
-    if (btnSave) btnSave.addEventListener("click", saveReservation);
-
-    const filterDate = $("#filter-date");
-    if (filterDate) filterDate.addEventListener("change", loadReservations);
-  }
-
-  // Init
-  bind();
-  loadReservations();
+  });
 })();
