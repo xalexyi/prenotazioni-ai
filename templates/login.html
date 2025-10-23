@@ -1,34 +1,71 @@
-{% extends "base.html" %}
-{% block title %}Login — Ristorante AI{% endblock %}
-{% block body %}
-<div class="login-wrap">
-  <div class="login-card info">
-    <h2>Benvenuto/a 👋</h2>
-    <ul class="bullets">
-      <li>Inserisci <b>username</b> del ristorante</li>
-      <li>Digita la <b>password</b></li>
-      <li>Clicca <b>“Log in”</b></li>
-    </ul>
-    <div class="after-login">
-      <div>🔔 Chiamate attive e stato linea</div>
-      <div>📅 Prenotazioni del giorno</div>
-      <div>⚡ Azioni rapide: Conferma / Rifiuta / Elimina</div>
-    </div>
-  </div>
+<!-- templates/login.html -->
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login — Ristorante AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+</head>
+<body class="theme-dark">
+  <div class="login-page">
+    <header class="topbar">
+      <div class="brand">Ristorante AI <span class="muted">Area riservata</span></div>
+      <div class="top-actions">
+        <button id="theme-toggle" class="toggle"></button>
+      </div>
+    </header>
 
-  <form class="login-card form" method="post">
-    {% if error %}
-      <div class="alert">{{ error }}</div>
-    {% endif %}
-    <label>Username</label>
-    <input name="username" required value="haru-admin">
-    <label>Password</label>
-    <input name="password" type="password" required value="Password123!">
-    <div class="row">
-      <label class="checkbox"><input type="checkbox" name="remember" checked> Rimani connesso</label>
-      <button class="btn btn-primary" type="submit">Log in</button>
-    </div>
-    <div class="demo-note">Demo: sushitokyo / Password123! — pizzerianapoli / Password123!</div>
-  </form>
-</div>
-{% endblock %}
+    <main class="login-grid">
+      <section class="card info">
+        <h1>Benvenuto/a 👋</h1>
+        <ul class="bullets">
+          <li>Inserisci <b>username</b> del ristorante</li>
+          <li>Digita la <b>password</b></li>
+          <li>Clicca <b>“Log in”</b></li>
+        </ul>
+        <div class="hint">
+          <div>📞 Chiamate attive e stato linea</div>
+          <div>📅 Prenotazioni del giorno</div>
+          <div>⚡ Azioni rapide: Conferma / Rifiuta / Elimina</div>
+        </div>
+        {% if error %}
+          <div class="alert error">{{ error }}</div>
+        {% endif %}
+      </section>
+
+      <section class="card form">
+        <form method="post" autocomplete="off">
+          <label>Username</label>
+          <input type="text" name="username" placeholder="es. haru-admin" required />
+
+          <label>Password</label>
+          <input type="password" name="password" placeholder="Password123!" required />
+
+          <label class="remember">
+            <input type="checkbox" name="remember" checked />
+            Rimani connesso
+          </label>
+
+          <button class="btn primary" type="submit">Log in</button>
+
+          <p class="demo">Demo: <b>sushitokyo / Password123!</b> — <b>pizzerianapoli / Password123!</b></p>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script>
+    // semplice toggle tema (persistenza su localStorage)
+    const btn = document.getElementById('theme-toggle');
+    const key = 'theme';
+    function apply(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); }
+    const saved = localStorage.getItem(key) || 'dark';
+    apply(saved);
+    btn.addEventListener('click', () => {
+      const now = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+      localStorage.setItem(key, now);
+      apply(now);
+    });
+  </script>
+</body>
+</html>

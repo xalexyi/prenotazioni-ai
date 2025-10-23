@@ -1,13 +1,24 @@
 <!doctype html>
-<html lang="it" data-theme="{{ theme or 'dark' }}">
+<html lang="it" data-theme="dark">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Ristorante AI{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  <script>
+    // tema persistente
+    (function() {
+      try {
+        const saved = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch(e){}
+    })();
+  </script>
+  {% block head %}{% endblock %}
 </head>
 <body>
   {% block body %}{% endblock %}
-  <script src="{{ url_for('static', filename='js/dashboard_app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
