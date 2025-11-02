@@ -1,21 +1,22 @@
-# =============================
-# ✅ DEPLOY SCRIPT per prenotazioni-ai
-# =============================
+# deploy.ps1 – script aggiornato per Windows + GitHub + Render
 
-Write-Host "🚀 Avvio deploy..."
+Write-Host "🔄 Avvio deploy..."
 
-# Forza sulla branch main
-git switch main | Out-Null
-
-# Aggiunge tutto e crea commit automatico
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+# 1. Aggiunge tutti i file modificati
 git add .
-git commit -m "auto-deploy $timestamp"
 
-# Aggiorna con eventuali modifiche remote
-git pull origin main --rebase
+# 2. Crea commit con data/ora
+$time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+git commit -m "auto-deploy $time"
 
-# Esegue il push effettivo
+# 3. Si assicura di essere sulla branch main
+$branch = git branch --show-current
+if (-not $branch) {
+    Write-Host "⚙️  Non sei su nessuna branch, passo a main..."
+    git switch main
+}
+
+# 4. Effettua il push su GitHub
 git push origin main
 
-Write-Host "`n✅ Deploy completato con successo! 🎉"
+Write-Host "✅ Deploy completato con successo!"
